@@ -13,5 +13,7 @@ app/public/assets/art/**/*.webp
 app/public/assets/audio/**/*.mp3
 app/public/assets/audio/**/*.ogg
 
-# Draft questions awaiting review are not shipped.
-learn/content/**/*.draft.json
+# Question authoring sources ARE committed: see learn/content/dp-600/questions/src.
+# The answer obfuscation protects the shipped bundle, which is what a player
+# would inspect. It cannot protect a public repo, and pretending otherwise
+# would cost the ability to maintain the bank for no real gain.
