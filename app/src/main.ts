@@ -37,6 +37,7 @@ import {
 import { Dp600ChallengeProvider, createQuestionPresenter } from '@fabric-empires/learn';
 import { createEffects } from './render/effects.js';
 import { createScene3D } from './three/scene3d.js';
+import { playDuel } from './three/duel.js';
 import { HEX_RADIUS, hexToWorld } from './three/terrain.js';
 import { HIGH_QUALITY, LOW_QUALITY } from './three/world.js';
 import { createQuestionModal } from './ui/questionModal.js';
@@ -316,56 +317,73 @@ async function playAttack(
     defender: defenderUnit?.hp ?? defenderCity?.hp ?? 0,
   };
 
-  if (dramatic) {
-    scene.focus(target);
-    dirty = true;
-    await wait(360);
-  }
-
-  // A melee unit throws itself at the target; a ranged one stays put and
-  // sends a pulse instead, which is the whole visual difference between the
-  // two and costs one branch.
-  if (ranged) {
-    effects.pulse(attacker.hex, attackerColour, 1.2);
-    await wait(dramatic ? 320 : 160);
-  } else {
-    await effects.lunge(unitId, attacker.hex, target);
-  }
-
+  // The engine has already decided the result; resolving it here and handing
+  // the numbers to the choreography means the animation can be as long or as
+  // short as it likes without the rules caring. The state change is held back
+  // until the moment of impact so a health bar never empties during a wind-up.
   const outcome = resolveAttack(state, unitId, target, { challengeScore });
   if (!outcome.ok) {
     log(outcome.reason, 'bad');
     return;
   }
-  state = outcome.result.state;
+  const nextState = outcome.result.state;
   const { log: battle } = outcome.result;
 
-  // Impact.
-  effects.flash(target, '#ffe6a8', dramatic ? 420 : 260);
-  effects.pulse(target, defenderColour, dramatic ? 2.1 : 1.5);
-  effects.shake(Math.min(14, 3 + battle.damageToDefender * 0.16) * (dramatic ? 1.5 : 1));
-  if (battle.damageToDefender > 0) {
-    effects.floatingText(target, `-${battle.damageToDefender}`, '#ffcf7a', dramatic ? 1.4 : 1.1);
-  }
-  if (battle.damageToAttacker > 0) {
-    effects.floatingText(
-      attacker.hex,
-      `-${battle.damageToAttacker}`,
-      '#ff9b91',
-      dramatic ? 1.2 : 1,
-    );
-  }
-  if (battle.defenderDestroyed && defenderUnit) effects.dissolve(defenderUnit.id);
-  if (battle.attackerDestroyed) effects.dissolve(unitId);
-  if (battle.cityCaptured) {
-    effects.pulse(target, '#8fd694', 3.2);
-    effects.floatingText(target, 'CAPTURED', '#8fd694', 1.5);
-    effects.shake(18);
-  }
+  await playDuel(
+    scene,
+    {
+      attackerId: unitId,
+      attackerHex: attacker.hex,
+      attackerColour,
+      defenderId: defenderUnit?.id,
+      defenderHex: target,
+      defenderColour,
+    },
+    {
+      damageToDefender: battle.damageToDefender,
+      damageToAttacker: battle.damageToAttacker,
+      defenderDestroyed: battle.defenderDestroyed,
+      attackerDestroyed: battle.attackerDestroyed,
+      ranged,
+      dramatic,
+    },
+    {
+      onImpact: () => {
+        state = nextState;
+        dirty = true;
 
-  // The banner is the only place the player can see how much the answer was
-  // worth, so it waits for the dust rather than competing with it.
-  await wait(dramatic ? DRAMA_MS : PUNCH_MS);
+        // Damage numbers stay on the 2D layer: text is crisper drawn flat
+        // than projected, and it needs to stay legible at every distance.
+        if (battle.damageToDefender > 0) {
+          effects.floatingText(
+            target,
+            `-${battle.damageToDefender}`,
+            '#ffcf7a',
+            dramatic ? 1.4 : 1.1,
+          );
+        }
+        if (battle.damageToAttacker > 0) {
+          effects.floatingText(
+            attacker.hex,
+            `-${battle.damageToAttacker}`,
+            '#ff9b91',
+            dramatic ? 1.2 : 1,
+          );
+        }
+        if (battle.cityCaptured) {
+          effects.floatingText(target, 'CAPTURED', '#8fd694', 1.5);
+        }
+      },
+      shake: (magnitude) => effects.shake(magnitude),
+    },
+  );
+
+  // Belt and braces: if the impact hook somehow did not run, the result must
+  // still be applied. A silently skipped state change would be a real bug.
+  if (state !== nextState) {
+    state = nextState;
+    dirty = true;
+  }
 
   if (preview) {
     // The engine reports the answer's contribution separately, which is the
@@ -634,6 +652,9 @@ function newGame(rawSeed: string): void {
   state = createGameState(seed, { topics: provider.topics() });
   hadFirstBattle = false;
   banner.hide();
+  // A duel interrupted by a new game would otherwise leave its pose behind,
+  // and a pose keeps a wreck alive on screen for as long as it exists.
+  scene.fx.clearAllPoses();
   el.seedInput.value = seed;
   el.log.replaceChildren();
   log(`New empire on seed ${seed}.`);
@@ -812,7 +833,12 @@ function frame(now: number): void {
   const animating = effects.update(now);
   const started = performance.now();
 
-  if (dirty || animating) {
+  // A duel drives the units through pose overrides, which only take effect
+  // when the scene is reconciled. Reconciling only on `dirty` would freeze
+  // the fight on its first frame.
+  const fighting = scene.fx.active();
+
+  if (dirty || animating || fighting) {
     scene.sync(state, {
       selectedUnitId,
       reachable: reach,

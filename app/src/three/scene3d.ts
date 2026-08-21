@@ -43,6 +43,7 @@ import {
 } from './terrain.js';
 import { createWater, type WaterSurface } from './water.js';
 import { buildScatter, type Scatter } from './scatter.js';
+import { createCombatFx, type CombatFx } from './combatFx.js';
 import { buildCity, buildUnit, disposeEntityMaterials } from './entities.js';
 
 export interface Scene3DView {
@@ -58,6 +59,8 @@ export interface Scene3DView {
 
 export interface Scene3D {
   readonly world: World;
+  /** Sparks, dust, tracers and per-unit pose overrides. */
+  readonly fx: CombatFx;
   /** Rebuild the ground for a new map. Slow, and only called on a new game. */
   loadMap(map: GameMap): void;
   /** Reconcile units, cities and overlays against the current state. */
@@ -66,6 +69,11 @@ export interface Scene3D {
   hexAt(screenX: number, screenY: number): Hex | undefined;
   /** Glide the camera to look at a hex. */
   focus(hex: Hex, immediate?: boolean): void;
+  /**
+   * Glide the camera to an arbitrary point, optionally closing to a given
+   * distance. Used to frame a fight between two hexes rather than one.
+   */
+  focusWorld(point: Vector3, distance?: number): void;
   /** World position of the ground at a hex, for effects. */
   groundAt(hex: Hex): Vector3;
   /** Project a world position to screen pixels, for HTML overlays. */
@@ -132,7 +140,8 @@ export function createScene3D(
   const terrainGroup = new Group();
   const entityGroup = new Group();
   const overlayGroup = new Group();
-  scene.add(terrainGroup, entityGroup, overlayGroup);
+  const fx = createCombatFx();
+  scene.add(terrainGroup, entityGroup, overlayGroup, fx.group);
 
   let terrain: Terrain | undefined;
   let scatter: Scatter | undefined;
@@ -154,6 +163,8 @@ export function createScene3D(
   let flightFrom: Vector3 | undefined;
   let flightTo: Vector3 | undefined;
   let flightStart = 0;
+  let flightDistance: number | undefined;
+  let flightFromDistance = 0;
   const FLIGHT_MS = 520;
 
   function clearOverlays(): void {
@@ -181,6 +192,7 @@ export function createScene3D(
 
   return {
     world,
+    fx,
 
     loadMap(map) {
       if (terrain) {
@@ -244,14 +256,31 @@ export function createScene3D(
           object.position.x += offset.x;
           object.position.z += offset.z;
         }
-        const opacity = view.unitOpacity?.(unit.id) ?? 1;
+
+        // Remembered before any pose is applied, so a wreck can keep being
+        // animated after the engine has stopped reporting the unit at all.
+        (object.userData as { basePosition?: Vector3 }).basePosition =
+          object.position.clone();
+
+        // A combat pose sits on top of that: where the unit has been thrown,
+        // which way it is facing, and how far it has toppled over.
+        const pose = fx.poseOf(unit.id);
+        const spent = unit.factionId === state.activeFactionId && unit.movesLeft <= 0;
+
+        if (pose) {
+          object.position.add(pose.offset);
+          object.position.y -= pose.sink;
+          object.rotation.set(pose.pitch, pose.yaw ?? object.rotation.y, pose.roll);
+        } else {
+          // Spent units settle; ready units stand up. Cheaper to read than a
+          // badge and it survives at any zoom.
+          object.rotation.set(spent ? 0.09 : 0, object.rotation.y, 0);
+        }
+
+        const opacity = (view.unitOpacity?.(unit.id) ?? 1) * (pose?.opacity ?? 1);
         object.visible = opacity > 0.02;
         if (opacity < 1) object.scale.setScalar(Math.max(0.05, opacity));
-
-        // Spent units settle; ready units stand up. Cheaper to read than a
-        // badge and it survives at any zoom.
-        const spent = unit.factionId === state.activeFactionId && unit.movesLeft <= 0;
-        object.rotation.x = spent ? 0.09 : 0;
+        else object.scale.setScalar(1);
 
         const type = unitType(unit.typeId);
         const hurt = 1 - unit.hp / type.maxHp;
@@ -259,6 +288,30 @@ export function createScene3D(
       }
       for (const [id, object] of unitObjects) {
         if (liveUnits.has(id)) continue;
+
+        /**
+         * A wreck outlives its unit.
+         *
+         * The engine removes a destroyed unit the instant the blow lands,
+         * which is correct for the rules and useless for the animation: the
+         * object was being deleted on the same frame the death sequence
+         * started, so the topple never played and units simply blinked out.
+         * While a pose exists the object is kept and driven from it; the
+         * duel decides when the wreck is finally gone.
+         */
+        const pose = fx.poseOf(id);
+        if (pose) {
+          const base = (object.userData as { basePosition?: Vector3 }).basePosition;
+          if (base) {
+            object.position.copy(base).add(pose.offset);
+            object.position.y -= pose.sink;
+          }
+          object.rotation.set(pose.pitch, pose.yaw ?? object.rotation.y, pose.roll);
+          object.visible = pose.opacity > 0.02;
+          object.scale.setScalar(Math.max(0.05, pose.opacity));
+          continue;
+        }
+
         entityGroup.remove(object);
         unitObjects.delete(id);
       }
@@ -342,6 +395,15 @@ export function createScene3D(
       flightFrom = controls.target.clone();
       flightTo = target;
       flightStart = performance.now();
+      flightDistance = undefined;
+    },
+
+    focusWorld(point, distance) {
+      flightFrom = controls.target.clone();
+      flightTo = point.clone();
+      flightStart = performance.now();
+      flightDistance = distance;
+      flightFromDistance = camera.position.distanceTo(controls.target);
     },
 
     groundAt(hex) {
@@ -379,14 +441,25 @@ export function createScene3D(
         const move = next.clone().sub(controls.target);
         controls.target.copy(next);
         camera.position.add(move);
+
+        // Dolly along the existing view direction rather than teleporting,
+        // so the approach keeps whatever angle the player had chosen.
+        if (flightDistance !== undefined) {
+          const wanted = flightFromDistance + (flightDistance - flightFromDistance) * eased;
+          const direction = camera.position.clone().sub(controls.target).normalize();
+          camera.position.copy(controls.target).addScaledVector(direction, wanted);
+        }
+
         if (t >= 1) {
           flightFrom = undefined;
           flightTo = undefined;
+          flightDistance = undefined;
         }
       }
 
       controls.update();
       water?.update(delta * 0.35);
+      fx.update(delta);
 
       // Keep the shadow frustum around the camera target rather than the
       // whole map: a frustum big enough for a radius-25 map wastes most of
@@ -475,6 +548,7 @@ export function createScene3D(
     dispose() {
       controls.dispose();
       clearOverlays();
+      fx.dispose();
       terrain?.dispose();
       scatter?.dispose();
       water?.dispose();

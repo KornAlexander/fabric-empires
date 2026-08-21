@@ -90,9 +90,11 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D59 | Assets | Still none. Terrain material, water normals and surface detail are all generated at runtime. A public repository with zero downloaded texture licences to defend is worth more than a slightly better rock |
 | D60 | Ground topology | A continuous smoothed surface, not extruded hex prisms. The hex grid decides control points and material, then the surface is subdivided, displaced, welded and Laplacian-smoothed. The grid is an overlay that can be switched off with `g` |
 | D61 | **Realism, honestly scoped** | **"Photoreal" is not reachable here: no artist, no scanned materials, no time. What is reachable, and is what D58 delivers, is physically based: a scattering sky, one dominant sun, real shadows, filmic tone mapping and ground that responds correctly to light. See 16.1 for what is still missing** |
-| D62 | **Erosion** | **The landform is carved by a simulated hydraulic erosion pass, not sculpted from noise. 140,000 droplets over a grid at five cells per hex, run once at map generation. See 16.4** |
+| D62 | **Erosion** | **The landform is carved by a simulated hydraulic erosion pass, not sculpted from noise. 140,000 droplets over a grid at five cells per hex, run once at map generation. See 16.3** |
 | D63 | Micro-relief | Bump mapping, not normal mapping. Bump perturbs the normal from screen-space derivatives and needs no tangent frame, which is exactly what defeated the normal map twice |
 | D64 | Erosion ordering | Erosion is applied after the Laplacian smoothing pass, not before. The smoothing exists to remove hex-umbrella creases and is an aggressive low-pass filter; run first, it removes the drainage channels along with them |
+| D65 | **Duels are staged, not implied** | **A battle is a sequence in world space: the two units turn to face each other, the attacker winds up and charges or fires, the blow lands with sparks and dust, the loser is knocked back, topples onto its side and burns out. Written as one function so the timing can be read and argued about in one place** |
+| D66 | Wrecks outlive their units | The engine removes a destroyed unit on the frame the blow lands. The renderer keeps the object alive while a combat pose exists, so the death animation has something to play |
 
 ### 16.1 What "realistic" does and does not mean in this build
 
@@ -119,7 +121,7 @@ large share of the surface far enough to lose the sun. An albedo detail map
 provides the mottling instead: it multiplies colour rather than bending
 normals, so it cannot cost the scene its light.
 
-### 16.3 Ground cover
+### 16.2 Ground cover
 
 Roughly 1200 trees and 500 boulders, instanced, one draw call per type,
 scattered by biome with a noise field so woodland forms patches instead of
@@ -137,7 +139,7 @@ multiplies the base material in linear space, so plausible-looking values
 near 1.0 against a white base are roughly five times an ordinary rock albedo,
 and every boulder on the map glows.
 
-### 16.4 Why the terrain is eroded rather than sculpted
+### 16.3 Why the terrain is eroded rather than sculpted
 
 Fractal noise makes convincing lumps and unconvincing landscapes, because it
 has no memory of water. Real ground is carved: ridges are sharp because
@@ -160,6 +162,41 @@ cavity shading that darkens hollows was initially strong enough to draw the
 channels as near-black scribbles across the ground: occlusion should suggest
 depth, not draw it.
 
+### 16.4 Staging a fight
+
+The first 3D battle was measured rather than watched, and the measurement was
+damning: comparing consecutive frames, the entire fight produced visible
+change for four frames, about 440 milliseconds, and most of that was the
+question modal closing. The units never turned to face each other, never
+closed the gap, and nothing happened when the blow landed. The numbers said
+so before any screenshot did.
+
+What replaced it is a sequence in world space. Both units turn to face each
+other, which alone fixes the most obvious tell that nothing is happening: two
+machines fighting side-on. A melee attacker winds back, charges, stops short
+of contact rather than driving through, and rebounds. A ranged one braces,
+fires with a muzzle flash, and recoils while the tracer is still in the air.
+The blow throws sparks and kicks dust, the defender is knocked back and rolled
+by an amount scaled to the damage it took, and a loser topples onto its side,
+settles into the ground and burns out.
+
+Two things had to be true for that to work.
+
+**Damage lands with the hit.** The engine resolves the fight before the
+animation starts, but the state change is held until the frame of impact. A
+health bar that empties while the attacker is still winding up reads as a bug
+even though the arithmetic is right.
+
+**Wrecks outlive their units.** The engine removes a destroyed unit the
+instant the blow lands, which is correct for the rules and useless for the
+animation: the object was deleted on the same frame the death sequence began,
+so the topple never played and units simply blinked out. The renderer now
+keeps an object alive for as long as a combat pose exists, and the duel
+decides when the wreck is finally released. Verified by tracing object counts
+per frame: the engine drops to five units while six are still drawn, the
+sixth rolls to 1.45 radians, fades, and is then cleaned up with nothing left
+behind.
+
 ### 16.5 Two lighting ratios that keep being relearned
 
 **Sun against fill.** Fill light is untinted by definition, so every unit of
@@ -177,7 +214,7 @@ gradient across a shadow-map texel grows, and a bias tuned at noon leaves
 hard dark ribbons of self-shadowing down every slope. Normal bias is the
 setting that fixes that; depth bias alone just moves the artefact.
 
-### 16.2 The lighting bug hunt, and the lesson
+### 16.6 The lighting bug hunt, and the lesson
 
 Five separate faults stacked up, and every one of them produced the same
 symptom, a dull grey-blue landmass, which is why they were so slow to
