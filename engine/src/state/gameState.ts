@@ -37,6 +37,13 @@ export interface GameState {
   readonly difficulty: Difficulty;
   readonly turn: number;
   readonly map: GameMap;
+  /**
+   * Map generation overrides used for this game.
+   *
+   * Kept so a save can carry the seed and these few numbers instead of two
+   * thousand tiles, and regenerate an identical map on load.
+   */
+  readonly mapOverrides: Partial<MapOptions>;
   readonly factions: ReadonlyMap<string, Faction>;
   readonly units: ReadonlyMap<string, Unit>;
   readonly cities: ReadonlyMap<string, City>;
@@ -99,6 +106,7 @@ export function startScore(map: GameMap, tile: MapTile): number {
   let score = 0;
   let freshWater = tile.river;
   let coastal = false;
+  let localData = 0;
   const resourcesSeen = new Set<string>();
 
   const ring = [tile, ...hexNeighbours(tile.hex).flatMap((h) => {
@@ -109,6 +117,7 @@ export function startScore(map: GameMap, tile: MapTile): number {
   for (const neighbour of ring) {
     const y = tileYields(neighbour.terrain, neighbour.river);
     score += y.data * 1.0 + y.compute * 1.0 + y.cu * 1.4 + y.trust * 0.9;
+    localData += y.data;
 
     if (neighbour.river) freshWater = true;
     if (neighbour.terrain === 'onelake') coastal = true;
@@ -116,6 +125,11 @@ export function startScore(map: GameMap, tile: MapTile): number {
     if (neighbour.terrain === 'ungovernedWastes') score -= 6;
     if (neighbour.terrain !== 'onelake') resourcesSeen.add(neighbour.terrain);
   }
+
+  // A site with nothing to eat cannot grow, however rich it looks. An early
+  // version happily chose a highland capital ringed by Compute and Capacity
+  // Units, which then needed nineteen turns to reach size two.
+  if (localData < 4) score -= 18;
 
   if (freshWater) score += 5;
   if (coastal) score += 3;
@@ -176,7 +190,8 @@ export function createGameState(
   seed: string,
   options: NewGameOptions = {},
 ): GameState {
-  const map = generateMap(seed, options.map ?? {});
+  const mapOverrides = options.map ?? {};
+  const map = generateMap(seed, mapOverrides);
   const start = chooseStartPosition(map);
 
   const player: Faction = {
@@ -215,6 +230,7 @@ export function createGameState(
     difficulty: options.difficulty ?? 'analyst',
     turn: 1,
     map,
+    mapOverrides,
     factions: new Map([[player.id, player]]),
     units,
     cities: new Map(),

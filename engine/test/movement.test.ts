@@ -562,6 +562,7 @@ describe('founding cities', () => {
       kind: 'workspace',
       hp: 200,
       population: 1,
+      growthStore: 0,
       boundSkills: [],
     });
     expect(canFoundCity({ ...state, cities }, architect)).toBe(false);

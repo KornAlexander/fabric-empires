@@ -89,6 +89,8 @@ export interface City {
   readonly kind: CityKind;
   readonly hp: number;
   readonly population: number;
+  /** Data accumulated towards the next citizen. */
+  readonly growthStore: number;
   /** Tech node ids whose buildings stand here. Drives the review system. */
   readonly boundSkills: readonly number[];
 }
