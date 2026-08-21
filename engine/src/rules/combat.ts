@@ -1,0 +1,417 @@
+/**
+ * Combat.
+ *
+ * Strength and hit points decide fights; the challenge outcome applies a large
+ * modifier on top. The intended feel: early on, when base strengths are small,
+ * knowing the answer is close to decisive. Later, a well-built army survives a
+ * wrong answer. The engine itself never learns what the question was.
+ */
+
+import { hexDistance, hexKey, type Hex } from '../hex/index.js';
+import { terrain } from '../map/index.js';
+import { createRng, type Rng } from '../rng/index.js';
+import { isCivilian, cityKind, unitType, type City, type Unit } from '../entities/index.js';
+import { cityAt, tileAt, unitAt, type GameState } from '../state/index.js';
+
+/**
+ * Strength swing between a perfect answer and a wrong one.
+ *
+ * At +/-18 against base strengths of 8 to 60, the total swing of 36 is
+ * decisive for a Profiler and merely important for a Direct Lake Titan.
+ */
+export const CHALLENGE_STRENGTH_SWING = 18;
+
+/** Fortifying trades movement for staying power. */
+export const FORTIFY_DEFENCE_BONUS = 0.4;
+
+/**
+ * Siege units are built to break cities and little else.
+ *
+ * Held at 0.75 rather than a full doubling: at 1.0 a Notebook Cannon was
+ * already hitting the damage cap against an untouched city, which meant a
+ * siege could not get easier as the walls came down, and the cap hid the
+ * difference between a good assault and a terrible one.
+ */
+export const SIEGE_CITY_BONUS = 0.75;
+
+export const MIN_DAMAGE = 10;
+export const MAX_DAMAGE = 100;
+
+export type CombatTargetKind = 'unit' | 'city';
+
+export interface CombatSide {
+  readonly baseStrength: number;
+  readonly hpFactor: number;
+  readonly terrainBonus: number;
+  readonly fortifyBonus: number;
+  readonly techBonus: number;
+  readonly challengeModifier: number;
+  readonly effective: number;
+}
+
+export interface CombatPreview {
+  readonly attacker: CombatSide;
+  readonly defender: CombatSide;
+  readonly targetKind: CombatTargetKind;
+  /** Damage before the random roll, so the UI can show honest odds. */
+  readonly expectedDamageToDefender: number;
+  readonly expectedDamageToAttacker: number;
+  readonly ranged: boolean;
+}
+
+export interface CombatLog {
+  readonly attackerId: string;
+  readonly defenderId: string;
+  readonly targetKind: CombatTargetKind;
+  readonly damageToDefender: number;
+  readonly damageToAttacker: number;
+  readonly defenderDestroyed: boolean;
+  readonly attackerDestroyed: boolean;
+  readonly cityCaptured: boolean;
+  readonly challengeScore: number;
+}
+
+export type AttackCheck =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: string };
+
+/**
+ * Convert a challenge score in -1..+1 into a strength modifier.
+ * Linear on purpose: a player should be able to feel the relationship.
+ */
+export function challengeModifier(score: number): number {
+  const clamped = Math.min(1, Math.max(-1, score));
+  return clamped * CHALLENGE_STRENGTH_SWING;
+}
+
+function hpFactor(hp: number, maxHp: number): number {
+  // A wounded unit hits softer, but never falls below half strength, so a
+  // damaged unit is still worth committing rather than being written off.
+  return 0.5 + 0.5 * (Math.max(0, hp) / maxHp);
+}
+
+export interface SideOptions {
+  readonly challengeScore?: number;
+  readonly techBonus?: number;
+  readonly attacking?: boolean;
+}
+
+export function unitCombatSide(
+  state: GameState,
+  unit: Unit,
+  options: SideOptions = {},
+): CombatSide {
+  const type = unitType(unit.typeId);
+  const tile = tileAt(state, unit.hex);
+  // Terrain and fortification protect a defender; they do not help an attack.
+  const defending = options.attacking !== true;
+  const terrainBonus = defending && tile ? terrain(tile.terrain).defenceBonus : 0;
+  const fortifyBonus = defending && unit.fortified ? FORTIFY_DEFENCE_BONUS : 0;
+  const techBonus = options.techBonus ?? 0;
+  const modifier = challengeModifier(options.challengeScore ?? 0);
+
+  const factor = hpFactor(unit.hp, type.maxHp);
+  const effective =
+    type.strength * factor * (1 + terrainBonus) * (1 + fortifyBonus) * (1 + techBonus) +
+    modifier;
+
+  return {
+    baseStrength: type.strength,
+    hpFactor: factor,
+    terrainBonus,
+    fortifyBonus,
+    techBonus,
+    challengeModifier: modifier,
+    // A negative effective strength is meaningless and would invert the
+    // damage curve, so the floor is 1 rather than 0.
+    effective: Math.max(1, effective),
+  };
+}
+
+export function cityCombatSide(
+  state: GameState,
+  city: City,
+  options: SideOptions = {},
+): CombatSide {
+  const tile = tileAt(state, city.hex);
+  const terrainBonus = tile ? terrain(tile.terrain).defenceBonus : 0;
+  // A city defends with its walls and its size rather than a unit's strength.
+  // Pitched so that a lone melee unit cannot realistically take a capital and
+  // a siege unit still needs several turns: at the first tuning a size-one
+  // city defended at strength 16 against a siege unit at 50.
+  const baseStrength = 20 + city.population * 6;
+  // Measured against the kind's full hit points, not its current ones. An
+  // earlier version compared the city to itself, so hpFactor was always 1 and
+  // a city on its last hit point defended as well as an untouched one, which
+  // made a siege pointless right up until the moment it succeeded.
+  const factor = hpFactor(city.hp, cityKind(city.kind).baseHp);
+  const modifier = challengeModifier(options.challengeScore ?? 0);
+
+  return {
+    baseStrength,
+    hpFactor: factor,
+    terrainBonus,
+    fortifyBonus: 0,
+    techBonus: 0,
+    challengeModifier: modifier,
+    effective: Math.max(1, baseStrength * factor * (1 + terrainBonus) + modifier),
+  };
+}
+
+/**
+ * Damage curve.
+ *
+ * A power curve on the strength ratio, so a small advantage matters and a
+ * large one is decisive without ever being an instant kill: clamped to
+ * 10..100, every fight costs the winner something.
+ */
+export function damageFrom(
+  attackerEffective: number,
+  defenderEffective: number,
+  roll = 1,
+): number {
+  const ratio = attackerEffective / defenderEffective;
+  const raw = 30 * Math.pow(ratio, 1.5) * roll;
+  return Math.round(Math.min(MAX_DAMAGE, Math.max(MIN_DAMAGE, raw)));
+}
+
+/** Whether the attacker may strike the given hex at all. */
+export function canAttack(
+  state: GameState,
+  attackerId: string,
+  target: Hex,
+): AttackCheck {
+  const attacker = state.units.get(attackerId);
+  if (!attacker) return { ok: false, reason: 'No such unit' };
+  if (attacker.factionId !== state.activeFactionId) {
+    return { ok: false, reason: 'Not your unit' };
+  }
+  if (isCivilian(attacker.typeId)) {
+    return { ok: false, reason: 'Civilians cannot attack' };
+  }
+  if (attacker.movesLeft <= 0) {
+    return { ok: false, reason: 'This unit has already acted' };
+  }
+  if (!state.map.tiles.has(hexKey(target))) {
+    return { ok: false, reason: 'Off the map' };
+  }
+
+  const defendingUnit = unitAt(state, target);
+  const defendingCity = cityAt(state, target);
+  if (!defendingUnit && !defendingCity) {
+    return { ok: false, reason: 'Nothing to attack there' };
+  }
+  if (defendingUnit && defendingUnit.factionId === attacker.factionId) {
+    return { ok: false, reason: 'That is your own unit' };
+  }
+  if (!defendingUnit && defendingCity?.factionId === attacker.factionId) {
+    return { ok: false, reason: 'That is your own city' };
+  }
+
+  const type = unitType(attacker.typeId);
+  const distance = hexDistance(attacker.hex, target);
+  const reach = Math.max(1, type.range);
+  if (distance > reach) {
+    return { ok: false, reason: 'Out of reach' };
+  }
+
+  return { ok: true };
+}
+
+export interface AttackOptions {
+  /** Challenge result in -1..+1 for the attacker. Zero means none was asked. */
+  readonly challengeScore?: number;
+  /**
+   * Challenge result for the defender.
+   *
+   * When an antagonist raids the player, it is the player who is defending and
+   * therefore the player who answers. Without this the API could only ever
+   * express a battle where the aggressor is the one being tested.
+   */
+  readonly defenderChallengeScore?: number;
+  readonly techBonus?: number;
+  readonly rng?: Rng;
+}
+
+/**
+ * The numbers a player should see before committing, with no randomness.
+ * Preview and resolution share every calculation, so the odds shown are the
+ * odds fought.
+ */
+export function previewAttack(
+  state: GameState,
+  attackerId: string,
+  target: Hex,
+  options: AttackOptions = {},
+): CombatPreview | undefined {
+  const attacker = state.units.get(attackerId);
+  if (!attacker) return undefined;
+  const check = canAttack(state, attackerId, target);
+  if (!check.ok) return undefined;
+
+  const type = unitType(attacker.typeId);
+  const ranged = type.range > 0;
+  const defendingUnit = unitAt(state, target);
+  const targetKind: CombatTargetKind = defendingUnit ? 'unit' : 'city';
+
+  const attackerSide = unitCombatSide(state, attacker, {
+    ...options,
+    attacking: true,
+  });
+
+  let defenderSide: CombatSide;
+  if (defendingUnit) {
+    defenderSide = unitCombatSide(state, defendingUnit, {
+      techBonus: 0,
+      attacking: false,
+      challengeScore: options.defenderChallengeScore ?? 0,
+    });
+  } else {
+    defenderSide = cityCombatSide(state, cityAt(state, target)!, {
+      challengeScore: options.defenderChallengeScore ?? 0,
+    });
+  }
+
+  const siegeMultiplier =
+    targetKind === 'city' && type.role === 'siege' ? 1 + SIEGE_CITY_BONUS : 1;
+
+  return {
+    attacker: attackerSide,
+    defender: defenderSide,
+    targetKind,
+    ranged,
+    expectedDamageToDefender: damageFrom(
+      attackerSide.effective * siegeMultiplier,
+      defenderSide.effective,
+    ),
+    // A ranged attacker takes nothing back, which is the entire reason to
+    // build one. Cities do not counterattack a melee strike either.
+    expectedDamageToAttacker:
+      ranged || targetKind === 'city'
+        ? 0
+        : damageFrom(defenderSide.effective, attackerSide.effective),
+  };
+}
+
+export interface AttackResult {
+  readonly state: GameState;
+  readonly log: CombatLog;
+}
+
+export type AttackOutcome =
+  | { readonly ok: true; readonly result: AttackResult }
+  | { readonly ok: false; readonly reason: string };
+
+/**
+ * Resolve an attack.
+ *
+ * The random roll is drawn from a stream keyed by the seed, turn, attacker and
+ * target, so a replayed game fights identical battles without the caller
+ * having to thread an RNG through the UI.
+ */
+export function resolveAttack(
+  state: GameState,
+  attackerId: string,
+  target: Hex,
+  options: AttackOptions = {},
+): AttackOutcome {
+  const check = canAttack(state, attackerId, target);
+  if (!check.ok) return { ok: false, reason: check.reason };
+
+  const preview = previewAttack(state, attackerId, target, options);
+  if (!preview) return { ok: false, reason: 'Attack could not be resolved' };
+
+  const attacker = state.units.get(attackerId)!;
+  const rng =
+    options.rng ??
+    createRng(state.seed, `combat:${state.turn}:${attackerId}:${hexKey(target)}`);
+
+  const attackRoll = rng.float(0.9, 1.1);
+  const defenceRoll = rng.float(0.9, 1.1);
+  const type = unitType(attacker.typeId);
+  const siegeMultiplier =
+    preview.targetKind === 'city' && type.role === 'siege' ? 1 + SIEGE_CITY_BONUS : 1;
+
+  const damageToDefender = damageFrom(
+    preview.attacker.effective * siegeMultiplier,
+    preview.defender.effective,
+    attackRoll,
+  );
+  const damageToAttacker =
+    preview.ranged || preview.targetKind === 'city'
+      ? 0
+      : damageFrom(preview.defender.effective, preview.attacker.effective, defenceRoll);
+
+  const units = new Map(state.units);
+  const cities = new Map(state.cities);
+
+  const attackerHp = attacker.hp - damageToAttacker;
+  const attackerDestroyed = attackerHp <= 0;
+
+  let defenderId: string;
+  let defenderDestroyed = false;
+  let cityCaptured = false;
+
+  if (preview.targetKind === 'unit') {
+    const defender = unitAt(state, target)!;
+    defenderId = defender.id;
+    const defenderHp = defender.hp - damageToDefender;
+    defenderDestroyed = defenderHp <= 0;
+    if (defenderDestroyed) {
+      units.delete(defender.id);
+    } else {
+      units.set(defender.id, { ...defender, hp: defenderHp });
+    }
+  } else {
+    const city = cityAt(state, target)!;
+    defenderId = city.id;
+    const cityHp = city.hp - damageToDefender;
+    if (cityHp <= 0 && !preview.ranged) {
+      // Only a melee unit can walk in and take the city. Bombardment alone
+      // never captures anything, which is what keeps siege units support
+      // rather than a win button.
+      cityCaptured = true;
+      cities.set(city.id, {
+        ...city,
+        factionId: attacker.factionId,
+        hp: Math.round(city.hp * 0.25),
+        population: Math.max(1, city.population - 1),
+      });
+    } else {
+      cities.set(city.id, { ...city, hp: Math.max(1, cityHp) });
+    }
+  }
+
+  if (attackerDestroyed) {
+    units.delete(attacker.id);
+  } else {
+    const movesLeft = 0; // attacking always ends the unit's turn
+    const nextHex =
+      cityCaptured || (defenderDestroyed && !preview.ranged) ? target : attacker.hex;
+    units.set(attacker.id, {
+      ...attacker,
+      hp: attackerHp,
+      movesLeft,
+      fortified: false,
+      hex: nextHex,
+    });
+  }
+
+  return {
+    ok: true,
+    result: {
+      state: { ...state, units, cities },
+      log: {
+        attackerId,
+        defenderId,
+        targetKind: preview.targetKind,
+        damageToDefender,
+        damageToAttacker,
+        defenderDestroyed,
+        attackerDestroyed,
+        cityCaptured,
+        challengeScore: options.challengeScore ?? 0,
+      },
+    },
+  };
+}

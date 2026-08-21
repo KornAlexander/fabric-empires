@@ -7,3 +7,4 @@ export * from './state/index.js';
 export * from './rules/index.js';
 export * from './turn/index.js';
 export * from './save/index.js';
+export * from './challenge/index.js';
