@@ -16,7 +16,31 @@ import type {
 } from '@fabric-empires/engine';
 import { checkAnswer, decryptExplanation } from './crypto.js';
 import { selectQuestion, type SelectOptions } from './bank.js';
-import type { Question } from './questions.js';
+import { candidateAnswers, type Question } from './questions.js';
+
+/**
+ * Recover the correct answer by testing every candidate against the stored
+ * hash.
+ *
+ * ⚠️ This is the brute force the plan already described as trivial, performed
+ * by the app itself. It means the answer obfuscation is decorative for a
+ * multiple-choice item, and that is a deliberate trade: telling a learner
+ * nothing at the exact moment they are most receptive is a worse failure than
+ * a determined player recovering an answer they could have recovered anyway.
+ *
+ * The hashing still earns its place: the shipped JSON is not a readable answer
+ * key, which was always the only claim worth making.
+ */
+export async function revealCorrectAnswer(
+  question: Question,
+): Promise<string | string[] | undefined> {
+  for (const candidate of candidateAnswers(question)) {
+    if (await checkAnswer(question.id, candidate, question.answerHash)) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
 
 export interface QuestionPrompt {
   readonly question: Question;
@@ -38,7 +62,11 @@ export interface QuestionResult {
   readonly question: Question;
   readonly correct: boolean;
   readonly given: string | readonly string[] | undefined;
-  /** Decrypted only when the answer was right, by construction. */
+  /**
+   * The right answer, so a learner who missed is corrected rather than left
+   * guessing. Present whether they were right or wrong.
+   */
+  readonly correctAnswer: string | string[] | undefined;
   readonly explanation: string | undefined;
   readonly score: number;
   readonly elapsedMs: number;
@@ -118,14 +146,27 @@ export function createQuestionPresenter(
       given.abandoned,
     );
 
-    const explanation = correct
-      ? await decryptExplanation(question.id, answered!, question.explanationCipher)
-      : undefined;
+    // Teach on the way out, whatever happened. A learner who was wrong sees
+    // the right answer and the reasoning; the spaced repetition system will
+    // bring the item back regardless.
+    const correctAnswer = correct
+      ? (answered as string | string[])
+      : await revealCorrectAnswer(question);
+
+    const explanation =
+      correctAnswer === undefined
+        ? undefined
+        : await decryptExplanation(
+            question.id,
+            correctAnswer,
+            question.explanationCipher,
+          );
 
     await ui.reveal({
       question,
       correct,
       given: answered,
+      correctAnswer,
       explanation,
       score,
       elapsedMs: given.elapsedMs,

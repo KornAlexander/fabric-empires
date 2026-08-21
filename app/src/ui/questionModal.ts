@@ -56,6 +56,9 @@ const STYLE = `
 }
 .fe-option:hover { background: #1e2734; }
 .fe-option[aria-pressed="true"] { border-color: #4c8fd6; background: #1b2a3c; }
+.fe-option.correct { border-color: #5ac46a; background: #17301c; }
+.fe-option.correct .key { background: #5ac46a; color: #0d1a10; }
+.fe-option.wrong { border-color: #e05a4a; background: #2c1715; }
 .fe-option .key {
   flex: 0 0 auto; width: 20px; height: 20px; border-radius: 5px;
   background: rgba(255,255,255,0.1); display: grid; place-items: center;
@@ -288,16 +291,37 @@ export function createQuestionModal(): QuestionModal {
         : 'Not quite';
     verdict.append(title);
 
+    // Mark the options: green on the right answer, red on a wrong pick. A
+    // learner who missed should not have to work out what they should have
+    // chosen.
+    const correctSet = new Set(
+      (Array.isArray(result.correctAnswer)
+        ? result.correctAnswer
+        : result.correctAnswer === undefined
+          ? []
+          : [result.correctAnswer]
+      ).map((a) => a.trim().toLowerCase()),
+    );
+    const givenSet = new Set(
+      (Array.isArray(result.given)
+        ? result.given
+        : result.given === undefined
+          ? []
+          : [result.given]
+      ).map((a) => String(a).trim().toLowerCase()),
+    );
+
+    for (const node of modal.querySelectorAll('.fe-option')) {
+      const text = (node.textContent ?? '').trim();
+      // Strip the leading number key from the rendered label.
+      const label = text.replace(/^\d+\s*/, '').trim().toLowerCase();
+      if (correctSet.has(label)) node.classList.add('correct');
+      else if (givenSet.has(label)) node.classList.add('wrong');
+    }
+
     if (result.explanation) {
       const explain = el('div', 'fe-explain');
       explain.textContent = result.explanation;
-      verdict.append(explain);
-    } else {
-      const explain = el('div', 'fe-explain');
-      // Honest wording: the explanation is encrypted under the answer, so this
-      // is a fact about the design rather than a punishment.
-      explain.textContent =
-        'The explanation unlocks with the right answer. Follow the link, then try this one again later.';
       verdict.append(explain);
     }
 

@@ -187,6 +187,34 @@ export function questionsForSkill(
   return questions.filter((q) => q.skillId === skillId);
 }
 
+/**
+ * Every answer a player could give to this question.
+ *
+ * For a single-answer item that is just the options; for a multi-select it is
+ * every subset of the required size. Bounded and small: six options choose
+ * three is twenty candidates.
+ */
+export function candidateAnswers(question: Question): (string | string[])[] {
+  const options = question.options ?? question.regions ?? [];
+  if (question.type !== 'multi') return [...options];
+
+  const size = question.selectCount ?? 2;
+  const out: string[][] = [];
+  const build = (start: number, chosen: string[]): void => {
+    if (chosen.length === size) {
+      out.push([...chosen]);
+      return;
+    }
+    for (let i = start; i < options.length; i++) {
+      chosen.push(options[i]!);
+      build(i + 1, chosen);
+      chosen.pop();
+    }
+  };
+  build(0, []);
+  return out;
+}
+
 export function questionsForCluster(
   questions: readonly Question[],
   cluster: string,

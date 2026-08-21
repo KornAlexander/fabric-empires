@@ -8,13 +8,17 @@
 import type { Question } from './questions.js';
 import { skillIdFromTopic } from './outline.js';
 import b1 from '../content/dp-600/questions/B1.json' with { type: 'json' };
+import b3 from '../content/dp-600/questions/B3.json' with { type: 'json' };
 
 interface BankFile {
   readonly cluster: string;
   readonly questions: readonly Question[];
 }
 
-const FILES: readonly BankFile[] = [b1 as unknown as BankFile];
+const FILES: readonly BankFile[] = [
+  b1 as unknown as BankFile,
+  b3 as unknown as BankFile,
+];
 
 export const DP600_QUESTIONS: readonly Question[] = FILES.flatMap(
   (file) => file.questions,

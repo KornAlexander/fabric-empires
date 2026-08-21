@@ -28,7 +28,8 @@ import {
   type QuestionResult,
   type QuestionUi,
 } from '../src/index.js';
-import draftFile from '../content/dp-600/questions/src/B1.json' with { type: 'json' };
+import draftB1 from '../content/dp-600/questions/src/B1.json' with { type: 'json' };
+import draftB3 from '../content/dp-600/questions/src/B3.json' with { type: 'json' };
 
 interface Draft {
   readonly id: string;
@@ -37,8 +38,14 @@ interface Draft {
   readonly options?: readonly string[];
   readonly stem: string;
 }
-const DRAFTS = (draftFile as { questions: Draft[] }).questions;
+const DRAFTS = [
+  ...(draftB1 as { questions: Draft[] }).questions,
+  ...(draftB3 as { questions: Draft[] }).questions,
+];
 const draftById = new Map(DRAFTS.map((d) => [d.id, d]));
+
+/** Skills that currently have authored questions. */
+const COVERED = [12, 13, 14, 15, 16, 26, 27, 28, 29];
 
 function questionById(id: string): Question {
   const found = DP600_QUESTIONS.find((q) => q.id === id);
@@ -121,9 +128,10 @@ describe('explanation encryption', () => {
 });
 
 describe('the built bank', () => {
-  it('loaded the B1 cluster', () => {
+  it('loaded the authored clusters', () => {
     expect(LOADED_CLUSTERS).toContain('B1');
-    expect(DP600_QUESTIONS.length).toBe(15);
+    expect(LOADED_CLUSTERS).toContain('B3');
+    expect(DP600_QUESTIONS.length).toBe(DRAFTS.length);
   });
 
   it('passes validation', () => {
@@ -190,25 +198,25 @@ describe('the built bank', () => {
     }
   });
 
-  it('covers every skill in the loaded cluster', () => {
+  it('covers every skill in the loaded clusters', () => {
     const covered = coveredSkills();
-    for (const skillId of [12, 13, 14, 15, 16]) {
+    for (const skillId of COVERED) {
       expect(covered.has(skillId), `skill ${skillId} has no questions`).toBe(true);
     }
   });
 
   it('gives each covered skill more than one question', () => {
     const report = coverage(DP600_QUESTIONS);
-    for (const skillId of [12, 13, 14, 15, 16]) {
+    for (const skillId of COVERED) {
       expect(report.perSkill.get(skillId)!).toBeGreaterThanOrEqual(3);
     }
   });
 
   it('reports the skills still without questions, honestly', () => {
-    // 41 skills, one cluster written. The report must say so rather than
+    // 41 skills, two clusters written. The report must say so rather than
     // implying the bank is complete.
     const report = coverage(DP600_QUESTIONS);
-    expect(report.uncovered.length).toBe(allSkills().length - 5);
+    expect(report.uncovered.length).toBe(allSkills().length - COVERED.length);
   });
 
   it('writes stems as questions, not fragments', () => {
@@ -317,6 +325,7 @@ describe('selecting a question', () => {
 
   it('filters by cluster', () => {
     expect(questionsForCluster(DP600_QUESTIONS, 'B1')).toHaveLength(15);
+    expect(questionsForCluster(DP600_QUESTIONS, 'B3')).toHaveLength(12);
     expect(questionsForCluster(DP600_QUESTIONS, 'A1')).toHaveLength(0);
   });
 });
@@ -388,9 +397,12 @@ describe('the presenter', () => {
     expect(results[0]!.explanation!.length).toBeGreaterThan(20);
   });
 
-  it('withholds the explanation on a wrong answer', async () => {
-    // Not a policy choice: the explanation is encrypted under the answer, so
-    // getting it wrong genuinely cannot open it.
+  it('withholds nothing on a wrong answer: the learner is corrected', async () => {
+    /*
+     * Reversed from the first implementation. Telling a learner nothing at the
+     * exact moment they are most receptive is a worse failure than a
+     * determined player recovering an answer they could brute force anyway.
+     */
     const { ui, results } = scriptedUi(() => ({
       answer: 'Something plainly incorrect',
       elapsedMs: 3_000,
@@ -399,7 +411,42 @@ describe('the presenter', () => {
     const outcome = await createQuestionPresenter(ui)(request);
     expect(outcome.score).toBe(SCORE_WRONG);
     expect(results[0]!.correct).toBe(false);
-    expect(results[0]!.explanation).toBeUndefined();
+    expect(results[0]!.explanation).toBeDefined();
+    expect(results[0]!.correctAnswer).toBeDefined();
+  });
+
+  it('names the right answer, and it is one of the offered options', async () => {
+    const { ui, results } = scriptedUi(() => ({
+      answer: 'nonsense',
+      elapsedMs: 1_000,
+      abandoned: false,
+    }));
+    await createQuestionPresenter(ui, { random: () => 0 })(request);
+    const result = results[0]!;
+    const revealed = result.correctAnswer as string;
+    expect(result.question.options).toContain(revealed);
+    expect(revealed).toBe(draftById.get(result.question.id)!.answer);
+  });
+
+  it('still scores a wrong answer as wrong, despite revealing it', async () => {
+    // Teaching on the way out must not soften the consequence.
+    const { ui } = scriptedUi(() => ({
+      answer: 'nonsense',
+      elapsedMs: 1_000,
+      abandoned: false,
+    }));
+    expect((await createQuestionPresenter(ui)(request)).score).toBe(SCORE_WRONG);
+  });
+
+  it('corrects a player who ran out of time too', async () => {
+    const { ui, results } = scriptedUi(() => ({
+      answer: undefined,
+      elapsedMs: 30_000,
+      abandoned: true,
+    }));
+    await createQuestionPresenter(ui)(request);
+    expect(results[0]!.correctAnswer).toBeDefined();
+    expect(results[0]!.explanation).toBeDefined();
   });
 
   it('treats abandoning as a timeout, not a wrong answer', async () => {
