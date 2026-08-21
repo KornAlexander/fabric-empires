@@ -40,9 +40,10 @@ import {
   type Hex,
   type ReachableTile,
 } from '@fabric-empires/engine';
-import { Dp600ChallengeProvider } from '@fabric-empires/learn';
+import { Dp600ChallengeProvider, createQuestionPresenter } from '@fabric-empires/learn';
 import { drawMap } from './render/mapRenderer.js';
 import { drawEntities } from './render/entityRenderer.js';
+import { createQuestionModal } from './ui/questionModal.js';
 
 /**
  * The learning layer, injected at the edge of the app.
@@ -50,7 +51,15 @@ import { drawEntities } from './render/entityRenderer.js';
  * The engine receives only the topic graph and, later, a score. Everything
  * about DP-600 lives on this side of the line (D35).
  */
-const provider = new Dp600ChallengeProvider();
+const modal = createQuestionModal();
+const askedThisSession = new Set<string>();
+const provider = new Dp600ChallengeProvider({
+  presenter: createQuestionPresenter(modal, { asked: askedThisSession }),
+});
+
+/** Timers from D50: tight, but every modal can be paused without penalty. */
+const BATTLE_TIME_MS = 20_000;
+const RESEARCH_TIME_MS = 30_000;
 
 const canvas = document.querySelector<HTMLCanvasElement>('#map')!;
 const ctx = canvas.getContext('2d')!;
@@ -163,7 +172,28 @@ function selectNextIdle(): void {
 
 // Actions --------------------------------------------------------------
 
-function actOn(target: Hex): void {
+/**
+ * Which topic a battle against this faction asks about.
+ *
+ * Each antagonist is bound to a cluster of the outline, so who is attacking
+ * tells the player what they are about to be tested on. That is the whole
+ * design: the opposition is a study planner wearing a helmet.
+ */
+function battleTopicFor(defenderFactionId: string): string | undefined {
+  const cluster = state.factions.get(defenderFactionId)?.topicCluster;
+  if (!cluster) return undefined;
+  const inCluster = state.topics.nodes.filter((n) => n.cluster === cluster);
+  if (inCluster.length === 0) return undefined;
+  // Prefer something already researched, so a battle revises rather than
+  // testing material the player has not reached yet.
+  const known = inCluster.filter((n) => state.research.known.includes(n.id));
+  const pool = known.length > 0 ? known : inCluster;
+  return pool[Math.floor(Math.random() * pool.length)]!.id;
+}
+
+async function actOn(target: Hex): Promise<void> {
+  if (modal.isOpen()) return;
+
   const own = selectableUnitAt(state, target);
   if (own) {
     select(own.id);
@@ -177,8 +207,26 @@ function actOn(target: Hex): void {
   // Attack takes priority: clicking an enemy means fighting it, not walking
   // into the tile it occupies.
   if (canAttack(state, unit.id, target).ok) {
-    const preview = previewAttack(state, unit.id, target);
-    const outcome = resolveAttack(state, unit.id, target);
+    const defender = unitAt(state, target) ?? cityAt(state, target);
+    const topicId = defender ? battleTopicFor(defender.factionId) : undefined;
+
+    let challengeScore = 0;
+    if (topicId) {
+      const outcome = await provider.present({
+        kind: 'battle',
+        topicId,
+        tier: 2,
+        timeLimitMs: BATTLE_TIME_MS,
+      });
+      challengeScore = outcome.score;
+    }
+
+    // The state can only have changed if something else ran while the modal
+    // was open, but re-checking is cheap and a stale attack is a real bug.
+    if (!canAttack(state, unit.id, target).ok) return;
+
+    const preview = previewAttack(state, unit.id, target, { challengeScore });
+    const outcome = resolveAttack(state, unit.id, target, { challengeScore });
     if (!outcome.ok) {
       log(outcome.reason, 'bad');
       return;
@@ -188,6 +236,11 @@ function actOn(target: Hex): void {
     const odds = preview
       ? ` (${Math.round(preview.attacker.effective)} vs ${Math.round(preview.defender.effective)})`
       : '';
+    if (challengeScore > 0) {
+      log(`Your answer strengthened the attack.`, 'good');
+    } else if (challengeScore < 0) {
+      log(`Your answer weakened the attack.`, 'bad');
+    }
     log(
       `Attack${odds}: dealt ${battle.damageToDefender}, took ${battle.damageToAttacker}`,
       battle.damageToDefender >= battle.damageToAttacker ? 'good' : 'bad',
@@ -320,7 +373,7 @@ async function resolveResearch(topicId: string): Promise<void> {
     kind: 'research',
     topicId,
     tier: 1,
-    timeLimitMs: 30_000,
+    timeLimitMs: RESEARCH_TIME_MS,
   });
 
   const done = completeResearch(state, outcome.score);
@@ -453,7 +506,7 @@ function endDrag(e: PointerEvent): void {
   dragging = false;
   canvas.classList.remove('dragging');
   if (dragMoved < 4) {
-    actOn(hexAtScreen(camera, { x: e.clientX, y: e.clientY }));
+    void actOn(hexAtScreen(camera, { x: e.clientX, y: e.clientY }));
   }
 }
 
@@ -476,6 +529,8 @@ canvas.addEventListener(
 window.addEventListener('keydown', (e) => {
   const target = e.target as HTMLElement | null;
   if (target?.tagName === 'INPUT') return;
+  // While a question is on screen the modal owns the keyboard.
+  if (modal.isOpen()) return;
 
   const pans: Record<string, [number, number]> = {
     ArrowLeft: [80, 0],
@@ -639,6 +694,6 @@ window.__fabricEmpires = {
     state = { ...state, factions };
     refreshHud();
   },
-  clickHex: (hex) => actOn(hex),
+  clickHex: (hex) => void actOn(hex),
   endTurn: () => doEndTurn(),
 };

@@ -1,0 +1,356 @@
+import type {
+  QuestionAnswer,
+  QuestionPrompt,
+  QuestionResult,
+  QuestionUi,
+} from '@fabric-empires/learn';
+
+/**
+ * The question modal.
+ *
+ * Implements the learn layer's `QuestionUi`, so all it does is turn a prompt
+ * into an answer and show a result. It knows nothing about the game, and the
+ * game knows nothing about it.
+ *
+ * Timer behaviour follows D50: timed by default, because exam pressure is the
+ * point, but every modal can be paused without penalty. The defect that rule
+ * exists to fix is not the timer itself, it is that a real-world interruption
+ * silently costs you a unit.
+ */
+
+const STYLE = `
+.fe-backdrop {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(4, 6, 10, 0.72);
+  display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(3px);
+}
+.fe-backdrop[hidden] { display: none; }
+.fe-modal {
+  width: min(680px, 92vw);
+  background: #10141c; color: #e8eaf0;
+  border: 1px solid rgba(255,255,255,0.14); border-radius: 14px;
+  padding: 20px 22px; box-shadow: 0 24px 70px rgba(0,0,0,0.6);
+  font: 14px/1.55 "Segoe UI", system-ui, sans-serif;
+}
+.fe-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.fe-kind {
+  font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 999px; background: #2f5d8c; color: #dceaf7;
+}
+.fe-kind.battle { background: #8c3a2f; color: #f7dcd8; }
+.fe-skill { color: #96a0b5; font-size: 12px; flex: 1; }
+.fe-timer { font-variant-numeric: tabular-nums; font-weight: 600; }
+.fe-timer.low { color: #ff8b80; }
+.fe-bar { height: 4px; border-radius: 2px; background: rgba(255,255,255,0.1); margin: 8px 0 14px; overflow: hidden; }
+.fe-bar > div { height: 100%; background: #4c8fd6; width: 100%; transition: width .2s linear; }
+.fe-bar > div.low { background: #e05a4a; }
+.fe-stem { font-size: 15px; margin-bottom: 14px; }
+.fe-hint { color: #96a0b5; font-size: 12px; margin-bottom: 8px; }
+.fe-options { display: flex; flex-direction: column; gap: 8px; }
+.fe-option {
+  display: flex; gap: 10px; align-items: flex-start; text-align: left;
+  background: #171d28; border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px; padding: 10px 12px; cursor: pointer; color: inherit;
+  font: inherit; width: 100%;
+}
+.fe-option:hover { background: #1e2734; }
+.fe-option[aria-pressed="true"] { border-color: #4c8fd6; background: #1b2a3c; }
+.fe-option .key {
+  flex: 0 0 auto; width: 20px; height: 20px; border-radius: 5px;
+  background: rgba(255,255,255,0.1); display: grid; place-items: center;
+  font-size: 11px; font-weight: 600;
+}
+.fe-option[aria-pressed="true"] .key { background: #4c8fd6; }
+.fe-foot { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+.fe-modal button.act {
+  background: #1d2636; border: 1px solid rgba(255,255,255,0.12); color: #e8eaf0;
+  border-radius: 6px; padding: 7px 14px; font: inherit; cursor: pointer;
+}
+.fe-modal button.act:hover:not(:disabled) { background: #2a3750; }
+.fe-modal button.act:disabled { opacity: .4; cursor: not-allowed; }
+.fe-modal button.act.primary { background: #2f5d8c; border-color: #3f7cb8; }
+.fe-verdict { margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.1); }
+.fe-verdict h3 { margin: 0 0 6px; font-size: 15px; }
+.fe-verdict.good h3 { color: #8fd694; }
+.fe-verdict.bad h3 { color: #ff9b91; }
+.fe-verdict a { color: #7cc0f5; }
+.fe-explain { color: #c8cede; }
+.fe-source { color: #7c8699; font-size: 12px; margin-top: 10px; }
+`;
+
+const KEYS = ['1', '2', '3', '4', '5', '6'];
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  return node;
+}
+
+export interface QuestionModal extends QuestionUi {
+  /** True while a question is on screen, so the map can ignore input. */
+  isOpen(): boolean;
+}
+
+export function createQuestionModal(): QuestionModal {
+  const style = document.createElement('style');
+  style.textContent = STYLE;
+  document.head.append(style);
+
+  const backdrop = el('div', 'fe-backdrop');
+  backdrop.hidden = true;
+  const modal = el('div', 'fe-modal');
+  backdrop.append(modal);
+  document.body.append(backdrop);
+
+  let open = false;
+
+  function render(prompt: QuestionPrompt): Promise<QuestionAnswer> {
+    const { question, request } = prompt;
+    const multi = question.type === 'multi';
+    const needed = multi ? (question.selectCount ?? 2) : 1;
+
+    modal.replaceChildren();
+
+    const head = el('div', 'fe-head');
+    const kind = el('span', `fe-kind ${request.kind === 'battle' ? 'battle' : ''}`);
+    kind.textContent = request.kind;
+    const skill = el('span', 'fe-skill');
+    skill.textContent = question.sourceSkillBullet;
+    const timerLabel = el('span', 'fe-timer');
+    head.append(kind, skill, timerLabel);
+
+    const bar = el('div', 'fe-bar');
+    const barFill = el('div');
+    bar.append(barFill);
+
+    const stem = el('div', 'fe-stem');
+    stem.textContent = question.stem;
+
+    const options = el('div', 'fe-options');
+    const selected = new Set<string>();
+    const buttons: HTMLButtonElement[] = [];
+
+    // Assigned by the promise executor below, which runs synchronously, so it
+    // is always in place long before a click can happen.
+    let toggle: (text: string, button: HTMLButtonElement) => void = () => {};
+
+    (question.options ?? []).forEach((text, index) => {
+      const button = el('button', 'fe-option');
+      button.type = 'button';
+      button.setAttribute('aria-pressed', 'false');
+      const key = el('span', 'key');
+      key.textContent = KEYS[index] ?? '';
+      const label = el('span');
+      label.textContent = text;
+      button.append(key, label);
+      button.addEventListener('click', () => toggle(text, button));
+      options.append(button);
+      buttons.push(button);
+    });
+
+    const foot = el('div', 'fe-foot');
+    const pauseButton = el('button', 'act');
+    pauseButton.type = 'button';
+    pauseButton.textContent = 'Pause';
+    const submitButton = el('button', 'act primary');
+    submitButton.type = 'button';
+    submitButton.textContent = 'Submit';
+    submitButton.disabled = true;
+    foot.append(pauseButton, submitButton);
+
+    modal.append(head, bar, stem);
+    if (multi) {
+      const hint = el('div', 'fe-hint');
+      hint.textContent = `Choose ${needed}.`;
+      modal.append(hint);
+    }
+    modal.append(options, foot);
+
+    backdrop.hidden = false;
+    open = true;
+
+    return new Promise<QuestionAnswer>((resolve) => {
+      const started = performance.now();
+      let pausedFor = 0;
+      let pausedAt: number | undefined;
+      let finished = false;
+
+      function elapsed(): number {
+        const now = pausedAt ?? performance.now();
+        return now - started - pausedFor;
+      }
+
+      function toggleSubmit(): void {
+        submitButton.disabled = multi ? selected.size !== needed : selected.size !== 1;
+      }
+
+      toggle = (text: string, button: HTMLButtonElement): void => {
+        if (finished) return;
+        if (selected.has(text)) {
+          selected.delete(text);
+          button.setAttribute('aria-pressed', 'false');
+        } else {
+          if (!multi) {
+            selected.clear();
+            for (const other of buttons) other.setAttribute('aria-pressed', 'false');
+          }
+          selected.add(text);
+          button.setAttribute('aria-pressed', 'true');
+        }
+        toggleSubmit();
+      };
+
+      function finish(answer: QuestionAnswer): void {
+        if (finished) return;
+        finished = true;
+        clearInterval(ticker);
+        window.removeEventListener('keydown', onKey, true);
+        // Freeze the clock at what the player actually took, rather than
+        // leaving it showing the time they had left.
+        timerLabel.textContent = `${(answer.elapsedMs / 1000).toFixed(1)}s`;
+        timerLabel.classList.remove('low');
+        pauseButton.disabled = true;
+        resolve(answer);
+      }
+
+      const ticker = window.setInterval(() => {
+        if (pausedAt !== undefined) return;
+        const remaining = Math.max(0, request.timeLimitMs - elapsed());
+        const seconds = Math.ceil(remaining / 1000);
+        timerLabel.textContent = `${seconds}s`;
+        const fraction = remaining / request.timeLimitMs;
+        barFill.style.width = `${fraction * 100}%`;
+        const low = fraction < 0.25;
+        timerLabel.classList.toggle('low', low);
+        barFill.classList.toggle('low', low);
+        if (remaining <= 0) {
+          finish({ answer: undefined, elapsedMs: request.timeLimitMs, abandoned: true });
+        }
+      }, 100);
+
+      pauseButton.addEventListener('click', () => {
+        if (finished) return;
+        if (pausedAt === undefined) {
+          pausedAt = performance.now();
+          pauseButton.textContent = 'Resume';
+          timerLabel.textContent = 'paused';
+        } else {
+          pausedFor += performance.now() - pausedAt;
+          pausedAt = undefined;
+          pauseButton.textContent = 'Pause';
+        }
+      });
+
+      submitButton.addEventListener('click', () => {
+        if (submitButton.disabled) return;
+        finish({
+          answer: multi ? [...selected] : [...selected][0],
+          elapsedMs: elapsed(),
+          abandoned: false,
+        });
+      });
+
+      function onKey(event: KeyboardEvent): void {
+        if (finished) return;
+        const index = KEYS.indexOf(event.key);
+        if (index >= 0 && buttons[index]) {
+          event.preventDefault();
+          event.stopPropagation();
+          buttons[index]!.click();
+          return;
+        }
+        if (event.key === 'Enter' && !submitButton.disabled) {
+          event.preventDefault();
+          event.stopPropagation();
+          submitButton.click();
+        }
+        // Escape deliberately does nothing: abandoning has a cost, so it must
+        // not be one keystroke away from a player reaching for the map.
+      }
+
+      window.addEventListener('keydown', onKey, true);
+    });
+  }
+
+  function reveal(result: QuestionResult): Promise<void> {
+    const verdict = el('div', `fe-verdict ${result.correct ? 'good' : 'bad'}`);
+    const title = el('h3');
+    title.textContent = result.correct
+      ? result.score >= 1
+        ? 'Correct, and quickly'
+        : 'Correct'
+      : result.given === undefined
+        ? 'Out of time'
+        : 'Not quite';
+    verdict.append(title);
+
+    if (result.explanation) {
+      const explain = el('div', 'fe-explain');
+      explain.textContent = result.explanation;
+      verdict.append(explain);
+    } else {
+      const explain = el('div', 'fe-explain');
+      // Honest wording: the explanation is encrypted under the answer, so this
+      // is a fact about the design rather than a punishment.
+      explain.textContent =
+        'The explanation unlocks with the right answer. Follow the link, then try this one again later.';
+      verdict.append(explain);
+    }
+
+    const source = el('div', 'fe-source');
+    const link = el('a');
+    link.href = result.question.learnUrl;
+    link.target = '_blank';
+    link.rel = 'noreferrer noopener';
+    link.textContent = 'Read the documentation';
+    source.append(link);
+    source.append(
+      document.createTextNode(`  ${result.question.cluster}  ${result.question.sourceSkillBullet}`),
+    );
+    verdict.append(source);
+
+    const foot = el('div', 'fe-foot');
+    const continueButton = el('button', 'act primary');
+    continueButton.type = 'button';
+    continueButton.textContent = 'Continue';
+    foot.append(continueButton);
+    verdict.append(foot);
+
+    modal.append(verdict);
+    for (const button of modal.querySelectorAll('button.fe-option')) {
+      (button as HTMLButtonElement).disabled = true;
+    }
+    for (const button of modal.querySelectorAll('.fe-foot button.act')) {
+      if (button !== continueButton) (button as HTMLButtonElement).disabled = true;
+    }
+    continueButton.focus();
+
+    return new Promise<void>((resolve) => {
+      function close(): void {
+        window.removeEventListener('keydown', onKey, true);
+        backdrop.hidden = true;
+        open = false;
+        resolve();
+      }
+      function onKey(event: KeyboardEvent): void {
+        if (event.key === 'Enter' || event.key === 'Escape' || event.key === ' ') {
+          event.preventDefault();
+          event.stopPropagation();
+          close();
+        }
+      }
+      continueButton.addEventListener('click', close);
+      window.addEventListener('keydown', onKey, true);
+    });
+  }
+
+  return {
+    isOpen: () => open,
+    ask: render,
+    reveal,
+  };
+}
