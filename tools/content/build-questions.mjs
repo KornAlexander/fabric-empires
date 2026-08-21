@@ -34,6 +34,43 @@ function normaliseAnswer(answer) {
   return parts.join('|');
 }
 
+/**
+ * Deterministically permute a question's options.
+ *
+ * ⚠️ Authoring naturally puts the correct answer first, and it is invisible in
+ * any single question. Measured across the first three clusters, the answer was
+ * option one in 54 of 54 items: a player would have learned to click the first
+ * option and scored full marks knowing nothing at all.
+ *
+ * Shuffling here rather than at render time keeps the shipped file the single
+ * source of truth, and seeding from the question id keeps builds reproducible.
+ * It is safe because answers are hashed by TEXT, never by position.
+ */
+function seededShuffle(items, seedText) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < seedText.length; i++) {
+    h ^= seedText.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  let a = h >>> 0;
+  const rand = () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    const tmp = out[i];
+    out[i] = out[j];
+    out[j] = tmp;
+  }
+  return out;
+}
+
 async function hashAnswer(questionId, answer) {
   const payload = `${ANSWER_SALT}|${questionId}|${normaliseAnswer(answer)}`;
   const digest = await crypto.subtle.digest(
@@ -120,7 +157,12 @@ async function buildFile(name, check) {
       explanationCipher = await encryptExplanation(draft.id, answer, explanation);
     }
 
-    questions.push({ ...rest, answerHash, explanationCipher });
+    questions.push({
+      ...rest,
+      ...(rest.options ? { options: seededShuffle(rest.options, draft.id) } : {}),
+      answerHash,
+      explanationCipher,
+    });
   }
 
   const built = {

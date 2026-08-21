@@ -12,9 +12,9 @@
       "tier": 1,
       "stem": "Which experience lets an analyst build a query over warehouse tables by dragging and combining steps, without writing any T-SQL by hand?",
       "options": [
-        "The visual query editor",
-        "The SQL query editor",
         "A KQL queryset",
+        "The SQL query editor",
+        "The visual query editor",
         "A Spark notebook"
       ],
       "learnUrl": "https://learn.microsoft.com/fabric/data-warehouse/visual-query-editor",
@@ -38,9 +38,9 @@
       "tier": 2,
       "stem": "The transformation steps offered by the visual query editor will look familiar to anyone who has used which other Microsoft tool?",
       "options": [
-        "Power Query",
-        "SQL Server Profiler",
         "Tabular Editor",
+        "SQL Server Profiler",
+        "Power Query",
         "SQL Server Integration Services"
       ],
       "learnUrl": "https://learn.microsoft.com/fabric/data-warehouse/visual-query-editor",
@@ -65,9 +65,9 @@
       "stem": "You have built a query visually and want other people to query the same shaped result from T-SQL. What is the most direct way to make that possible?",
       "options": [
         "Save the query as a view in the warehouse",
-        "Export the result to CSV and re-import it",
+        "Create a semantic model over the query",
         "Copy the generated T-SQL into every consumer's query",
-        "Create a semantic model over the query"
+        "Export the result to CSV and re-import it"
       ],
       "learnUrl": "https://learn.microsoft.com/fabric/data-warehouse/create-view",
       "sourceSkillBullet": "Select, filter, and aggregate data by using the Visual Query Editor",
@@ -90,10 +90,10 @@
       "tier": 1,
       "stem": "In a T-SQL query that groups sales by region, which clause keeps only those regions whose total exceeds a threshold?",
       "options": [
-        "HAVING",
-        "WHERE",
         "QUALIFY",
-        "FILTER"
+        "FILTER",
+        "WHERE",
+        "HAVING"
       ],
       "learnUrl": "https://learn.microsoft.com/sql/t-sql/queries/select-having-transact-sql",
       "sourceSkillBullet": "Select, filter, and aggregate data by using SQL",
@@ -118,8 +118,8 @@
       "options": [
         "COUNT(DISTINCT CustomerKey)",
         "COUNT(CustomerKey)",
-        "COUNT(*)",
-        "SUM(DISTINCT CustomerKey)"
+        "SUM(DISTINCT CustomerKey)",
+        "COUNT(*)"
       ],
       "learnUrl": "https://learn.microsoft.com/sql/t-sql/functions/count-transact-sql",
       "sourceSkillBullet": "Select, filter, and aggregate data by using SQL",
@@ -143,9 +143,9 @@
       "stem": "You need a running total of daily revenue alongside each day's own revenue, in a single result set. Which T-SQL construct gives you that?",
       "options": [
         "A window function, SUM(Revenue) OVER (ORDER BY OrderDate)",
-        "GROUP BY OrderDate with SUM(Revenue)",
+        "A HAVING clause comparing to a running value",
         "A self-join of the table to itself on a date range",
-        "A HAVING clause comparing to a running value"
+        "GROUP BY OrderDate with SUM(Revenue)"
       ],
       "learnUrl": "https://learn.microsoft.com/sql/t-sql/queries/select-over-clause-transact-sql",
       "sourceSkillBullet": "Select, filter, and aggregate data by using SQL",
@@ -169,8 +169,8 @@
       "stem": "Which KQL operator restricts a table to the rows matching a condition?",
       "options": [
         "where",
-        "project",
         "summarize",
+        "project",
         "extend"
       ],
       "learnUrl": "https://learn.microsoft.com/kusto/query/where-operator",
@@ -194,10 +194,10 @@
       "tier": 2,
       "stem": "Which KQL operator produces a count of events grouped by device?",
       "options": [
+        "distinct DeviceId, count()",
         "summarize count() by DeviceId",
         "project count() by DeviceId",
-        "extend count() by DeviceId",
-        "distinct DeviceId, count()"
+        "extend count() by DeviceId"
       ],
       "learnUrl": "https://learn.microsoft.com/kusto/query/summarize-operator",
       "sourceSkillBullet": "Select, filter, and aggregate data by using KQL",
@@ -220,9 +220,9 @@
       "tier": 3,
       "stem": "You want one row per hour showing how many events arrived in that hour. Which KQL function rounds each timestamp down into an hourly bucket so summarize can group on it?",
       "options": [
-        "bin(Timestamp, 1h)",
-        "floor(Timestamp, 1h)",
         "todatetime(Timestamp, 1h)",
+        "floor(Timestamp, 1h)",
+        "bin(Timestamp, 1h)",
         "datetime_diff('hour', Timestamp, 1h)"
       ],
       "learnUrl": "https://learn.microsoft.com/kusto/query/bin-function",
@@ -246,10 +246,10 @@
       "tier": 2,
       "stem": "Which DAX function removes the filters currently applied to a table, so a measure can report a total that ignores a slicer?",
       "options": [
-        "REMOVEFILTERS",
-        "KEEPFILTERS",
         "FILTER",
-        "RELATED"
+        "KEEPFILTERS",
+        "RELATED",
+        "REMOVEFILTERS"
       ],
       "learnUrl": "https://learn.microsoft.com/dax/removefilters-function-dax",
       "sourceSkillBullet": "Select, filter, and aggregate data by using DAX",
@@ -272,10 +272,10 @@
       "tier": 2,
       "stem": "Line total must be quantity multiplied by unit price, computed for each row and then added up, without adding a calculated column. Which DAX expression does that?",
       "options": [
-        "SUMX(Sales, Sales[Quantity] * Sales[UnitPrice])",
         "SUM(Sales[Quantity] * Sales[UnitPrice])",
         "SUM(Sales[Quantity]) * SUM(Sales[UnitPrice])",
-        "CALCULATE(SUM(Sales[Quantity]), Sales[UnitPrice])"
+        "CALCULATE(SUM(Sales[Quantity]), Sales[UnitPrice])",
+        "SUMX(Sales, Sales[Quantity] * Sales[UnitPrice])"
       ],
       "learnUrl": "https://learn.microsoft.com/dax/sumx-function-dax",
       "sourceSkillBullet": "Select, filter, and aggregate data by using DAX",
@@ -298,10 +298,10 @@
       "tier": 3,
       "stem": "A measure must show each product's sales as a share of sales across all products, while a product slicer is active. Which denominator is correct?",
       "options": [
-        "CALCULATE(SUM(Sales[Amount]), REMOVEFILTERS(Product))",
-        "SUM(Sales[Amount])",
         "CALCULATE(SUM(Sales[Amount]), Product)",
-        "SUMX(Product, SUM(Sales[Amount]))"
+        "SUMX(Product, SUM(Sales[Amount]))",
+        "CALCULATE(SUM(Sales[Amount]), REMOVEFILTERS(Product))",
+        "SUM(Sales[Amount])"
       ],
       "learnUrl": "https://learn.microsoft.com/dax/calculate-function-dax",
       "sourceSkillBullet": "Select, filter, and aggregate data by using DAX",

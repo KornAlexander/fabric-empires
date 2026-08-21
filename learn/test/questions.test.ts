@@ -29,6 +29,7 @@ import {
   type QuestionUi,
 } from '../src/index.js';
 import draftB1 from '../content/dp-600/questions/src/B1.json' with { type: 'json' };
+import draftB2 from '../content/dp-600/questions/src/B2.json' with { type: 'json' };
 import draftB3 from '../content/dp-600/questions/src/B3.json' with { type: 'json' };
 
 interface Draft {
@@ -40,12 +41,13 @@ interface Draft {
 }
 const DRAFTS = [
   ...(draftB1 as { questions: Draft[] }).questions,
+  ...(draftB2 as { questions: Draft[] }).questions,
   ...(draftB3 as { questions: Draft[] }).questions,
 ];
 const draftById = new Map(DRAFTS.map((d) => [d.id, d]));
 
-/** Skills that currently have authored questions. */
-const COVERED = [12, 13, 14, 15, 16, 26, 27, 28, 29];
+/** Skills that currently have authored questions: all of branch B. */
+const COVERED = [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29];
 
 function questionById(id: string): Question {
   const found = DP600_QUESTIONS.find((q) => q.id === id);
@@ -130,8 +132,17 @@ describe('explanation encryption', () => {
 describe('the built bank', () => {
   it('loaded the authored clusters', () => {
     expect(LOADED_CLUSTERS).toContain('B1');
+    expect(LOADED_CLUSTERS).toContain('B2');
     expect(LOADED_CLUSTERS).toContain('B3');
     expect(DP600_QUESTIONS.length).toBe(DRAFTS.length);
+  });
+
+  it('covers all of branch B, the half of the exam that matters most', () => {
+    // "Prepare data" is 45 to 50 percent of DP-600 and 18 of the 41 skills.
+    // Finishing it first is the highest-value ordering for the bank.
+    const branchB = DP600_QUESTIONS.filter((q) => q.branch === 'B');
+    expect(branchB.length).toBe(DP600_QUESTIONS.length);
+    expect(new Set(branchB.map((q) => q.skillId)).size).toBe(18);
   });
 
   it('passes validation', () => {
@@ -237,6 +248,58 @@ describe('the built bank', () => {
     const tiers = new Set(DP600_QUESTIONS.map((q) => q.tier));
     expect(tiers.size).toBeGreaterThan(1);
   });
+
+  it('does not put the correct answer in the same position every time', () => {
+    /*
+     * The bug this exists to prevent was real and total: across the first
+     * three clusters the answer was option one in 54 of 54 items, because that
+     * is the order an author naturally writes them in. It is invisible in any
+     * single question and every other test passed. A player would have learned
+     * to click the first option and scored full marks knowing nothing.
+     *
+     * The build now permutes options deterministically; this asserts it stayed
+     * that way.
+     */
+    const positions = new Map<number, number>();
+    for (const question of DP600_QUESTIONS) {
+      const draft = draftById.get(question.id)!;
+      const index = (question.options ?? []).findIndex(
+        (o) => normaliseAnswer(o) === normaliseAnswer(draft.answer),
+      );
+      expect(index, `${question.id}: answer is not among its options`).toBeGreaterThanOrEqual(0);
+      positions.set(index, (positions.get(index) ?? 0) + 1);
+    }
+
+    const worst = Math.max(...positions.values());
+    expect(
+      worst / DP600_QUESTIONS.length,
+      `answer position distribution is skewed: ${[...positions.entries()].sort().map(([i, n]) => `#${i + 1}=${n}`).join(' ')}`,
+    ).toBeLessThan(0.45);
+
+    // Every slot must actually be used.
+    const optionCount = Math.max(...DP600_QUESTIONS.map((q) => q.options?.length ?? 0));
+    expect(positions.size).toBe(optionCount);
+  });
+
+  it('does not let option length give the answer away too often', () => {
+    // A softer tell than position, and harder to remove: a correct answer is
+    // often the one that needs a qualifier. Guarded rather than eliminated.
+    let longestIsAnswer = 0;
+    for (const question of DP600_QUESTIONS) {
+      const draft = draftById.get(question.id)!;
+      const options = question.options ?? [];
+      if (options.length === 0) continue;
+      const longest = options.reduce((a, b) => (b.length > a.length ? b : a));
+      if (normaliseAnswer(longest) === normaliseAnswer(draft.answer)) longestIsAnswer++;
+    }
+    expect(longestIsAnswer / DP600_QUESTIONS.length).toBeLessThan(0.8);
+  });
+
+  it('shuffles reproducibly, so a rebuild does not churn the files', () => {
+    // Seeded from the question id, so two builds of the same source agree.
+    const ids = DP600_QUESTIONS.map((q) => q.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
 });
 
 describe('provenance', () => {
@@ -325,6 +388,7 @@ describe('selecting a question', () => {
 
   it('filters by cluster', () => {
     expect(questionsForCluster(DP600_QUESTIONS, 'B1')).toHaveLength(15);
+    expect(questionsForCluster(DP600_QUESTIONS, 'B2')).toHaveLength(27);
     expect(questionsForCluster(DP600_QUESTIONS, 'B3')).toHaveLength(12);
     expect(questionsForCluster(DP600_QUESTIONS, 'A1')).toHaveLength(0);
   });

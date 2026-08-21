@@ -8,6 +8,7 @@
 import type { Question } from './questions.js';
 import { skillIdFromTopic } from './outline.js';
 import b1 from '../content/dp-600/questions/B1.json' with { type: 'json' };
+import b2 from '../content/dp-600/questions/B2.json' with { type: 'json' };
 import b3 from '../content/dp-600/questions/B3.json' with { type: 'json' };
 
 interface BankFile {
@@ -17,6 +18,7 @@ interface BankFile {
 
 const FILES: readonly BankFile[] = [
   b1 as unknown as BankFile,
+  b2 as unknown as BankFile,
   b3 as unknown as BankFile,
 ];
 
