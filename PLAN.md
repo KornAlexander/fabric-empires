@@ -86,6 +86,54 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D55 | **Art direction** | **Data-dream: a night world lit from within. Land near-black, emissive terrain, rivers of light, cities as structures held above the ground under a beam** |
 | D56 | Corruption as a visual | The Ungoverned Wastes, and any tile the Silo Horde holds, are drawn with torn scanlines in clashing hues. The enemy advance is visible on the ground, not only in a border colour |
 | D57 | **Battle length** | **Two lengths. The full set piece is reserved for the first battle of a game and for any city assault; every other clash gets a short punchy version. Every battle follows a question, so a long sequence on all of them would be exhausting by the tenth** |
+| D58 | **Renderer** | **3D, three.js, replacing the 2D canvas renderer entirely. The engine is untouched: D35 already kept it renderer-agnostic, so only `app/src/render/*` was replaced by `app/src/three/*`** |
+| D59 | Assets | Still none. Terrain material, water normals and surface detail are all generated at runtime. A public repository with zero downloaded texture licences to defend is worth more than a slightly better rock |
+| D60 | Ground topology | A continuous smoothed surface, not extruded hex prisms. The hex grid decides control points and material, then the surface is subdivided, displaced, welded and Laplacian-smoothed. The grid is an overlay that can be switched off with `g` |
+| D61 | **Realism, honestly scoped** | **"Photoreal" is not reachable here: no artist, no scanned materials, no time. What is reachable, and is what D58 delivers, is physically based: a scattering sky, one dominant sun, real shadows, filmic tone mapping and ground that responds correctly to light. See 16.1 for what is still missing** |
+
+### 16.1 What "realistic" does and does not mean in this build
+
+Delivered: physically based materials, a Rayleigh and Mie scattering sky, a
+single dominant sun with soft shadows, ground-truth ambient occlusion,
+ACES tone mapping, aerial perspective, real reflective and refractive water,
+slope-driven rock and height-driven snow, and a smoothed continuous
+landform.
+
+Not delivered, and visible if you look for it: no surface micro-detail
+(see below), no vegetation or props, primitive-built units rather than
+modelled ones, and flat per-biome colour beyond the noise variation.
+
+The micro-detail gap has a specific cause worth recording. A tiled detail
+normal map sampled from world position is the natural fix, but three derives
+its tangent frame from the derivatives of the same UV set, and a world-space
+UV over a hex-subdivided surface yields a frame that is degenerate on steep
+faces and wrongly handed elsewhere. Measured on a fixed patch of ground, the
+map cost the terrain more than a third of its light: 0.16 mean luminance with
+it, 0.37 without. It is removed until the mesh generates real tangents.
+
+### 16.2 The lighting bug hunt, and the lesson
+
+Five separate faults stacked up, and every one of them produced the same
+symptom, a dull grey-blue landmass, which is why they were so slow to
+separate:
+
+1. Inverted triangle winding, so every ground normal faced downwards.
+2. Colours converted from sRGB twice, leaving them four times too dark.
+3. Bloom applied to an HDR scattering sky, whitening over half the frame.
+4. A hemisphere fill so strong it drowned the sun and drained the colour.
+5. A detail normal map strong enough to flatten its own tangent-space Z to
+   nearly zero, so the shading normal pointed sideways and the surface
+   stopped responding to the sun at all.
+
+Fault 5 in particular looked exactly like a shadow bug, and shadows were
+ruled out three separate times before the material itself was swapped for a
+stock one and came out seven times brighter on the same geometry under the
+same lights.
+
+The lesson is the same one the answer-position bias taught: **screenshots
+show that something is wrong and almost never show what.** The turning point
+each time was a number, from `probe()` on the built geometry and from a
+luminance and saturation script over a fixed crop. Both are kept.
 
 ### 2.1 Why D35 is the decision that shapes everything
 

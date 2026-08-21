@@ -18,6 +18,10 @@
       body { font: 13px/1.5 "Segoe UI", system-ui, sans-serif; color: var(--text); }
       #map { display: block; width: 100vw; height: 100vh; cursor: grab; }
       #map.dragging { cursor: grabbing; }
+      /* Damage numbers and impact rings ride above the 3D view. Drawing them
+         in 2D keeps text crisp at any distance, which projected 3D text is
+         not, and costs one composite. */
+      #fx { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 5; }
 
       .panel {
         position: fixed;
@@ -81,6 +85,7 @@
   </head>
   <body>
     <canvas id="map"></canvas>
+    <canvas id="fx"></canvas>
 
     <div class="panel" id="resources">
       <span id="turn-badge">Turn 1</span>

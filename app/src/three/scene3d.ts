@@ -1,0 +1,468 @@
+/**
+ * The 3D presentation of a game state.
+ *
+ * This is the only place that knows both the engine and three.js. The engine
+ * still knows nothing about rendering (D35), and the renderer holds no game
+ * state: every frame it is told what the world looks like and reconciles its
+ * objects against that.
+ *
+ * Reconciliation rather than rebuilding matters here. Tearing down and
+ * rebuilding every unit each turn would drop the animation state and rebuild
+ * geometry for objects that did not change.
+ */
+
+import {
+  Group,
+  MOUSE,
+  Mesh,
+  Object3D,
+  Raycaster,
+  Vector2,
+  Vector3,
+} from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import {
+  hexKey,
+  hexRound,
+  unitType,
+  type GameMap,
+  type GameState,
+  type Hex,
+  type ReachableTile,
+} from '@fabric-empires/engine';
+import { createWorld, HIGH_QUALITY, type World, type WorldQuality } from './world.js';
+import {
+  HEX_RADIUS,
+  SEA_LEVEL,
+  buildTerrain,
+  hexPatch,
+  hexToWorld,
+  overlayMaterial,
+  worldToAxial,
+  type Terrain,
+} from './terrain.js';
+import { createWater, type WaterSurface } from './water.js';
+import { buildCity, buildUnit, disposeEntityMaterials } from './entities.js';
+
+export interface Scene3DView {
+  readonly selectedUnitId?: string | undefined;
+  readonly reachable?: ReadonlyMap<string, ReachableTile> | undefined;
+  readonly attackTargets?: ReadonlySet<string> | undefined;
+  readonly hover?: Hex | undefined;
+  /** World-space display offset for a unit that is mid-animation. */
+  readonly unitOffset?: ((unitId: string) => { x: number; z: number } | undefined) | undefined;
+  /** 0 while a destroyed unit fades out. */
+  readonly unitOpacity?: ((unitId: string) => number) | undefined;
+}
+
+export interface Scene3D {
+  readonly world: World;
+  /** Rebuild the ground for a new map. Slow, and only called on a new game. */
+  loadMap(map: GameMap): void;
+  /** Reconcile units, cities and overlays against the current state. */
+  sync(state: GameState, view: Scene3DView): void;
+  /** Which hex is under a screen point, if any. */
+  hexAt(screenX: number, screenY: number): Hex | undefined;
+  /** Glide the camera to look at a hex. */
+  focus(hex: Hex, immediate?: boolean): void;
+  /** World position of the ground at a hex, for effects. */
+  groundAt(hex: Hex): Vector3;
+  /** Project a world position to screen pixels, for HTML overlays. */
+  project(point: Vector3): { x: number; y: number; visible: boolean };
+  setSize(width: number, height: number): void;
+  setQuality(quality: WorldQuality): void;
+  setGridVisible(visible: boolean): void;
+  /**
+   * Draw one frame. The shake is applied to the camera for this frame only
+   * and then undone, so it can never accumulate into the orbit state.
+   */
+  render(deltaSeconds: number, shake?: { x: number; y: number }): void;
+  readonly stats: () => { triangles: number; draws: number };
+  /**
+   * Measured facts about the built ground.
+   *
+   * Exists because the surface came out uniformly grey once and three
+   * different theories all sounded plausible. Numbers settled it in one
+   * round trip; staring at screenshots would not have.
+   */
+  readonly probe: () => {
+    vertices: number;
+    meanColour: [number, number, number];
+    colourSpread: number;
+    flatFraction: number;
+    minY: number;
+    maxY: number;
+    upFacing: number;
+  } | undefined;
+  dispose(): void;
+}
+
+const HOVER_COLOUR = '#cfe8ff';
+const MOVE_COLOUR = '#4ea8ff';
+const MOVE_STOP_COLOUR = '#ffb64d';
+const ATTACK_COLOUR = '#ff5a48';
+const SELECT_COLOUR = '#ffd166';
+
+export function createScene3D(
+  canvas: HTMLCanvasElement,
+  quality: WorldQuality = HIGH_QUALITY,
+): Scene3D {
+  const world = createWorld(canvas, quality);
+  const { scene, camera } = world;
+
+  const controls = new OrbitControls(camera, canvas);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  // Left drag pans, right drag orbits. A click is detected separately, so
+  // selection and panning can share the left button without fighting.
+  controls.mouseButtons = { LEFT: MOUSE.PAN, MIDDLE: MOUSE.DOLLY, RIGHT: MOUSE.ROTATE };
+  controls.screenSpacePanning = false;
+  controls.minDistance = 6;
+  controls.maxDistance = 150;
+  // Stop just short of the horizon. Going below it shows the underside of
+  // the world, and there is nothing there.
+  controls.maxPolarAngle = Math.PI * 0.46;
+  controls.minPolarAngle = Math.PI * 0.06;
+
+  const terrainGroup = new Group();
+  const entityGroup = new Group();
+  const overlayGroup = new Group();
+  scene.add(terrainGroup, entityGroup, overlayGroup);
+
+  let terrain: Terrain | undefined;
+  let water: WaterSurface | undefined;
+  let groundMesh: Mesh | undefined;
+  let mapRadius = 0;
+
+  const raycaster = new Raycaster();
+  const pointer = new Vector2();
+  const shakeRight = new Vector3();
+  const shakeUp = new Vector3();
+  const shakeForward = new Vector3();
+
+  const unitObjects = new Map<string, Group>();
+  const cityObjects = new Map<string, Group>();
+  const overlayObjects: Object3D[] = [];
+
+  // Camera flight -------------------------------------------------------
+  let flightFrom: Vector3 | undefined;
+  let flightTo: Vector3 | undefined;
+  let flightStart = 0;
+  const FLIGHT_MS = 520;
+
+  function clearOverlays(): void {
+    for (const object of overlayObjects) {
+      overlayGroup.remove(object);
+      if (object instanceof Mesh) object.geometry.dispose();
+    }
+    overlayObjects.length = 0;
+  }
+
+  function addPatch(hex: Hex, colour: string, opacity: number, lift: number): void {
+    if (!terrain) return;
+    const geometry = hexPatch(hex, terrain, lift);
+    const mesh = new Mesh(geometry, overlayMaterial(colour, opacity));
+    mesh.renderOrder = 3;
+    overlayGroup.add(mesh);
+    overlayObjects.push(mesh);
+  }
+
+  function placeOnGround(object: Object3D, hex: Hex): void {
+    if (!terrain) return;
+    const { x, z } = hexToWorld(hex);
+    object.position.set(x, terrain.heightAt(hex), z);
+  }
+
+  return {
+    world,
+
+    loadMap(map) {
+      if (terrain) {
+        terrainGroup.remove(terrain.group);
+        terrain.dispose();
+      }
+      if (water) {
+        scene.remove(water.mesh);
+        water.dispose();
+      }
+
+      terrain = buildTerrain(map);
+      terrainGroup.add(terrain.group);
+      groundMesh = terrain.group.children.find((c): c is Mesh => c instanceof Mesh);
+      mapRadius = map.radius;
+
+      // The sea extends well past the land so the horizon is water rather
+      // than an abrupt edge where the map stops.
+      const extent = map.radius * HEX_RADIUS * 4;
+      water = createWater(extent * 2.6, SEA_LEVEL, quality.shadowMapSize >= 2048 ? 512 : 256);
+      water.setSunDirection(world.sun.position.clone().normalize());
+      scene.add(water.mesh);
+
+      const half = map.radius * HEX_RADIUS * 1.9;
+      world.fitShadows(new Vector3(0, 0, 0), half);
+
+      // Open on a low, wide establishing view of the whole landmass.
+      controls.target.set(0, 0, 0);
+      camera.position.set(0, half * 0.72, half * 0.95);
+      controls.update();
+    },
+
+    sync(state, view) {
+      if (!terrain) return;
+
+      // Units ------------------------------------------------------------
+      const liveUnits = new Set<string>();
+      for (const unit of state.units.values()) {
+        liveUnits.add(unit.id);
+        let object = unitObjects.get(unit.id);
+        if (!object) {
+          const colour = state.factions.get(unit.factionId)?.colour ?? '#888888';
+          object = buildUnit(unit, colour);
+          entityGroup.add(object);
+          unitObjects.set(unit.id, object);
+        }
+        placeOnGround(object, unit.hex);
+
+        // Animation is a display offset applied after placement, so the
+        // engine position stays the single source of truth and a dropped
+        // frame can never leave a unit stranded off its hex.
+        const offset = view.unitOffset?.(unit.id);
+        if (offset) {
+          object.position.x += offset.x;
+          object.position.z += offset.z;
+        }
+        const opacity = view.unitOpacity?.(unit.id) ?? 1;
+        object.visible = opacity > 0.02;
+        if (opacity < 1) object.scale.setScalar(Math.max(0.05, opacity));
+
+        // Spent units settle; ready units stand up. Cheaper to read than a
+        // badge and it survives at any zoom.
+        const spent = unit.factionId === state.activeFactionId && unit.movesLeft <= 0;
+        object.rotation.x = spent ? 0.09 : 0;
+
+        const type = unitType(unit.typeId);
+        const hurt = 1 - unit.hp / type.maxHp;
+        object.position.y -= hurt * 0.04;
+      }
+      for (const [id, object] of unitObjects) {
+        if (liveUnits.has(id)) continue;
+        entityGroup.remove(object);
+        unitObjects.delete(id);
+      }
+
+      // Cities -----------------------------------------------------------
+      for (const city of state.cities.values()) {
+        const existing = cityObjects.get(city.id);
+        const colour = state.factions.get(city.factionId)?.colour ?? '#888888';
+        // Population and ownership both change the model, so those two are
+        // the rebuild triggers rather than rebuilding blindly every turn.
+        const signature = `${city.population}:${city.factionId}`;
+        if (existing && existing.userData.signature === signature) {
+          placeOnGround(existing, city.hex);
+          continue;
+        }
+        if (existing) entityGroup.remove(existing);
+        const object = buildCity(city, colour);
+        object.userData.signature = signature;
+        entityGroup.add(object);
+        cityObjects.set(city.id, object);
+        placeOnGround(object, city.hex);
+      }
+      for (const [id, object] of cityObjects) {
+        if (state.cities.has(id)) continue;
+        entityGroup.remove(object);
+        cityObjects.delete(id);
+      }
+
+      // Overlays ---------------------------------------------------------
+      clearOverlays();
+
+      if (view.reachable) {
+        for (const entry of view.reachable.values()) {
+          if (entry.cost === 0) continue;
+          addPatch(
+            entry.hex,
+            entry.stops ? MOVE_STOP_COLOUR : MOVE_COLOUR,
+            entry.stops ? 0.24 : 0.17,
+            0.035,
+          );
+        }
+      }
+      if (view.attackTargets) {
+        for (const key of view.attackTargets) {
+          const tile = state.map.tiles.get(key);
+          if (tile) addPatch(tile.hex, ATTACK_COLOUR, 0.32, 0.045);
+        }
+      }
+      if (view.hover && state.map.tiles.has(hexKey(view.hover))) {
+        addPatch(view.hover, HOVER_COLOUR, 0.16, 0.05);
+      }
+      if (view.selectedUnitId) {
+        const unit = state.units.get(view.selectedUnitId);
+        if (unit) addPatch(unit.hex, SELECT_COLOUR, 0.34, 0.055);
+      }
+    },
+
+    hexAt(screenX, screenY) {
+      if (!groundMesh) return undefined;
+      const rect = canvas.getBoundingClientRect();
+      pointer.x = ((screenX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((screenY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+      const hits = raycaster.intersectObject(groundMesh, false);
+      const hit = hits[0];
+      if (!hit) return undefined;
+      const { q, r } = worldToAxial(hit.point.x, hit.point.z);
+      return hexRound(q, r);
+    },
+
+    focus(hex, immediate = false) {
+      const { x, z } = hexToWorld(hex);
+      const target = new Vector3(x, terrain?.heightAt(hex) ?? 0, z);
+      if (immediate) {
+        const delta = target.clone().sub(controls.target);
+        controls.target.copy(target);
+        camera.position.add(delta);
+        controls.update();
+        return;
+      }
+      flightFrom = controls.target.clone();
+      flightTo = target;
+      flightStart = performance.now();
+    },
+
+    groundAt(hex) {
+      const { x, z } = hexToWorld(hex);
+      return new Vector3(x, terrain?.heightAt(hex) ?? 0, z);
+    },
+
+    project(point) {
+      const projected = point.clone().project(camera);
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: ((projected.x + 1) / 2) * rect.width,
+        y: ((1 - projected.y) / 2) * rect.height,
+        visible: projected.z < 1,
+      };
+    },
+
+    setSize(width, height) {
+      world.setSize(width, height);
+    },
+
+    setQuality(next) {
+      world.setQuality(next);
+    },
+
+    setGridVisible(visible) {
+      terrain?.setGridVisible(visible);
+    },
+
+    render(delta, shake) {
+      if (flightFrom && flightTo) {
+        const t = Math.min(1, (performance.now() - flightStart) / FLIGHT_MS);
+        const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+        const next = flightFrom.clone().lerp(flightTo, eased);
+        const move = next.clone().sub(controls.target);
+        controls.target.copy(next);
+        camera.position.add(move);
+        if (t >= 1) {
+          flightFrom = undefined;
+          flightTo = undefined;
+        }
+      }
+
+      controls.update();
+      water?.update(delta * 0.35);
+
+      // Keep the shadow frustum around the camera target rather than the
+      // whole map: a frustum big enough for a radius-25 map wastes most of
+      // its resolution on ground nobody is looking at.
+      const focusRadius = Math.min(mapRadius * HEX_RADIUS * 1.9, 46);
+      world.fitShadows(controls.target, focusRadius);
+
+      if (shake && (shake.x !== 0 || shake.y !== 0)) {
+        // Shake along the camera's own right and up axes, scaled by distance
+        // so the kick looks the same size whether zoomed in or out.
+        const distance = camera.position.distanceTo(controls.target);
+        const amount = (distance / 600) * 1;
+        camera.matrixWorld.extractBasis(shakeRight, shakeUp, shakeForward);
+        const offset = shakeRight
+          .multiplyScalar(shake.x * amount)
+          .add(shakeUp.multiplyScalar(shake.y * amount));
+        camera.position.add(offset);
+        world.render();
+        camera.position.sub(offset);
+        return;
+      }
+
+      world.render();
+    },
+
+    stats: () => ({
+      triangles: world.renderer.info.render.triangles,
+      draws: world.renderer.info.render.calls,
+    }),
+
+    probe: () => {
+      if (!groundMesh) return undefined;
+      const geometry = groundMesh.geometry;
+      const position = geometry.getAttribute('position');
+      const normal = geometry.getAttribute('normal');
+      const colour = geometry.getAttribute('color');
+      if (!position || !normal || !colour) return undefined;
+
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let flat = 0;
+      let up = 0;
+      let minY = Infinity;
+      let maxY = -Infinity;
+      const sample = Math.max(1, Math.floor(position.count / 20000));
+      let counted = 0;
+
+      for (let i = 0; i < position.count; i += sample) {
+        r += colour.getX(i);
+        g += colour.getY(i);
+        b += colour.getZ(i);
+        const ny = normal.getY(i);
+        if (ny > 0.97) flat += 1;
+        if (ny > 0) up += 1;
+        const y = position.getY(i);
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+        counted += 1;
+      }
+
+      // Spread is the mean absolute deviation of the channels from the mean
+      // grey: near zero means every vertex is the same colour, which is the
+      // symptom the probe was written to catch.
+      const mr = r / counted;
+      const mg = g / counted;
+      const mb = b / counted;
+      const mean = (mr + mg + mb) / 3;
+      const spread = (Math.abs(mr - mean) + Math.abs(mg - mean) + Math.abs(mb - mean)) / 3;
+
+      return {
+        vertices: position.count,
+        meanColour: [mr, mg, mb],
+        colourSpread: spread,
+        flatFraction: flat / counted,
+        minY,
+        maxY,
+        upFacing: up / counted,
+        detailNormalZ: terrain?.detailNormalZ ?? 0,
+      };
+    },
+
+    dispose() {
+      controls.dispose();
+      clearOverlays();
+      terrain?.dispose();
+      water?.dispose();
+      disposeEntityMaterials();
+      world.dispose();
+    },
+  };
+}

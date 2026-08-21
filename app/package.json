@@ -10,9 +10,11 @@
   },
   "dependencies": {
     "@fabric-empires/engine": "*",
-    "@fabric-empires/learn": "*"
+    "@fabric-empires/learn": "*",
+    "three": "^0.185.1"
   },
   "devDependencies": {
+    "@types/three": "^0.185.4",
     "vite": "^7.1.3"
   }
 }

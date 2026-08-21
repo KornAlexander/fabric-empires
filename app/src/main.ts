@@ -1,31 +1,25 @@
 import {
   ANTAGONIST_FACTION_ID,
+  BASE_HEX_SIZE,
   PLAYER_FACTION_ID,
   canAttack,
   canFoundCity,
-  centreOn,
   cityAt,
   cityTerritory,
-  clampToBounds,
   completeResearch,
-  createCamera,
   createGameState,
   endTurn,
   fortifyUnit,
   foundCity,
-  hexAtScreen,
   hexKey,
   hexNeighbour,
-  hexToScreen,
   moveUnit,
   normaliseSeed,
-  panByScreen,
   previewAttack,
   reachable,
   researchCost,
   researchProgress,
   researchable,
-  resize,
   resolveAttack,
   selectableUnitAt,
   skipUnit,
@@ -36,17 +30,15 @@ import {
   unitAt,
   unitType,
   unitsOf,
-  worldBounds,
-  zoomAt,
-  type Camera,
   type GameState,
   type Hex,
   type ReachableTile,
 } from '@fabric-empires/engine';
 import { Dp600ChallengeProvider, createQuestionPresenter } from '@fabric-empires/learn';
-import { drawMap, drawVignette } from './render/mapRenderer.js';
-import { drawEntities } from './render/entityRenderer.js';
 import { createEffects } from './render/effects.js';
+import { createScene3D } from './three/scene3d.js';
+import { HEX_RADIUS, hexToWorld } from './three/terrain.js';
+import { HIGH_QUALITY, LOW_QUALITY } from './three/world.js';
 import { createQuestionModal } from './ui/questionModal.js';
 import { createBattleBanner, type BattleSide } from './ui/battleBanner.js';
 
@@ -88,7 +80,27 @@ const PUNCH_MS = 260;
 let hadFirstBattle = false;
 
 const canvas = document.querySelector<HTMLCanvasElement>('#map')!;
-const ctx = canvas.getContext('2d')!;
+const fxCanvas = document.querySelector<HTMLCanvasElement>('#fx')!;
+const ctx = fxCanvas.getContext('2d')!;
+
+/**
+ * Quality is chosen once, from what the GPU reports.
+ *
+ * Ambient occlusion and a 4k shadow map are the two passes that turn a
+ * smooth game into a slideshow on integrated graphics, and a player on a
+ * laptop should get a game that runs rather than a game that is correct.
+ */
+function detectQuality(): typeof HIGH_QUALITY {
+  const probe = document.createElement('canvas').getContext('webgl2');
+  const debugInfo = probe?.getExtension('WEBGL_debug_renderer_info');
+  const renderer = debugInfo
+    ? String(probe?.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) ?? '')
+    : '';
+  const weak = /(Intel|Iris|UHD|HD Graphics|SwiftShader|llvmpipe|Software)/i.test(renderer);
+  return weak ? LOW_QUALITY : HIGH_QUALITY;
+}
+
+const scene = createScene3D(canvas, detectQuality());
 
 const el = {
   turn: document.querySelector<HTMLElement>('#turn-badge')!,
@@ -113,7 +125,6 @@ const el = {
 };
 
 let state: GameState = createGameState('FABRIC', { topics: provider.topics() });
-let camera: Camera = createCamera({ width: 1, height: 1 });
 let selectedUnitId: string | undefined;
 let reach: ReadonlyMap<string, ReachableTile> | undefined;
 let attackTargets: Set<string> | undefined;
@@ -193,7 +204,7 @@ function selectNextIdle(): void {
   const currentIndex = idle.findIndex((u) => u.id === selectedUnitId);
   const next = idle[(currentIndex + 1) % idle.length]!;
   select(next.id);
-  camera = clampToBounds(centreOn(camera, next.hex), worldBounds(state.map.radius));
+  scene.focus(next.hex);
 }
 
 // Actions --------------------------------------------------------------
@@ -306,9 +317,9 @@ async function playAttack(
   };
 
   if (dramatic) {
-    camera = clampToBounds(centreOn(camera, target), worldBounds(state.map.radius));
+    scene.focus(target);
     dirty = true;
-    await wait(220);
+    await wait(360);
   }
 
   // A melee unit throws itself at the target; a ranged one stays put and
@@ -609,12 +620,12 @@ function viewportSize(): { width: number; height: number } {
 function fitCanvas(): void {
   const { width, height } = viewportSize();
   const dpr = window.devicePixelRatio || 1;
-  canvas.width = Math.round(width * dpr);
-  canvas.height = Math.round(height * dpr);
-  canvas.style.width = `${width}px`;
-  canvas.style.height = `${height}px`;
+  fxCanvas.width = Math.round(width * dpr);
+  fxCanvas.height = Math.round(height * dpr);
+  fxCanvas.style.width = `${width}px`;
+  fxCanvas.style.height = `${height}px`;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  camera = clampToBounds(resize(camera, { width, height }), worldBounds(state.map.radius));
+  scene.setSize(width, height);
   dirty = true;
 }
 
@@ -628,9 +639,9 @@ function newGame(rawSeed: string): void {
   log(`New empire on seed ${seed}.`);
 
   const first = unitsOf(state, PLAYER_FACTION_ID).find((u) => u.typeId === 'architect');
-  camera = clampToBounds(camera, worldBounds(state.map.radius));
+  scene.loadMap(state.map);
   if (first) {
-    camera = clampToBounds(centreOn(camera, first.hex), worldBounds(state.map.radius));
+    scene.focus(first.hex, true);
     select(first.id);
   } else {
     select(undefined);
@@ -642,34 +653,37 @@ function newGame(rawSeed: string): void {
 }
 
 // Input ----------------------------------------------------------------
+//
+// Orbiting, panning and zooming all belong to the camera controller. What is
+// left here is deciding whether a left-button gesture was a click on a hex or
+// a drag of the world, which the controller cannot know.
 
-let dragging = false;
+let pressed = false;
 let dragMoved = 0;
 let lastX = 0;
 let lastY = 0;
 
 canvas.addEventListener('pointerdown', (e) => {
-  dragging = true;
+  if (e.button !== 0) return;
+  pressed = true;
   dragMoved = 0;
   lastX = e.clientX;
   lastY = e.clientY;
   canvas.classList.add('dragging');
-  canvas.setPointerCapture(e.pointerId);
 });
 
 canvas.addEventListener('pointermove', (e) => {
-  if (dragging) {
-    const dx = e.clientX - lastX;
-    const dy = e.clientY - lastY;
-    dragMoved += Math.abs(dx) + Math.abs(dy);
-    camera = clampToBounds(panByScreen(camera, dx, dy), worldBounds(state.map.radius));
+  if (pressed) {
+    dragMoved += Math.abs(e.clientX - lastX) + Math.abs(e.clientY - lastY);
     lastX = e.clientX;
     lastY = e.clientY;
-    dirty = true;
   }
 
-  const next = hexAtScreen(camera, { x: e.clientX, y: e.clientY });
-  if (!hover || hover.q !== next.q || hover.r !== next.r) {
+  const next = scene.hexAt(e.clientX, e.clientY);
+  const changed =
+    (next === undefined) !== (hover === undefined) ||
+    (next && hover && (next.q !== hover.q || next.r !== hover.r));
+  if (changed) {
     hover = next;
     describeTile(hover);
     dirty = true;
@@ -677,52 +691,25 @@ canvas.addEventListener('pointermove', (e) => {
 });
 
 function endDrag(e: PointerEvent): void {
-  if (!dragging) return;
-  dragging = false;
+  if (!pressed) return;
+  pressed = false;
   canvas.classList.remove('dragging');
-  if (dragMoved < 4) {
-    void actOn(hexAtScreen(camera, { x: e.clientX, y: e.clientY }));
+  // A few pixels of slack: a mouse always moves a little during a click.
+  if (dragMoved < 5) {
+    const target = scene.hexAt(e.clientX, e.clientY);
+    if (target) void actOn(target);
   }
 }
 
 canvas.addEventListener('pointerup', endDrag);
 canvas.addEventListener('pointercancel', endDrag);
-
-canvas.addEventListener(
-  'wheel',
-  (e) => {
-    e.preventDefault();
-    camera = clampToBounds(
-      zoomAt(camera, e.deltaY < 0 ? 1 : -1, { x: e.clientX, y: e.clientY }),
-      worldBounds(state.map.radius),
-    );
-    dirty = true;
-  },
-  { passive: false },
-);
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
 window.addEventListener('keydown', (e) => {
   const target = e.target as HTMLElement | null;
   if (target?.tagName === 'INPUT') return;
   // While a question is on screen the modal owns the keyboard.
   if (modal.isOpen()) return;
-
-  const pans: Record<string, [number, number]> = {
-    ArrowLeft: [80, 0],
-    ArrowRight: [-80, 0],
-    ArrowUp: [0, 80],
-    ArrowDown: [0, -80],
-  };
-  const pan = pans[e.key];
-  if (pan) {
-    e.preventDefault();
-    camera = clampToBounds(
-      panByScreen(camera, pan[0], pan[1]),
-      worldBounds(state.map.radius),
-    );
-    dirty = true;
-    return;
-  }
 
   if (e.key === ' ') {
     e.preventDefault();
@@ -736,12 +723,10 @@ window.addEventListener('keydown', (e) => {
     doFortify();
   } else if (e.key === 's') {
     doSkip();
-  } else if (e.key === '+' || e.key === '=') {
-    camera = clampToBounds(zoomAt(camera, 1), worldBounds(state.map.radius));
-    dirty = true;
-  } else if (e.key === '-') {
-    camera = clampToBounds(zoomAt(camera, -1), worldBounds(state.map.radius));
-    dirty = true;
+  } else if (e.key === 'g') {
+    gridVisible = !gridVisible;
+    scene.setGridVisible(gridVisible);
+    log(gridVisible ? 'Hex grid shown.' : 'Hex grid hidden.');
   }
 });
 
@@ -758,18 +743,8 @@ el.seedInput.addEventListener('keydown', (e) => {
 // Render loop ----------------------------------------------------------
 
 let frameMs = 0;
-const startedAt = performance.now();
-
-/**
- * How often the map redraws when nothing is happening.
- *
- * The world has slow ambient motion: vents flicker, city beams breathe, the
- * corruption tears. Running that at the display refresh rate would burn a
- * core to animate something nobody is looking at, so idle frames are capped
- * well below 60 and the cap is lifted the moment anything real occurs.
- */
-const AMBIENT_INTERVAL_MS = 90;
-let lastAmbient = 0;
+let gridVisible = true;
+let lastFrameAt = performance.now();
 
 /**
  * Tiles the Silo Horde holds.
@@ -790,38 +765,72 @@ function refreshCorruption(): void {
   corrupted = next;
 }
 
+/**
+ * How the 2D effects layer finds a hex on screen.
+ *
+ * The scale is measured rather than assumed: it is the on-screen distance
+ * between a hex centre and a point one hex radius away, which is the only
+ * honest answer under perspective, where two hexes at different depths are
+ * different sizes.
+ */
+const projection = {
+  project(hex: Hex) {
+    const point = scene.groundAt(hex);
+    return scene.project(point);
+  },
+  scaleAt(hex: Hex) {
+    const centre = scene.groundAt(hex);
+    const edge = centre.clone();
+    edge.x += HEX_RADIUS;
+    const a = scene.project(centre);
+    const b = scene.project(edge);
+    return Math.max(6, Math.hypot(b.x - a.x, b.y - a.y) * (BASE_HEX_SIZE / 48));
+  },
+};
+
+/**
+ * World-space offset for a unit that is mid-animation.
+ *
+ * The effects system works in the 2D layout the old renderer used, so the
+ * offset comes back in those pixels and is converted here. Keeping the
+ * conversion in one place means the animation code never has to know which
+ * renderer is attached.
+ */
+function unitWorldOffset(unitId: string): { x: number; z: number } | undefined {
+  const offset = effects.offsetOf(unitId);
+  if (!offset) return undefined;
+  return {
+    x: (offset.x / BASE_HEX_SIZE) * HEX_RADIUS,
+    z: (offset.y / BASE_HEX_SIZE) * HEX_RADIUS,
+  };
+}
+
 function frame(now: number): void {
-  const time = now - startedAt;
+  const delta = Math.min(0.1, (now - lastFrameAt) / 1000);
+  lastFrameAt = now;
+
   const animating = effects.update(now);
-  const ambient = now - lastAmbient >= AMBIENT_INTERVAL_MS;
+  const started = performance.now();
 
-  if (dirty || animating || ambient) {
-    if (ambient) lastAmbient = now;
-    const started = performance.now();
-    const shake = effects.shakeOffset();
-
-    ctx.save();
-    ctx.translate(shake.x, shake.y);
-    drawMap(ctx, state.map, camera, { hover, selected: undefined, corrupted, time });
-    drawEntities(ctx, state, camera, {
+  if (dirty || animating) {
+    scene.sync(state, {
       selectedUnitId,
       reachable: reach,
       attackTargets,
       hover,
-      time,
-      offsetOf: (id) => effects.offsetOf(id),
-      opacityOf: (id) => effects.opacityOf(id),
+      unitOffset: unitWorldOffset,
+      unitOpacity: (id) => effects.opacityOf(id),
     });
-    effects.draw(ctx, camera);
-    ctx.restore();
-
-    // Outside the shake transform, so the frame edge never moves.
-    drawVignette(ctx, camera.viewport.width, camera.viewport.height);
-
-    frameMs = performance.now() - started;
     dirty = false;
     refreshHud();
   }
+
+  scene.render(delta, effects.shakeOffset());
+
+  ctx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+  if (animating) effects.draw(ctx, projection);
+
+  frameMs = performance.now() - started;
   requestAnimationFrame(frame);
 }
 
@@ -857,6 +866,17 @@ declare global {
       };
       startResearch: (topicId: string) => boolean;
       grantCompute: (amount: number) => void;
+      terrainProbe: () => unknown;
+      /**
+       * The live three.js objects.
+       *
+       * Present so a lighting question can be answered by toggling one thing
+       * at a time in a running page instead of by editing, rebuilding and
+       * re-photographing for every hypothesis. Diagnosing the terrain by
+       * screenshot alone cost several wrong guesses in a row.
+       */
+      gfx: () => unknown;
+      quality: (level: 'high' | 'low') => void;
       spawnEnemyAdjacent: (unitId: string) => Hex | undefined;
       clickHex: (hex: Hex) => void;
       endTurn: () => void;
@@ -873,8 +893,8 @@ window.__fabricEmpires = {
   resources: () => ({ ...state.factions.get(PLAYER_FACTION_ID)!.resources }),
   selected: () => selectedUnitId,
   selectFirstIdle: () => selectNextIdle(),
-  hexAt: (x, y) => hexAtScreen(camera, { x, y }),
-  screenOf: (hex) => hexToScreen(camera, hex),
+  hexAt: (x, y) => scene.hexAt(x, y) ?? { q: 0, r: 0 },
+  screenOf: (hex) => scene.project(scene.groundAt(hex)),
   reachableCount: () => reach?.size ?? 0,
   reachableHexes: () =>
     [...(reach?.values() ?? [])].map((entry) => ({
@@ -918,6 +938,12 @@ window.__fabricEmpires = {
     });
     state = { ...state, factions };
     refreshHud();
+  },
+  terrainProbe: () => ({ ...scene.probe(), ...scene.stats() }),
+  gfx: () => scene.world,
+  quality: (level: 'high' | 'low') => {
+    scene.setQuality(level === 'low' ? LOW_QUALITY : HIGH_QUALITY);
+    fitCanvas();
   },
   spawnEnemyAdjacent: (unitId: string) => {
     // Test affordance: put a hostile next door so the combat choreography

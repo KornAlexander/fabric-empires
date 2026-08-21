@@ -10,16 +10,25 @@
  * change on a slow machine.
  */
 
-import {
-  BASE_HEX_SIZE,
-  hexToScreen,
-  type Camera,
-  type Hex,
-} from '@fabric-empires/engine';
+import { BASE_HEX_SIZE, type Hex } from '@fabric-empires/engine';
 
 export interface Point {
   x: number;
   y: number;
+}
+
+/**
+ * How the effects layer finds a hex on screen.
+ *
+ * Passed in rather than derived from a camera, because the world is now 3D
+ * and the projection is a perspective matrix, not a pan and a zoom. The
+ * scale is a pixels-per-hex figure so text and rings still shrink with
+ * distance.
+ */
+export interface ScreenProjection {
+  project(hex: Hex): Point;
+  /** Approximate on-screen pixel size of one hex at that location. */
+  scaleAt(hex: Hex): number;
 }
 
 function easeOutCubic(t: number): number {
@@ -103,7 +112,7 @@ export interface EffectsSystem {
   update(now: number): boolean;
   /** True while any effect is running. */
   active(): boolean;
-  draw(ctx: CanvasRenderingContext2D, camera: Camera): void;
+  draw(ctx: CanvasRenderingContext2D, projection: ScreenProjection): void;
 }
 
 export function createEffects(): EffectsSystem {
@@ -273,36 +282,28 @@ export function createEffects(): EffectsSystem {
       );
     },
 
-    draw(ctx, camera) {
-      const zoom = camera.zoom;
-
+    draw(ctx, projection) {
       for (const flash of flashes) {
         const t = progress(flash);
-        const centre = hexToScreen(camera, flash.hex);
-        const size = BASE_HEX_SIZE * zoom;
+        const centre = projection.project(flash.hex);
+        const size = projection.scaleAt(flash.hex);
         ctx.save();
-        ctx.globalAlpha = (1 - t) * 0.7;
+        ctx.globalAlpha = (1 - t) * 0.55;
         ctx.fillStyle = flash.colour;
         ctx.beginPath();
-        for (let i = 0; i < 6; i++) {
-          const angle = (Math.PI / 180) * (60 * i - 90);
-          const x = centre.x + size * Math.cos(angle);
-          const y = centre.y + size * Math.sin(angle);
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        }
-        ctx.closePath();
+        ctx.arc(centre.x, centre.y, size * 0.9, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
       }
 
       for (const pulse of pulses) {
         const t = progress(pulse);
-        const centre = hexToScreen(camera, pulse.hex);
+        const centre = projection.project(pulse.hex);
+        const zoom = projection.scaleAt(pulse.hex) / BASE_HEX_SIZE;
         ctx.save();
         ctx.globalAlpha = (1 - t) * 0.85;
         ctx.strokeStyle = pulse.colour;
-        ctx.lineWidth = pulse.lineWidth * zoom * (1 - t * 0.6);
+        ctx.lineWidth = Math.max(1, pulse.lineWidth * zoom * (1 - t * 0.6));
         ctx.beginPath();
         ctx.arc(centre.x, centre.y, pulse.maxRadius * zoom * easeOutCubic(t), 0, Math.PI * 2);
         ctx.stroke();
@@ -311,9 +312,11 @@ export function createEffects(): EffectsSystem {
 
       for (const text of texts) {
         const t = progress(text);
-        const centre = hexToScreen(camera, text.hex);
+        const centre = projection.project(text.hex);
+        const size = projection.scaleAt(text.hex);
+        const zoom = size / BASE_HEX_SIZE;
         const rise = 46 * zoom * easeOutCubic(t);
-        const fontSize = Math.max(12, 20 * zoom * text.scale);
+        const fontSize = Math.max(13, 20 * zoom * text.scale);
         ctx.save();
         ctx.globalAlpha = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
         ctx.font = `700 ${fontSize}px "Segoe UI", system-ui, sans-serif`;
