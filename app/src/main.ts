@@ -1,95 +1,260 @@
 import {
+  PLAYER_FACTION_ID,
+  canAttack,
+  canFoundCity,
+  centreOn,
+  cityAt,
   clampToBounds,
   createCamera,
-  generateMap,
+  createGameState,
+  endTurn,
+  fortifyUnit,
+  foundCity,
   hexAtScreen,
   hexKey,
+  hexToScreen,
+  moveUnit,
   normaliseSeed,
   panByScreen,
+  previewAttack,
+  reachable,
   resize,
+  resolveAttack,
+  selectableUnitAt,
+  skipUnit,
   terrain,
   tileYields,
+  unitAt,
+  unitType,
+  unitsOf,
   worldBounds,
   zoomAt,
-  ZOOM_LEVELS,
-  zoomIndexOf,
   type Camera,
-  type GameMap,
+  type GameState,
   type Hex,
+  type ReachableTile,
 } from '@fabric-empires/engine';
 import { drawMap } from './render/mapRenderer.js';
+import { drawEntities } from './render/entityRenderer.js';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#map')!;
 const ctx = canvas.getContext('2d')!;
 
 const el = {
-  seed: document.querySelector<HTMLElement>('#hud-seed')!,
-  land: document.querySelector<HTMLElement>('#hud-land')!,
-  zoom: document.querySelector<HTMLElement>('#hud-zoom')!,
-  drawn: document.querySelector<HTMLElement>('#hud-drawn')!,
-  frame: document.querySelector<HTMLElement>('#hud-frame')!,
-  tileName: document.querySelector<HTMLElement>('#tile-name')!,
-  tileYields: document.querySelector<HTMLElement>('#tile-yields')!,
-  tileCoords: document.querySelector<HTMLElement>('#tile-coords')!,
+  turn: document.querySelector<HTMLElement>('#turn-badge')!,
+  compute: document.querySelector<HTMLElement>('#res-compute')!,
+  cu: document.querySelector<HTMLElement>('#res-cu')!,
+  trust: document.querySelector<HTMLElement>('#res-trust')!,
+  endTurn: document.querySelector<HTMLButtonElement>('#end-turn')!,
   seedInput: document.querySelector<HTMLInputElement>('#seed-input')!,
   seedGo: document.querySelector<HTMLButtonElement>('#seed-go')!,
+  tileName: document.querySelector<HTMLElement>('#tile-name')!,
+  tileDetail: document.querySelector<HTMLElement>('#tile-detail')!,
+  selTitle: document.querySelector<HTMLElement>('#sel-title')!,
+  selDetail: document.querySelector<HTMLElement>('#sel-detail')!,
+  actFound: document.querySelector<HTMLButtonElement>('#act-found')!,
+  actFortify: document.querySelector<HTMLButtonElement>('#act-fortify')!,
+  actSkip: document.querySelector<HTMLButtonElement>('#act-skip')!,
+  log: document.querySelector<HTMLElement>('#log')!,
 };
 
-let map: GameMap = generateMap('FABRIC');
+let state: GameState = createGameState('FABRIC');
 let camera: Camera = createCamera({ width: 1, height: 1 });
+let selectedUnitId: string | undefined;
+let reach: ReadonlyMap<string, ReachableTile> | undefined;
+let attackTargets: Set<string> | undefined;
 let hover: Hex | undefined;
-let selected: Hex | undefined;
 let dirty = true;
 
-function viewportSize(): { width: number; height: number } {
-  return { width: window.innerWidth, height: window.innerHeight };
+function log(message: string, tone: 'good' | 'bad' | 'plain' = 'plain'): void {
+  const entry = document.createElement('div');
+  entry.className = `entry${tone === 'plain' ? ' muted' : ` ${tone}`}`;
+  entry.textContent = message;
+  el.log.append(entry);
+  while (el.log.childElementCount > 40) el.log.firstElementChild?.remove();
+  el.log.scrollTop = el.log.scrollHeight;
 }
+
+// Selection ------------------------------------------------------------
 
 /**
- * Size the backing store to the device pixel ratio, then scale the context
- * once. Everything downstream can then work in CSS pixels and still be sharp
- * on a high-DPI display.
+ * Recompute what the selected unit can do.
+ *
+ * Both overlays come straight from the engine rules, so what is painted is
+ * exactly what the engine will permit. A UI that computes its own idea of
+ * "reachable" eventually disagrees with the rules, and the player is the one
+ * who finds out.
  */
-function fitCanvas(): void {
-  const { width, height } = viewportSize();
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width = Math.round(width * dpr);
-  canvas.height = Math.round(height * dpr);
-  canvas.style.width = `${width}px`;
-  canvas.style.height = `${height}px`;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  camera = clampToBounds(resize(camera, { width, height }), worldBounds(map.radius));
+function refreshSelection(): void {
+  reach = undefined;
+  attackTargets = undefined;
+
+  const unit = selectedUnitId ? state.units.get(selectedUnitId) : undefined;
+  if (!unit || unit.factionId !== state.activeFactionId) {
+    selectedUnitId = undefined;
+    el.selTitle.textContent = 'Nothing selected';
+    el.selDetail.textContent = 'Click one of your units.';
+    el.actFound.disabled = true;
+    el.actFortify.disabled = true;
+    el.actSkip.disabled = true;
+    return;
+  }
+
+  const type = unitType(unit.typeId);
+  reach = reachable(state, unit);
+
+  const targets = new Set<string>();
+  for (const tile of state.map.tiles.values()) {
+    if (canAttack(state, unit.id, tile.hex).ok) targets.add(hexKey(tile.hex));
+  }
+  attackTargets = targets;
+
+  el.selTitle.textContent = type.label;
+  el.selDetail.textContent =
+    `${unit.hp}/${type.maxHp} HP  ` +
+    `${unit.movesLeft}/${type.movement} moves  ` +
+    `strength ${type.strength}` +
+    (unit.fortified ? '  (fortified)' : '');
+
+  el.actFound.disabled = !canFoundCity(state, unit);
+  el.actFortify.disabled = type.strength === 0 || unit.fortified;
+  el.actSkip.disabled = unit.movesLeft <= 0;
+}
+
+function select(unitId: string | undefined): void {
+  selectedUnitId = unitId;
+  refreshSelection();
   dirty = true;
 }
 
-function landShare(m: GameMap): string {
-  let land = 0;
-  for (const tile of m.tiles.values()) if (tile.terrain !== 'onelake') land++;
-  return `${((land / m.tiles.size) * 100).toFixed(1)}%`;
+/** Jump to the next unit still awaiting orders, the way a 4X should. */
+function selectNextIdle(): void {
+  const idle = unitsOf(state, PLAYER_FACTION_ID).filter(
+    (u) => u.movesLeft > 0 && !u.fortified,
+  );
+  if (idle.length === 0) {
+    select(undefined);
+    return;
+  }
+  const currentIndex = idle.findIndex((u) => u.id === selectedUnitId);
+  const next = idle[(currentIndex + 1) % idle.length]!;
+  select(next.id);
+  camera = clampToBounds(centreOn(camera, next.hex), worldBounds(state.map.radius));
 }
 
-function loadSeed(raw: string): void {
-  const seed = normaliseSeed(raw);
-  map = generateMap(seed);
-  selected = undefined;
-  hover = undefined;
-  el.seedInput.value = seed;
-  camera = clampToBounds(camera, worldBounds(map.radius));
+// Actions --------------------------------------------------------------
+
+function actOn(target: Hex): void {
+  const own = selectableUnitAt(state, target);
+  if (own) {
+    select(own.id);
+    return;
+  }
+
+  if (!selectedUnitId) return;
+  const unit = state.units.get(selectedUnitId);
+  if (!unit) return;
+
+  // Attack takes priority: clicking an enemy means fighting it, not walking
+  // into the tile it occupies.
+  if (canAttack(state, unit.id, target).ok) {
+    const preview = previewAttack(state, unit.id, target);
+    const outcome = resolveAttack(state, unit.id, target);
+    if (!outcome.ok) {
+      log(outcome.reason, 'bad');
+      return;
+    }
+    state = outcome.result.state;
+    const { log: battle } = outcome.result;
+    const odds = preview
+      ? ` (${Math.round(preview.attacker.effective)} vs ${Math.round(preview.defender.effective)})`
+      : '';
+    log(
+      `Attack${odds}: dealt ${battle.damageToDefender}, took ${battle.damageToAttacker}`,
+      battle.damageToDefender >= battle.damageToAttacker ? 'good' : 'bad',
+    );
+    if (battle.defenderDestroyed) log('Enemy unit destroyed.', 'good');
+    if (battle.attackerDestroyed) log('Your unit was destroyed.', 'bad');
+    if (battle.cityCaptured) log('City captured.', 'good');
+    refreshSelection();
+    dirty = true;
+    return;
+  }
+
+  const moved = moveUnit(state, unit.id, target);
+  if (!moved.ok) {
+    log(moved.reason, 'bad');
+    return;
+  }
+  state = moved.state;
+  refreshSelection();
   dirty = true;
 }
+
+function doFound(): void {
+  if (!selectedUnitId) return;
+  const result = foundCity(state, selectedUnitId);
+  if (!result.ok) {
+    log(result.reason, 'bad');
+    return;
+  }
+  state = result.state;
+  const city = [...state.cities.values()].at(-1);
+  log(`Founded ${city?.name ?? 'a city'}.`, 'good');
+  select(undefined);
+}
+
+function doFortify(): void {
+  if (!selectedUnitId) return;
+  const result = fortifyUnit(state, selectedUnitId);
+  if (!result.ok) {
+    log(result.reason, 'bad');
+    return;
+  }
+  state = result.state;
+  refreshSelection();
+  dirty = true;
+}
+
+function doSkip(): void {
+  if (!selectedUnitId) return;
+  const result = skipUnit(state, selectedUnitId);
+  if (!result.ok) return;
+  state = result.state;
+  selectNextIdle();
+}
+
+function doEndTurn(): void {
+  const result = endTurn(state);
+  state = result.state;
+  const { report } = result;
+  const gains: string[] = [];
+  if (report.treasuryGained.compute) gains.push(`+${report.treasuryGained.compute} Compute`);
+  if (report.treasuryGained.cu) gains.push(`${report.treasuryGained.cu >= 0 ? '+' : ''}${report.treasuryGained.cu} CU`);
+  if (report.treasuryGained.trust) gains.push(`+${report.treasuryGained.trust} Trust`);
+
+  log(`Turn ${report.turn} ended. ${gains.join('  ') || 'No income yet.'}`);
+  for (const cityId of report.grownCities) {
+    log(`${state.cities.get(cityId)?.name ?? 'A city'} grew.`, 'good');
+  }
+  if (report.bankrupt) log('Upkeep could not be paid in full.', 'bad');
+
+  refreshSelection();
+  dirty = true;
+}
+
+// Presentation ---------------------------------------------------------
 
 function describeTile(h: Hex | undefined): void {
   if (!h) {
     el.tileName.textContent = 'Hover a tile';
-    el.tileYields.innerHTML = '&nbsp;';
-    el.tileCoords.innerHTML = '&nbsp;';
+    el.tileDetail.innerHTML = '&nbsp;';
     return;
   }
-  const tile = map.tiles.get(hexKey(h));
+  const tile = state.map.tiles.get(hexKey(h));
   if (!tile) {
     el.tileName.textContent = 'Beyond the map';
-    el.tileYields.innerHTML = '&nbsp;';
-    el.tileCoords.textContent = `${h.q}, ${h.r}`;
+    el.tileDetail.innerHTML = '&nbsp;';
     return;
   }
 
@@ -101,12 +266,59 @@ function describeTile(h: Hex | undefined): void {
   if (y.cu) parts.push(`CU ${y.cu}`);
   if (y.trust) parts.push(`Trust ${y.trust}`);
 
-  el.tileName.textContent = info.label + (tile.river ? ' (river)' : '');
-  el.tileYields.textContent = parts.length > 0 ? parts.join('  ') : 'No yield';
-  el.tileCoords.textContent =
-    `${h.q}, ${h.r}  ` +
-    `elev ${tile.elevation.toFixed(2)}  ` +
-    (Number.isFinite(info.moveCost) ? `move ${info.moveCost}` : 'impassable');
+  const occupant = unitAt(state, h);
+  const city = cityAt(state, h);
+  const who = city
+    ? ` | ${city.name} (${state.factions.get(city.factionId)?.label ?? '?'})`
+    : occupant
+      ? ` | ${unitType(occupant.typeId).label} (${state.factions.get(occupant.factionId)?.label ?? '?'})`
+      : '';
+
+  el.tileName.textContent = info.label + (tile.river ? ' (river)' : '') + who;
+  el.tileDetail.textContent = parts.length > 0 ? parts.join('  ') : 'No yield';
+}
+
+function refreshHud(): void {
+  const resources = state.factions.get(PLAYER_FACTION_ID)!.resources;
+  el.turn.textContent = `Turn ${state.turn}`;
+  el.compute.textContent = String(resources.compute);
+  el.cu.textContent = String(resources.cu);
+  el.trust.textContent = String(resources.trust);
+}
+
+function viewportSize(): { width: number; height: number } {
+  return { width: window.innerWidth, height: window.innerHeight };
+}
+
+function fitCanvas(): void {
+  const { width, height } = viewportSize();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(width * dpr);
+  canvas.height = Math.round(height * dpr);
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  camera = clampToBounds(resize(camera, { width, height }), worldBounds(state.map.radius));
+  dirty = true;
+}
+
+function newGame(rawSeed: string): void {
+  const seed = normaliseSeed(rawSeed);
+  state = createGameState(seed);
+  el.seedInput.value = seed;
+  el.log.replaceChildren();
+  log(`New empire on seed ${seed}.`);
+
+  const first = unitsOf(state, PLAYER_FACTION_ID).find((u) => u.typeId === 'architect');
+  camera = clampToBounds(camera, worldBounds(state.map.radius));
+  if (first) {
+    camera = clampToBounds(centreOn(camera, first.hex), worldBounds(state.map.radius));
+    select(first.id);
+  } else {
+    select(undefined);
+  }
+  refreshHud();
+  dirty = true;
 }
 
 // Input ----------------------------------------------------------------
@@ -130,7 +342,7 @@ canvas.addEventListener('pointermove', (e) => {
     const dx = e.clientX - lastX;
     const dy = e.clientY - lastY;
     dragMoved += Math.abs(dx) + Math.abs(dy);
-    camera = clampToBounds(panByScreen(camera, dx, dy), worldBounds(map.radius));
+    camera = clampToBounds(panByScreen(camera, dx, dy), worldBounds(state.map.radius));
     lastX = e.clientX;
     lastY = e.clientY;
     dirty = true;
@@ -148,12 +360,8 @@ function endDrag(e: PointerEvent): void {
   if (!dragging) return;
   dragging = false;
   canvas.classList.remove('dragging');
-  // A drag that barely moved is a click, so selection still works even if the
-  // hand wobbles on the way down.
   if (dragMoved < 4) {
-    const picked = hexAtScreen(camera, { x: e.clientX, y: e.clientY });
-    selected = map.tiles.has(hexKey(picked)) ? picked : undefined;
-    dirty = true;
+    actOn(hexAtScreen(camera, { x: e.clientX, y: e.clientY }));
   }
 }
 
@@ -164,10 +372,9 @@ canvas.addEventListener(
   'wheel',
   (e) => {
     e.preventDefault();
-    const steps = e.deltaY < 0 ? 1 : -1;
     camera = clampToBounds(
-      zoomAt(camera, steps, { x: e.clientX, y: e.clientY }),
-      worldBounds(map.radius),
+      zoomAt(camera, e.deltaY < 0 ? 1 : -1, { x: e.clientX, y: e.clientY }),
+      worldBounds(state.map.radius),
     );
     dirty = true;
   },
@@ -175,36 +382,55 @@ canvas.addEventListener(
 );
 
 window.addEventListener('keydown', (e) => {
-  const step = 80;
-  const moves: Record<string, [number, number]> = {
-    ArrowLeft: [step, 0],
-    ArrowRight: [-step, 0],
-    ArrowUp: [0, step],
-    ArrowDown: [0, -step],
+  const target = e.target as HTMLElement | null;
+  if (target?.tagName === 'INPUT') return;
+
+  const pans: Record<string, [number, number]> = {
+    ArrowLeft: [80, 0],
+    ArrowRight: [-80, 0],
+    ArrowUp: [0, 80],
+    ArrowDown: [0, -80],
   };
-  const move = moves[e.key];
-  if (move) {
+  const pan = pans[e.key];
+  if (pan) {
     e.preventDefault();
     camera = clampToBounds(
-      panByScreen(camera, move[0], move[1]),
-      worldBounds(map.radius),
+      panByScreen(camera, pan[0], pan[1]),
+      worldBounds(state.map.radius),
     );
     dirty = true;
+    return;
   }
-  if (e.key === '+' || e.key === '=') {
-    camera = clampToBounds(zoomAt(camera, 1), worldBounds(map.radius));
+
+  if (e.key === ' ') {
+    e.preventDefault();
+    doEndTurn();
+  } else if (e.key === 'n' || e.key === 'Tab') {
+    e.preventDefault();
+    selectNextIdle();
+  } else if (e.key === 'b') {
+    doFound();
+  } else if (e.key === 'f') {
+    doFortify();
+  } else if (e.key === 's') {
+    doSkip();
+  } else if (e.key === '+' || e.key === '=') {
+    camera = clampToBounds(zoomAt(camera, 1), worldBounds(state.map.radius));
     dirty = true;
-  }
-  if (e.key === '-' || e.key === '_') {
-    camera = clampToBounds(zoomAt(camera, -1), worldBounds(map.radius));
+  } else if (e.key === '-') {
+    camera = clampToBounds(zoomAt(camera, -1), worldBounds(state.map.radius));
     dirty = true;
   }
 });
 
 window.addEventListener('resize', fitCanvas);
-el.seedGo.addEventListener('click', () => loadSeed(el.seedInput.value));
+el.endTurn.addEventListener('click', doEndTurn);
+el.actFound.addEventListener('click', doFound);
+el.actFortify.addEventListener('click', doFortify);
+el.actSkip.addEventListener('click', doSkip);
+el.seedGo.addEventListener('click', () => newGame(el.seedInput.value));
 el.seedInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') loadSeed(el.seedInput.value);
+  if (e.key === 'Enter') newGame(el.seedInput.value);
 });
 
 // Render loop ----------------------------------------------------------
@@ -214,39 +440,67 @@ let frameMs = 0;
 function frame(): void {
   if (dirty) {
     const started = performance.now();
-    const stats = drawMap(ctx, map, camera, { hover, selected });
+    drawMap(ctx, state.map, camera, { hover, selected: undefined });
+    drawEntities(ctx, state, camera, {
+      selectedUnitId,
+      reachable: reach,
+      attackTargets,
+      hover,
+    });
     frameMs = performance.now() - started;
     dirty = false;
-
-    el.seed.textContent = map.seed;
-    el.land.textContent = landShare(map);
-    el.zoom.textContent = `${ZOOM_LEVELS[zoomIndexOf(camera)]!.toFixed(2)}x`;
-    el.drawn.textContent = `${stats.drawn} / ${map.tiles.size}`;
-    el.frame.textContent = `${frameMs.toFixed(1)} ms`;
+    refreshHud();
   }
   requestAnimationFrame(frame);
 }
 
 fitCanvas();
-loadSeed('FABRIC');
+newGame('FABRIC');
 requestAnimationFrame(frame);
 
-// Exposed for automated checks: lets a test assert the map actually rendered
+// Exposed for automated checks, so a test can assert the game actually plays
 // rather than assuming a screenshot means success.
 declare global {
   interface Window {
     __fabricEmpires?: {
       seed: () => string;
-      tileCount: () => number;
+      turn: () => number;
       lastFrameMs: () => number;
+      unitCount: (factionId: string) => number;
+      cityCount: () => number;
+      resources: () => Record<string, number>;
+      selected: () => string | undefined;
+      selectFirstIdle: () => void;
       hexAt: (x: number, y: number) => Hex;
+      screenOf: (hex: Hex) => { x: number; y: number };
+      reachableCount: () => number;
+      reachableHexes: () => { q: number; r: number; cost: number }[];
+      unitHex: (unitId: string) => Hex | undefined;
+      clickHex: (hex: Hex) => void;
+      endTurn: () => void;
     };
   }
 }
 
 window.__fabricEmpires = {
-  seed: () => map.seed,
-  tileCount: () => map.tiles.size,
+  seed: () => state.seed,
+  turn: () => state.turn,
   lastFrameMs: () => frameMs,
+  unitCount: (factionId: string) => unitsOf(state, factionId).length,
+  cityCount: () => state.cities.size,
+  resources: () => ({ ...state.factions.get(PLAYER_FACTION_ID)!.resources }),
+  selected: () => selectedUnitId,
+  selectFirstIdle: () => selectNextIdle(),
   hexAt: (x, y) => hexAtScreen(camera, { x, y }),
+  screenOf: (hex) => hexToScreen(camera, hex),
+  reachableCount: () => reach?.size ?? 0,
+  reachableHexes: () =>
+    [...(reach?.values() ?? [])].map((entry) => ({
+      q: entry.hex.q,
+      r: entry.hex.r,
+      cost: entry.cost,
+    })),
+  unitHex: (unitId: string) => state.units.get(unitId)?.hex,
+  clickHex: (hex) => actOn(hex),
+  endTurn: () => doEndTurn(),
 };

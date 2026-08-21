@@ -7,19 +7,18 @@
     <style>
       :root {
         color-scheme: dark;
-        --panel: rgba(16, 20, 28, 0.86);
+        --panel: rgba(14, 18, 26, 0.88);
         --border: rgba(255, 255, 255, 0.12);
         --text: #e8eaf0;
-        --muted: #97a0b5;
+        --muted: #96a0b5;
+        --accent: #ffd166;
       }
       * { box-sizing: border-box; }
-      html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0e14; }
-      body {
-        font: 13px/1.5 "Segoe UI", system-ui, sans-serif;
-        color: var(--text);
-      }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #070a10; }
+      body { font: 13px/1.5 "Segoe UI", system-ui, sans-serif; color: var(--text); }
       #map { display: block; width: 100vw; height: 100vh; cursor: grab; }
       #map.dragging { cursor: grabbing; }
+
       .panel {
         position: fixed;
         background: var(--panel);
@@ -28,68 +27,83 @@
         padding: 10px 14px;
         backdrop-filter: blur(8px);
       }
-      #hud { top: 14px; left: 14px; min-width: 220px; }
-      #hud h1 {
-        margin: 0 0 6px;
-        font-size: 15px;
-        font-weight: 600;
-        letter-spacing: 0.02em;
+      h2 { margin: 0 0 4px; font-size: 13px; font-weight: 600; }
+      .muted { color: var(--muted); }
+
+      #resources { top: 14px; left: 14px; display: flex; gap: 18px; align-items: center; }
+      #resources .res { display: flex; gap: 6px; align-items: baseline; }
+      #resources .res b { font-size: 15px; font-weight: 600; }
+      #resources .res span {
+        color: var(--muted); font-size: 11px;
+        text-transform: uppercase; letter-spacing: 0.06em;
       }
-      #hud .row { display: flex; justify-content: space-between; gap: 18px; }
-      #hud .row span:first-child { color: var(--muted); }
-      #tile { bottom: 14px; left: 14px; min-width: 220px; }
-      #tile .name { font-weight: 600; margin-bottom: 4px; }
-      #tile .yields { color: var(--muted); }
-      #help { bottom: 14px; right: 14px; color: var(--muted); text-align: right; }
+      #turn-badge { font-weight: 600; color: var(--accent); }
+
+      #selection { bottom: 14px; left: 14px; width: 290px; }
+      #selection .actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+      button {
+        background: #1d2636; border: 1px solid var(--border); color: var(--text);
+        border-radius: 6px; padding: 6px 12px; font: inherit; cursor: pointer;
+      }
+      button:hover:not(:disabled) { background: #2a3750; }
+      button:disabled { opacity: 0.4; cursor: not-allowed; }
+      button.primary { background: #2f5d8c; border-color: #3f7cb8; }
+      button.primary:hover:not(:disabled) { background: #3a72a8; }
+
       #controls { top: 14px; right: 14px; display: flex; gap: 8px; align-items: center; }
       #controls input {
-        background: #0b0e14;
-        border: 1px solid var(--border);
-        color: var(--text);
-        border-radius: 6px;
-        padding: 5px 8px;
-        width: 120px;
-        font: inherit;
+        background: #0b0e14; border: 1px solid var(--border); color: var(--text);
+        border-radius: 6px; padding: 6px 8px; width: 110px; font: inherit;
         text-transform: uppercase;
       }
-      #controls button {
-        background: #1d2636;
-        border: 1px solid var(--border);
-        color: var(--text);
-        border-radius: 6px;
-        padding: 5px 12px;
-        font: inherit;
-        cursor: pointer;
-      }
-      #controls button:hover { background: #27334a; }
+
+      #log { bottom: 14px; right: 14px; width: 330px; max-height: 42vh; overflow-y: auto; }
+      #log .entry { padding: 3px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
+      #log .entry:last-child { border-bottom: none; }
+      #log .entry.bad { color: #ff9b91; }
+      #log .entry.good { color: #8fd694; }
+
+      #tile { bottom: 14px; left: 50%; transform: translateX(-50%); text-align: center; min-width: 240px; }
+      #help { top: 62px; right: 14px; color: var(--muted); text-align: right; font-size: 12px; }
     </style>
   </head>
   <body>
     <canvas id="map"></canvas>
 
-    <div class="panel" id="hud">
-      <h1>Fabric Empires</h1>
-      <div class="row"><span>Seed</span><span id="hud-seed">-</span></div>
-      <div class="row"><span>Land</span><span id="hud-land">-</span></div>
-      <div class="row"><span>Zoom</span><span id="hud-zoom">-</span></div>
-      <div class="row"><span>Drawn</span><span id="hud-drawn">-</span></div>
-      <div class="row"><span>Frame</span><span id="hud-frame">-</span></div>
+    <div class="panel" id="resources">
+      <span id="turn-badge">Turn 1</span>
+      <div class="res"><b id="res-compute">0</b><span>Compute</span></div>
+      <div class="res"><b id="res-cu">0</b><span>CU</span></div>
+      <div class="res"><b id="res-trust">0</b><span>Trust</span></div>
+      <button id="end-turn" class="primary">End turn</button>
     </div>
 
     <div class="panel" id="controls">
       <input id="seed-input" value="FABRIC" spellcheck="false" />
-      <button id="seed-go">Generate</button>
-    </div>
-
-    <div class="panel" id="tile">
-      <div class="name" id="tile-name">Hover a tile</div>
-      <div class="yields" id="tile-yields">&nbsp;</div>
-      <div class="yields" id="tile-coords">&nbsp;</div>
+      <button id="seed-go">New game</button>
     </div>
 
     <div class="panel" id="help">
-      drag to pan &middot; wheel to zoom &middot; click to select
+      click a unit to select &middot; click to move or attack<br />
+      drag to pan &middot; wheel to zoom &middot; space ends turn
     </div>
+
+    <div class="panel" id="tile">
+      <div id="tile-name">Hover a tile</div>
+      <div class="muted" id="tile-detail">&nbsp;</div>
+    </div>
+
+    <div class="panel" id="selection">
+      <h2 id="sel-title">Nothing selected</h2>
+      <div class="muted" id="sel-detail">Click one of your units.</div>
+      <div class="actions">
+        <button id="act-found" disabled>Found city</button>
+        <button id="act-fortify" disabled>Fortify</button>
+        <button id="act-skip" disabled>Skip</button>
+      </div>
+    </div>
+
+    <div class="panel" id="log"><div class="entry muted">Your empire begins.</div></div>
 
     <script type="module" src="/src/main.ts"></script>
   </body>

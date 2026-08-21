@@ -48,11 +48,13 @@ export function shadeFor(
 ): string {
   const [r, g, b] = hexToRgb(TERRAIN_COLOURS[terrainId]);
 
-  // Water darkens with depth; land brightens with height.
+  // Water darkens with depth; land brightens with height. The water floor is
+  // deliberately well above black: at 0.55 the deep ocean read as empty void
+  // rather than sea, and the continent looked like it was floating in space.
   const isWater = terrainId === 'onelake';
   const t = Math.min(Math.max(elevation, 0), 1);
   const quantised = Math.round(t * steps) / steps;
-  const factor = isWater ? 0.55 + quantised * 0.75 : 0.82 + quantised * 0.45;
+  const factor = isWater ? 0.78 + quantised * 0.55 : 0.82 + quantised * 0.45;
 
   const clamp = (v: number) => Math.min(255, Math.max(0, Math.round(v)));
   return `rgb(${clamp(r * factor)}, ${clamp(g * factor)}, ${clamp(b * factor)})`;

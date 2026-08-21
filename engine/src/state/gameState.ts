@@ -54,9 +54,20 @@ export interface GameState {
 
 export const PLAYER_FACTION_ID = 'player';
 
+/**
+ * The first antagonist.
+ *
+ * The plan calls for one faction per skill cluster. This is the placeholder
+ * that lets combat exist on screen before the full roster and their AI arrive:
+ * its units are placed and do not yet act.
+ */
+export const ANTAGONIST_FACTION_ID = 'silo-horde';
+
 export interface NewGameOptions {
   readonly difficulty?: Difficulty;
   readonly map?: Partial<MapOptions>;
+  /** Set false for a sandbox with no opposition. */
+  readonly spawnAntagonists?: boolean;
 }
 
 // Lookups ---------------------------------------------------------------
@@ -184,6 +195,50 @@ function freeAdjacent(
   return undefined;
 }
 
+/**
+ * Where the antagonists muster.
+ *
+ * The nearest frontier wastes to the player, but never close enough to reach
+ * the capital before the player has done anything. A raid on turn two teaches
+ * nothing except that the game is unfair.
+ */
+export const MIN_ANTAGONIST_DISTANCE = 7;
+
+export function chooseAntagonistCamp(map: GameMap, playerStart: Hex): Hex[] {
+  const candidates = [...map.tiles.values()]
+    .filter((tile) => {
+      if (!map.mainland.has(hexKey(tile.hex))) return false;
+      if (!isPassableByLand(tile.terrain)) return false;
+      if (tile.terrain !== 'ungovernedWastes') return false;
+      return hexDistance(tile.hex, playerStart) >= MIN_ANTAGONIST_DISTANCE;
+    })
+    .sort(
+      (a, b) =>
+        hexDistance(a.hex, playerStart) - hexDistance(b.hex, playerStart) ||
+        hexKey(a.hex).localeCompare(hexKey(b.hex)),
+    );
+
+  // Fall back to any distant passable land if the wastes are unreachable,
+  // so a strange map cannot produce a game with no opposition at all.
+  const pool =
+    candidates.length > 0
+      ? candidates
+      : [...map.tiles.values()]
+          .filter(
+            (tile) =>
+              map.mainland.has(hexKey(tile.hex)) &&
+              isPassableByLand(tile.terrain) &&
+              hexDistance(tile.hex, playerStart) >= MIN_ANTAGONIST_DISTANCE,
+          )
+          .sort(
+            (a, b) =>
+              hexDistance(a.hex, playerStart) - hexDistance(b.hex, playerStart) ||
+              hexKey(a.hex).localeCompare(hexKey(b.hex)),
+          );
+
+  return pool.slice(0, 3).map((tile) => tile.hex);
+}
+
 // Construction ----------------------------------------------------------
 
 export function createGameState(
@@ -207,12 +262,12 @@ export function createGameState(
   const taken = new Set<string>([hexKey(start)]);
   let nextId = 1;
 
-  const place = (typeId: UnitTypeId, hex: Hex): void => {
+  const place = (typeId: UnitTypeId, hex: Hex, factionId: string): void => {
     const id = `unit-${nextId++}`;
     units.set(id, {
       id,
       typeId,
-      factionId: PLAYER_FACTION_ID,
+      factionId,
       hex,
       hp: unitType(typeId).maxHp,
       movesLeft: unitType(typeId).movement,
@@ -221,9 +276,30 @@ export function createGameState(
     taken.add(hexKey(hex));
   };
 
-  place('architect', start);
+  place('architect', start, PLAYER_FACTION_ID);
   const escortHex = freeAdjacent(map, start, taken);
-  if (escortHex) place('profiler', escortHex);
+  if (escortHex) place('profiler', escortHex, PLAYER_FACTION_ID);
+
+  const factions = new Map<string, Faction>([[player.id, player]]);
+
+  if (options.spawnAntagonists !== false) {
+    const antagonist: Faction = {
+      id: ANTAGONIST_FACTION_ID,
+      label: 'The Silo Horde',
+      isPlayer: false,
+      colour: '#b5533f',
+      resources: emptyResources(),
+      topicCluster: 'B1',
+    };
+    factions.set(antagonist.id, antagonist);
+
+    const camp = chooseAntagonistCamp(map, start);
+    const roster: UnitTypeId[] = ['pipelineRunner', 'pipelineRunner', 'profiler'];
+    camp.forEach((hex, index) => {
+      if (taken.has(hexKey(hex))) return;
+      place(roster[index] ?? 'pipelineRunner', hex, ANTAGONIST_FACTION_ID);
+    });
+  }
 
   return {
     seed: map.seed,
@@ -231,7 +307,7 @@ export function createGameState(
     turn: 1,
     map,
     mapOverrides,
-    factions: new Map([[player.id, player]]),
+    factions,
     units,
     cities: new Map(),
     activeFactionId: PLAYER_FACTION_ID,

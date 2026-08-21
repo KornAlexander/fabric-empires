@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
+  ANTAGONIST_FACTION_ID,
+  MIN_ANTAGONIST_DISTANCE,
   PLAYER_FACTION_ID,
   canFoundCity,
   chooseStartPosition,
@@ -9,6 +11,7 @@ import {
   findPath,
   isCivilian,
   isOccupied,
+  isPassableByLand,
   pathTo,
   reachable,
   startScore,
@@ -394,7 +397,7 @@ describe('zones of control', () => {
   });
 
   it('is not projected by your own units', () => {
-    const state = createGameState('FABRIC');
+    const state = createGameState('FABRIC', { spawnAntagonists: false });
     expect(enemyZoneOfControl(state, PLAYER_FACTION_ID).size).toBe(0);
   });
 
@@ -464,6 +467,69 @@ describe('zones of control', () => {
     expect(unitType('lineageHawk').ignoresZoneOfControl).toBe(true);
     for (const entry of reachable(state, state.units.get('hawk')!).values()) {
       expect(entry.stops).toBe(false);
+    }
+  });
+});
+
+describe('antagonists', () => {
+  it('are present by default and can be switched off', () => {
+    expect(createGameState('FABRIC').factions.has(ANTAGONIST_FACTION_ID)).toBe(true);
+    expect(
+      createGameState('FABRIC', { spawnAntagonists: false }).factions.has(
+        ANTAGONIST_FACTION_ID,
+      ),
+    ).toBe(false);
+  });
+
+  it('muster far enough away to leave the player a few turns', () => {
+    // A raid on turn two teaches nothing except that the game is unfair.
+    for (const seed of SEEDS) {
+      const state = createGameState(seed);
+      const start = unitsOf(state, PLAYER_FACTION_ID).find(
+        (u) => u.typeId === 'architect',
+      )!.hex;
+      const raiders = unitsOf(state, ANTAGONIST_FACTION_ID);
+      expect(raiders.length).toBeGreaterThan(0);
+      for (const raider of raiders) {
+        expect(hexDistance(raider.hex, start)).toBeGreaterThanOrEqual(
+          MIN_ANTAGONIST_DISTANCE,
+        );
+      }
+    }
+  });
+
+  it('stand on passable land, on the main continent, one to a tile', () => {
+    for (const seed of SEEDS) {
+      const state = createGameState(seed);
+      const seen = new Set<string>();
+      for (const raider of unitsOf(state, ANTAGONIST_FACTION_ID)) {
+        const key = hexKey(raider.hex);
+        expect(seen.has(key)).toBe(false);
+        seen.add(key);
+        const tile = state.map.tiles.get(key)!;
+        expect(isPassableByLand(tile.terrain)).toBe(true);
+        expect(state.map.mainland.has(key)).toBe(true);
+      }
+    }
+  });
+
+  it('prefer the wastes, which is where they belong', () => {
+    const state = createGameState('FABRIC');
+    const onWastes = unitsOf(state, ANTAGONIST_FACTION_ID).filter(
+      (u) => state.map.tiles.get(hexKey(u.hex))!.terrain === 'ungovernedWastes',
+    );
+    expect(onWastes.length).toBeGreaterThan(0);
+  });
+
+  it('never share a tile with a player unit', () => {
+    for (const seed of SEEDS) {
+      const state = createGameState(seed);
+      const playerTiles = new Set(
+        unitsOf(state, PLAYER_FACTION_ID).map((u) => hexKey(u.hex)),
+      );
+      for (const raider of unitsOf(state, ANTAGONIST_FACTION_ID)) {
+        expect(playerTiles.has(hexKey(raider.hex))).toBe(false);
+      }
     }
   });
 });
