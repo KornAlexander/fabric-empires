@@ -13,6 +13,7 @@
 
 import { unitType, type Faction } from '../entities/index.js';
 import { addResources, empireIncome, growthThreshold } from '../rules/yields.js';
+import { fundResearch, researchReady } from '../rules/research.js';
 import type { GameState } from '../state/index.js';
 
 export interface TurnReport {
@@ -27,6 +28,15 @@ export interface TurnReport {
   readonly upkeepPaid: number;
   /** Cities that gained a citizen. */
   readonly grownCities: readonly string[];
+  /** Compute moved into research this turn. */
+  readonly researchSpent: number;
+  /**
+   * A topic that is fully funded and waiting for its challenge.
+   *
+   * The engine stops here on purpose: presenting a question is the app's job,
+   * and the result comes back through `completeResearch`.
+   */
+  readonly researchReadyTopicId: string | undefined;
   /** True when upkeep could not be paid in full. */
   readonly bankrupt: boolean;
 }
@@ -96,6 +106,8 @@ function upkeepPhase(state: GameState, factionId: string): TurnResult {
       },
       upkeepPaid: income.upkeep,
       grownCities: grown,
+      researchSpent: 0,
+      researchReadyTopicId: undefined,
       bankrupt,
     },
   };
@@ -125,10 +137,15 @@ function refreshPhase(state: GameState, factionId: string): GameState {
 export function endTurn(state: GameState): TurnResult {
   const factionId = state.activeFactionId;
   const afterUpkeep = upkeepPhase(state, factionId);
-  const refreshed = refreshPhase(afterUpkeep.state, factionId);
+  const funded = fundResearch(afterUpkeep.state, factionId);
+  const refreshed = refreshPhase(funded.state, factionId);
 
   return {
     state: { ...refreshed, turn: refreshed.turn + 1 },
-    report: afterUpkeep.report,
+    report: {
+      ...afterUpkeep.report,
+      researchSpent: funded.spent,
+      researchReadyTopicId: funded.readyTopicId ?? researchReady(funded.state),
+    },
   };
 }

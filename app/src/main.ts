@@ -5,6 +5,7 @@ import {
   centreOn,
   cityAt,
   clampToBounds,
+  completeResearch,
   createCamera,
   createGameState,
   endTurn,
@@ -18,12 +19,17 @@ import {
   panByScreen,
   previewAttack,
   reachable,
+  researchCost,
+  researchProgress,
+  researchable,
   resize,
   resolveAttack,
   selectableUnitAt,
   skipUnit,
+  startResearch,
   terrain,
   tileYields,
+  topicById,
   unitAt,
   unitType,
   unitsOf,
@@ -34,8 +40,17 @@ import {
   type Hex,
   type ReachableTile,
 } from '@fabric-empires/engine';
+import { Dp600ChallengeProvider } from '@fabric-empires/learn';
 import { drawMap } from './render/mapRenderer.js';
 import { drawEntities } from './render/entityRenderer.js';
+
+/**
+ * The learning layer, injected at the edge of the app.
+ *
+ * The engine receives only the topic graph and, later, a score. Everything
+ * about DP-600 lives on this side of the line (D35).
+ */
+const provider = new Dp600ChallengeProvider();
 
 const canvas = document.querySelector<HTMLCanvasElement>('#map')!;
 const ctx = canvas.getContext('2d')!;
@@ -56,9 +71,13 @@ const el = {
   actFortify: document.querySelector<HTMLButtonElement>('#act-fortify')!,
   actSkip: document.querySelector<HTMLButtonElement>('#act-skip')!,
   log: document.querySelector<HTMLElement>('#log')!,
+  resTitle: document.querySelector<HTMLElement>('#res-title')!,
+  resBar: document.querySelector<HTMLElement>('#res-bar')!,
+  resStatus: document.querySelector<HTMLElement>('#res-status')!,
+  resOptions: document.querySelector<HTMLElement>('#res-options')!,
 };
 
-let state: GameState = createGameState('FABRIC');
+let state: GameState = createGameState('FABRIC', { topics: provider.topics() });
 let camera: Camera = createCamera({ width: 1, height: 1 });
 let selectedUnitId: string | undefined;
 let reach: ReadonlyMap<string, ReachableTile> | undefined;
@@ -239,11 +258,83 @@ function doEndTurn(): void {
   }
   if (report.bankrupt) log('Upkeep could not be paid in full.', 'bad');
 
+  if (report.researchSpent > 0) {
+    log(`${report.researchSpent} Compute into research.`);
+  }
+  if (report.researchReadyTopicId) {
+    void resolveResearch(report.researchReadyTopicId);
+  }
+
   refreshSelection();
+  refreshResearch();
   dirty = true;
 }
 
 // Presentation ---------------------------------------------------------
+
+function refreshResearch(): void {
+  const current = state.research.current;
+  const node = current ? topicById(state.topics, current) : undefined;
+
+  if (node) {
+    const cost = researchCost(node);
+    const pct = Math.min(100, Math.round((state.research.progress / cost) * 100));
+    el.resTitle.textContent = node.label;
+    el.resBar.style.width = `${pct}%`;
+    el.resStatus.textContent = `${node.cluster}  ${state.research.progress}/${cost} Compute`;
+  } else {
+    el.resTitle.textContent = 'Researching nothing';
+    el.resBar.style.width = '0%';
+    el.resStatus.textContent = `${state.research.known.length}/${state.topics.nodes.length} known  (${Math.round(researchProgress(state) * 100)}%)`;
+  }
+
+  el.resOptions.replaceChildren();
+  for (const option of researchable(state)) {
+    if (option.id === current) continue;
+    const button = document.createElement('button');
+    button.innerHTML =
+      `<span class="cluster">${option.cluster} &middot; ${researchCost(option)} Compute</span><br>${option.label}`;
+    button.addEventListener('click', () => {
+      const result = startResearch(state, option.id);
+      if (!result.ok) {
+        log(result.reason, 'bad');
+        return;
+      }
+      state = result.state;
+      log(`Researching: ${option.label}`);
+      refreshResearch();
+    });
+    el.resOptions.append(button);
+  }
+}
+
+/**
+ * Resolve a funded topic.
+ *
+ * The engine reports a topic as ready and stops; presenting the challenge is
+ * the app's job, and the score is all that goes back across the boundary.
+ */
+async function resolveResearch(topicId: string): Promise<void> {
+  const node = topicById(state.topics, topicId);
+  const outcome = await provider.present({
+    kind: 'research',
+    topicId,
+    tier: 1,
+    timeLimitMs: 30_000,
+  });
+
+  const done = completeResearch(state, outcome.score);
+  if (!done.ok) return;
+  state = done.state;
+
+  if (outcome.score >= 0) {
+    log(`Learned: ${node?.label ?? topicId}`, 'good');
+  } else {
+    log(`${node?.label ?? topicId} not yet mastered. Try again next turn.`, 'bad');
+  }
+  refreshResearch();
+  dirty = true;
+}
 
 function describeTile(h: Hex | undefined): void {
   if (!h) {
@@ -304,7 +395,7 @@ function fitCanvas(): void {
 
 function newGame(rawSeed: string): void {
   const seed = normaliseSeed(rawSeed);
-  state = createGameState(seed);
+  state = createGameState(seed, { topics: provider.topics() });
   el.seedInput.value = seed;
   el.log.replaceChildren();
   log(`New empire on seed ${seed}.`);
@@ -318,6 +409,7 @@ function newGame(rawSeed: string): void {
     select(undefined);
   }
   refreshHud();
+  refreshResearch();
   dirty = true;
 }
 
@@ -476,6 +568,16 @@ declare global {
       reachableCount: () => number;
       reachableHexes: () => { q: number; r: number; cost: number }[];
       unitHex: (unitId: string) => Hex | undefined;
+      research: () => {
+        known: number;
+        total: number;
+        current: string | undefined;
+        currentLabel: string | undefined;
+        progress: number;
+        options: { id: string; label: string; cluster: string; cost: number }[];
+      };
+      startResearch: (topicId: string) => boolean;
+      grantCompute: (amount: number) => void;
       clickHex: (hex: Hex) => void;
       endTurn: () => void;
     };
@@ -501,6 +603,42 @@ window.__fabricEmpires = {
       cost: entry.cost,
     })),
   unitHex: (unitId: string) => state.units.get(unitId)?.hex,
+  research: () => {
+    const current = state.research.current;
+    const node = current ? topicById(state.topics, current) : undefined;
+    return {
+      known: state.research.known.length,
+      total: state.topics.nodes.length,
+      current,
+      currentLabel: node?.label,
+      progress: state.research.progress,
+      options: researchable(state).map((o) => ({
+        id: o.id,
+        label: o.label,
+        cluster: o.cluster,
+        cost: researchCost(o),
+      })),
+    };
+  },
+  startResearch: (topicId: string) => {
+    const result = startResearch(state, topicId);
+    if (!result.ok) return false;
+    state = result.state;
+    refreshResearch();
+    return true;
+  },
+  grantCompute: (amount: number) => {
+    // Test affordance: skip the twenty turns of economy it would otherwise
+    // take to fund a topic.
+    const factions = new Map(state.factions);
+    const player = factions.get(PLAYER_FACTION_ID)!;
+    factions.set(PLAYER_FACTION_ID, {
+      ...player,
+      resources: { ...player.resources, compute: player.resources.compute + amount },
+    });
+    state = { ...state, factions };
+    refreshHud();
+  },
   clickHex: (hex) => actOn(hex),
   endTurn: () => doEndTurn(),
 };

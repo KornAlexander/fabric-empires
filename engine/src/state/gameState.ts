@@ -29,6 +29,8 @@ import {
   type Unit,
   type UnitTypeId,
 } from '../entities/index.js';
+import { GENERIC_TOPIC_GRAPH, type TopicGraph } from '../challenge/index.js';
+import { EMPTY_RESEARCH, type ResearchState } from '../rules/research.js';
 
 export type Difficulty = 'apprentice' | 'analyst' | 'architect';
 
@@ -47,6 +49,14 @@ export interface GameState {
   readonly factions: ReadonlyMap<string, Faction>;
   readonly units: ReadonlyMap<string, Unit>;
   readonly cities: ReadonlyMap<string, City>;
+  /**
+   * The tech tree, supplied by the challenge provider.
+   *
+   * Held on the state rather than threaded through every call, but never
+   * serialised: it belongs to the provider, and a save rebuilds it on load.
+   */
+  readonly topics: TopicGraph;
+  readonly research: ResearchState;
   readonly activeFactionId: string;
   /** Monotonic counter behind entity ids, so ids stay stable across saves. */
   readonly nextEntityId: number;
@@ -68,6 +78,8 @@ export interface NewGameOptions {
   readonly map?: Partial<MapOptions>;
   /** Set false for a sandbox with no opposition. */
   readonly spawnAntagonists?: boolean;
+  /** Tech tree to play with. Defaults to the subject-free generic tree. */
+  readonly topics?: TopicGraph;
 }
 
 // Lookups ---------------------------------------------------------------
@@ -310,6 +322,8 @@ export function createGameState(
     factions,
     units,
     cities: new Map(),
+    topics: options.topics ?? GENERIC_TOPIC_GRAPH,
+    research: EMPTY_RESEARCH,
     activeFactionId: PLAYER_FACTION_ID,
     nextEntityId: nextId,
   };

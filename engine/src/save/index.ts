@@ -12,6 +12,8 @@
 
 import { generateMap, type MapOptions } from '../map/index.js';
 import type { City, Faction, Unit } from '../entities/index.js';
+import { GENERIC_TOPIC_GRAPH, type TopicGraph } from '../challenge/index.js';
+import { EMPTY_RESEARCH, type ResearchState } from '../rules/research.js';
 import type { Difficulty, GameState } from '../state/index.js';
 
 export const SAVE_VERSION = 1;
@@ -25,6 +27,12 @@ export interface SaveFile {
   readonly factions: readonly Faction[];
   readonly units: readonly Unit[];
   readonly cities: readonly City[];
+  /**
+   * Research progress travels with the save; the topic GRAPH does not.
+   * The graph belongs to the challenge provider, so a load takes it from
+   * whichever provider is active rather than trusting a stale copy on disk.
+   */
+  readonly research: ResearchState;
   readonly activeFactionId: string;
   readonly nextEntityId: number;
 }
@@ -39,6 +47,7 @@ export function toSaveFile(state: GameState): SaveFile {
     factions: [...state.factions.values()],
     units: [...state.units.values()],
     cities: [...state.cities.values()],
+    research: state.research,
     activeFactionId: state.activeFactionId,
     nextEntityId: state.nextEntityId,
   };
@@ -76,7 +85,10 @@ export function migrate(save: SaveFile): SaveFile {
   return current;
 }
 
-export function fromSaveFile(save: SaveFile): GameState {
+export function fromSaveFile(
+  save: SaveFile,
+  topics: TopicGraph = GENERIC_TOPIC_GRAPH,
+): GameState {
   if (typeof save.version !== 'number') {
     throw new Error('Save file has no version');
   }
@@ -98,12 +110,17 @@ export function fromSaveFile(save: SaveFile): GameState {
     factions: new Map(migrated.factions.map((f) => [f.id, f])),
     units: new Map(migrated.units.map((u) => [u.id, u])),
     cities: new Map(migrated.cities.map((c) => [c.id, c])),
+    topics,
+    research: migrated.research ?? EMPTY_RESEARCH,
     activeFactionId: migrated.activeFactionId,
     nextEntityId: migrated.nextEntityId,
   };
 }
 
-export function deserialise(json: string): GameState {
+export function deserialise(
+  json: string,
+  topics: TopicGraph = GENERIC_TOPIC_GRAPH,
+): GameState {
   let parsed: unknown;
   try {
     parsed = JSON.parse(json);
@@ -113,5 +130,5 @@ export function deserialise(json: string): GameState {
   if (typeof parsed !== 'object' || parsed === null) {
     throw new Error('Save file is not an object');
   }
-  return fromSaveFile(parsed as SaveFile);
+  return fromSaveFile(parsed as SaveFile, topics);
 }
