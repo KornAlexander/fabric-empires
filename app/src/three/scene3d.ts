@@ -42,6 +42,7 @@ import {
   type Terrain,
 } from './terrain.js';
 import { createWater, type WaterSurface } from './water.js';
+import { buildScatter, type Scatter } from './scatter.js';
 import { buildCity, buildUnit, disposeEntityMaterials } from './entities.js';
 
 export interface Scene3DView {
@@ -93,6 +94,9 @@ export interface Scene3D {
     minY: number;
     maxY: number;
     upFacing: number;
+    detailNormalZ: number;
+    trees: number;
+    rocks: number;
   } | undefined;
   dispose(): void;
 }
@@ -130,6 +134,7 @@ export function createScene3D(
   scene.add(terrainGroup, entityGroup, overlayGroup);
 
   let terrain: Terrain | undefined;
+  let scatter: Scatter | undefined;
   let water: WaterSurface | undefined;
   let groundMesh: Mesh | undefined;
   let mapRadius = 0;
@@ -181,6 +186,10 @@ export function createScene3D(
         terrainGroup.remove(terrain.group);
         terrain.dispose();
       }
+      if (scatter) {
+        terrainGroup.remove(scatter.group);
+        scatter.dispose();
+      }
       if (water) {
         scene.remove(water.mesh);
         water.dispose();
@@ -190,6 +199,9 @@ export function createScene3D(
       terrainGroup.add(terrain.group);
       groundMesh = terrain.group.children.find((c): c is Mesh => c instanceof Mesh);
       mapRadius = map.radius;
+
+      scatter = buildScatter(map, terrain);
+      terrainGroup.add(scatter.group);
 
       // The sea extends well past the land so the horizon is water rather
       // than an abrupt edge where the map stops.
@@ -453,6 +465,8 @@ export function createScene3D(
         maxY,
         upFacing: up / counted,
         detailNormalZ: terrain?.detailNormalZ ?? 0,
+        trees: scatter?.counts.trees ?? 0,
+        rocks: scatter?.counts.rocks ?? 0,
       };
     },
 
@@ -460,6 +474,7 @@ export function createScene3D(
       controls.dispose();
       clearOverlays();
       terrain?.dispose();
+      scatter?.dispose();
       water?.dispose();
       disposeEntityMaterials();
       world.dispose();

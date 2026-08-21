@@ -103,13 +103,28 @@ Not delivered, and visible if you look for it: no surface micro-detail
 (see below), no vegetation or props, primitive-built units rather than
 modelled ones, and flat per-biome colour beyond the noise variation.
 
-The micro-detail gap has a specific cause worth recording. A tiled detail
-normal map sampled from world position is the natural fix, but three derives
-its tangent frame from the derivatives of the same UV set, and a world-space
-UV over a hex-subdivided surface yields a frame that is degenerate on steep
-faces and wrongly handed elsewhere. Measured on a fixed patch of ground, the
-map cost the terrain more than a third of its light: 0.16 mean luminance with
-it, 0.37 without. It is removed until the mesh generates real tangents.
+The micro-detail gap has a specific cause worth recording, because it was
+attacked twice and abandoned twice. A tiled detail normal map sampled from
+world position is the natural fix. The first attempt let three derive the
+tangent frame from the derivatives of that world-space UV, which is
+degenerate on steep faces and wrongly handed elsewhere. The second supplied
+an explicit tangent attribute computed analytically from the known linear UV
+mapping, which is correct, and still measured darker: 0.31 mean luminance
+against 0.45 with no map at all. The remaining cause is the map itself, since
+any noise-derived normal strong enough to be visible at this zoom tips a
+large share of the surface far enough to lose the sun. An albedo detail map
+provides the mottling instead: it multiplies colour rather than bending
+normals, so it cannot cost the scene its light.
+
+### 16.3 Ground cover
+
+Roughly 1600 trees and 500 boulders, instanced, one draw call per type,
+scattered by biome with a noise field so woodland forms patches instead of
+an even sprinkle. This turned out to be the largest gain in perceived realism
+per hour spent, and for a reason worth remembering: bare shaded ground reads
+as a model of a landscape, whereas the same ground with things standing on it
+reads as a place, because the props give the eye a scale reference that a
+smooth surface cannot.
 
 ### 16.2 The lighting bug hunt, and the lesson
 

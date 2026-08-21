@@ -32,7 +32,15 @@ import {
   SRGBColorSpace,
 } from 'three';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { hexKey, hexNeighbour, type GameMap, type Hex, type MapTile, type TerrainId } from '@fabric-empires/engine';
+import {
+  hexKey,
+  hexNeighbour,
+  hexRound,
+  type GameMap,
+  type Hex,
+  type MapTile,
+  type TerrainId,
+} from '@fabric-empires/engine';
 import { fbm2, greyCanvas, heightCanvas } from './noise.js';
 
 /** World units per hex. Everything else is expressed in terms of this. */
@@ -115,6 +123,14 @@ export interface Terrain {
   heightAt(h: Hex): number;
   /** Height of the smooth control surface anywhere, for overlays. */
   surfaceAt(x: number, z: number): number;
+  /**
+   * Ground height at an arbitrary point, by barycentric interpolation.
+   *
+   * Needed to scatter props, which land between vertices. A downward
+   * raycast would be exact but is linear in triangle count per query, and
+   * there are thousands of props against two hundred thousand triangles.
+   */
+  sampleHeight(x: number, z: number): number;
   setGridVisible(visible: boolean): void;
   readonly triangleCount: number;
   /**
@@ -508,12 +524,10 @@ export function buildTerrain(map: GameMap, subdivisions = 2): Terrain {
   roughTexture.repeat.set(12, 12);
 
   /**
-   * Albedo detail, which is the safe half of the texturing problem.
+   * Albedo detail.
    *
    * An albedo map only multiplies the surface colour, so unlike a normal map
-   * it needs no tangent frame and cannot cost the surface its light. It is
-   * therefore the right place to put back the mottling that the removed
-   * normal map was supposed to provide.
+   * it needs no tangent frame and cannot cost the surface its light.
    */
   const albedoHeight = heightCanvas(detailSize, 9, { octaves: 5, seed: 57 });
   const albedoTexture = new CanvasTexture(greyCanvas(albedoHeight, detailSize, 0.68, 1.0));
@@ -521,6 +535,23 @@ export function buildTerrain(map: GameMap, subdivisions = 2): Terrain {
   albedoTexture.wrapS = RepeatWrapping;
   albedoTexture.wrapT = RepeatWrapping;
 
+  /**
+   * No detail normal map on the ground.
+   *
+   * Tried twice and abandoned twice, which is worth recording so it is not
+   * tried a third time. The first attempt let three derive the tangent frame
+   * from world-space UV derivatives, which is degenerate on steep faces. The
+   * second supplied an explicit tangent attribute, computed analytically
+   * from the known linear UV mapping, which is correct and still measured
+   * darker: 0.31 mean luminance against 0.45 without the map at all.
+   *
+   * The remaining cause is the map itself. A noise-derived normal at any
+   * strength that is visible at this zoom tips a large fraction of the
+   * surface far enough to lose the sun, and this camera looks at ground from
+   * tens of hex-widths away where the detail is sub-pixel anyway. The albedo
+   * map below provides the mottling instead, at no cost to the lighting,
+   * because it multiplies colour rather than bending normals.
+   */
   const material = new MeshStandardMaterial({
     vertexColors: true,
     map: albedoTexture,
@@ -612,7 +643,55 @@ export function buildTerrain(map: GameMap, subdivisions = 2): Terrain {
     },
 
     surfaceAt(x, z) {
-      return cornerHeight(x, z);
+      return finishedHeight(x, z, cornerHeight(x, z));
+    },
+
+    sampleHeight(x, z) {
+      const axial = worldToAxial(x, z);
+      const h = hexRound(axial.q, axial.r);
+      const key = hexKey(h);
+      const centre = hexToWorld(h);
+      const centreY = finishedHeight(centre.x, centre.z, centreHeight.get(key) ?? 0);
+
+      // Which of the six wedges the point falls in, then a barycentric blend
+      // of that wedge's three known heights.
+      const local = { x: x - centre.x, z: z - centre.z };
+      const angle = Math.atan2(local.z, local.x);
+      let best = 0;
+      let bestDot = -Infinity;
+      for (let i = 0; i < 6; i++) {
+        const a = cornerOffset(i);
+        const b = cornerOffset((i + 1) % 6);
+        const mid = Math.atan2((a.z + b.z) / 2, (a.x + b.x) / 2);
+        const dot = Math.cos(angle - mid);
+        if (dot > bestDot) {
+          bestDot = dot;
+          best = i;
+        }
+      }
+      const o1 = cornerOffset(best);
+      const o2 = cornerOffset((best + 1) % 6);
+      const y1 = finishedHeight(
+        centre.x + o1.x,
+        centre.z + o1.z,
+        cornerHeight(centre.x + o1.x, centre.z + o1.z),
+      );
+      const y2 = finishedHeight(
+        centre.x + o2.x,
+        centre.z + o2.z,
+        cornerHeight(centre.x + o2.x, centre.z + o2.z),
+      );
+
+      // Solve local = u * o1 + v * o2.
+      const det = o1.x * o2.z - o1.z * o2.x;
+      if (Math.abs(det) < 1e-6) return centreY;
+      let u = (local.x * o2.z - local.z * o2.x) / det;
+      let v = (o1.x * local.z - o1.z * local.x) / det;
+      u = Math.min(1, Math.max(0, u));
+      v = Math.min(1, Math.max(0, v));
+      const w = Math.max(0, 1 - u - v);
+      const total = u + v + w || 1;
+      return (centreY * w + y1 * u + y2 * v) / total;
     },
 
     setGridVisible(visible) {
