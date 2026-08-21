@@ -95,6 +95,7 @@ export interface Scene3D {
     maxY: number;
     upFacing: number;
     detailNormalZ: number;
+    erosionMaxDelta: number;
     trees: number;
     rocks: number;
   } | undefined;
@@ -295,7 +296,7 @@ export function createScene3D(
           addPatch(
             entry.hex,
             entry.stops ? MOVE_STOP_COLOUR : MOVE_COLOUR,
-            entry.stops ? 0.24 : 0.17,
+            entry.stops ? 0.15 : 0.1,
             0.035,
           );
         }
@@ -303,15 +304,15 @@ export function createScene3D(
       if (view.attackTargets) {
         for (const key of view.attackTargets) {
           const tile = state.map.tiles.get(key);
-          if (tile) addPatch(tile.hex, ATTACK_COLOUR, 0.32, 0.045);
+          if (tile) addPatch(tile.hex, ATTACK_COLOUR, 0.22, 0.045);
         }
       }
       if (view.hover && state.map.tiles.has(hexKey(view.hover))) {
-        addPatch(view.hover, HOVER_COLOUR, 0.16, 0.05);
+        addPatch(view.hover, HOVER_COLOUR, 0.1, 0.05);
       }
       if (view.selectedUnitId) {
         const unit = state.units.get(view.selectedUnitId);
-        if (unit) addPatch(unit.hex, SELECT_COLOUR, 0.34, 0.055);
+        if (unit) addPatch(unit.hex, SELECT_COLOUR, 0.24, 0.055);
       }
     },
 
@@ -465,6 +466,7 @@ export function createScene3D(
         maxY,
         upFacing: up / counted,
         detailNormalZ: terrain?.detailNormalZ ?? 0,
+        erosionMaxDelta: terrain?.erosionMaxDelta ?? 0,
         trees: scatter?.counts.trees ?? 0,
         rocks: scatter?.counts.rocks ?? 0,
       };

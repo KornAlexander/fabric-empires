@@ -88,7 +88,7 @@ export function createWorld(canvas: HTMLCanvasElement, quality = HIGH_QUALITY): 
   // and at the first plausible-looking value 55 percent of the frame was
   // clipped to pure white. Exposure here is a property of the sky, not of
   // how bright the ground is supposed to look.
-  renderer.toneMappingExposure = 0.72;
+  renderer.toneMappingExposure = 0.78;
 
   const scene = new Scene();
   const camera = new PerspectiveCamera(42, 1, 0.5, 2400);
@@ -133,11 +133,16 @@ export function createWorld(canvas: HTMLCanvasElement, quality = HIGH_QUALITY): 
   // while raising the sun dims the sky relative to the ground, which is the
   // only way to stop a scattering sky clipping without leaving the land in
   // the dark.
-  const sun = new DirectionalLight(0xfff1dc, 8.0);
+  const sun = new DirectionalLight(0xffe9c8, 8.6);
   sun.castShadow = true;
   sun.shadow.mapSize.set(quality.shadowMapSize, quality.shadowMapSize);
-  sun.shadow.bias = -0.0002;
-  sun.shadow.normalBias = 0.025;
+  // Tuned for a low sun. At grazing angles the depth gradient across a
+  // shadow-map texel is large, and a bias set at noon leaves hard dark
+  // ribbons of self-shadowing running along every slope in the afternoon.
+  // Normal bias, which offsets the lookup along the surface normal, is the
+  // one that actually fixes it; depth bias alone just moves the artefact.
+  sun.shadow.bias = -0.0004;
+  sun.shadow.normalBias = 0.09;
   scene.add(sun);
   scene.add(sun.target);
 
@@ -158,7 +163,7 @@ export function createWorld(canvas: HTMLCanvasElement, quality = HIGH_QUALITY): 
    * unit of colour removed from the scene. Enough to keep shadows from going
    * black, and no more.
    */
-  const fill = new HemisphereLight(0xa8c8ee, 0x6b5a42, 0.55);
+  const fill = new HemisphereLight(0xa8c8ee, 0x6b5a42, 1.75);
   scene.add(fill);
 
   const pmrem = new PMREMGenerator(renderer);
@@ -207,16 +212,20 @@ export function createWorld(canvas: HTMLCanvasElement, quality = HIGH_QUALITY): 
   }
 
   /**
-   * Default sun.
+   * Default sun: mid-afternoon rather than noon.
    *
    * The azimuth is not a free choice. The opening camera sits on the +Z side
-   * looking back at the origin, and the first version put the sun at 145
+   * looking back at the origin, and an early version put the sun at 145
    * degrees, behind the island: the establishing shot of the whole game was
-   * a backlit silhouette lit only by sky, which is exactly the ice-blue
-   * scene the lighting rebalance was supposed to fix. Slightly off-axis from
-   * the camera keeps the shadows visible without flattening the relief.
+   * a backlit silhouette lit only by sky.
+   *
+   * The elevation is not free either, for the opposite reason. A high sun
+   * casts almost no shadow, and shadow is how a viewer reads relief on a
+   * screen. Dropping it to the low thirties roughly doubles the length of
+   * every shadow on the map and is the single cheapest thing that makes the
+   * terrain look three-dimensional.
    */
-  setSunAngle(46, 28);
+  setSunAngle(36, 34);
 
   // Post-processing ------------------------------------------------------
   let composer = new EffectComposer(renderer);

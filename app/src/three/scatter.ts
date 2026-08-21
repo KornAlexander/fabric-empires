@@ -42,13 +42,13 @@ interface Cover {
 
 const COVER: Readonly<Record<TerrainId, Cover>> = Object.freeze({
   onelake: { trees: 0, rocks: 0 },
-  rawFilePlains: { trees: 3.2, rocks: 0.25 },
-  deltaHighlands: { trees: 0.5, rocks: 1.1 },
-  parquetQuarry: { trees: 0.1, rocks: 2.2 },
-  legacySwamp: { trees: 2.4, rocks: 0.1 },
+  rawFilePlains: { trees: 2.4, rocks: 0.3 },
+  deltaHighlands: { trees: 0.55, rocks: 1.1 },
+  parquetQuarry: { trees: 0.12, rocks: 2.2 },
+  legacySwamp: { trees: 1.9, rocks: 0.12 },
   semanticPeaks: { trees: 0, rocks: 2.6 },
   geothermalVent: { trees: 0, rocks: 1.4 },
-  ungovernedWastes: { trees: 0.2, rocks: 0.9 },
+  ungovernedWastes: { trees: 0.15, rocks: 0.9 },
 });
 
 /** Deterministic per-tile, per-index random in 0..1. */
@@ -95,18 +95,31 @@ export function buildScatter(map: GameMap, terrain: Terrain): Scatter {
   const group = new Group();
 
   const trunkMaterial = new MeshStandardMaterial({
-    color: new Color('#4a5f3a'),
+    color: new Color('#ffffff'),
     roughness: 0.95,
     metalness: 0,
   });
   const rockMaterial = new MeshStandardMaterial({
-    color: new Color('#7c7970'),
+    color: new Color('#ffffff'),
     roughness: 0.92,
     metalness: 0,
   });
 
   const treeSlots: Matrix4[] = [];
+  const treeTints: Color[] = [];
   const rockSlots: Matrix4[] = [];
+  const rockTints: Color[] = [];
+
+  // Two ends of a plausible conifer range, plus a sickly tone for the swamp.
+  const darkNeedle = new Color('#33482c');
+  const lightNeedle = new Color('#6f8a49');
+  const sourNeedle = new Color('#5b6330');
+  // Stone, light and dark. These must be built from colours, not from raw
+  // numbers: an instance colour multiplies a white base material directly in
+  // linear space, so a plausible-looking 0.7 to 1.2 is roughly five times an
+  // ordinary rock albedo and every boulder on the map glows.
+  const paleStone = new Color('#948f85');
+  const darkStone = new Color('#5f5c55');
 
   const position = new Vector3();
   const quaternion = new Quaternion();
@@ -127,7 +140,7 @@ export function buildScatter(map: GameMap, terrain: Terrain): Scatter {
     // than an even sprinkle at exactly the tile rate.
     const clump = fbm2(centre.x * 0.09, centre.z * 0.09, { octaves: 3, seed: 77 });
 
-    const place = (count: number, slots: Matrix4[], salt: number, isTree: boolean) => {
+    const place = (count: number, slots: Matrix4[], tints: Color[], salt: number, isTree: boolean) => {
       const scaled = count * (isTree ? 0.35 + clump * 1.5 : 0.6 + clump * 0.8);
       const whole = Math.floor(scaled);
       const extra = rand(tile.hex.q, tile.hex.r, salt) < scaled - whole ? 1 : 0;
@@ -145,14 +158,24 @@ export function buildScatter(map: GameMap, terrain: Terrain): Scatter {
 
         position.set(x, y - 0.02, z);
         quaternion.setFromAxisAngle(up, c * Math.PI * 2);
-        const size = isTree ? 0.72 + c * 0.85 : 0.5 + c * 1.3;
-        scale.set(size, isTree ? size * (0.85 + a * 0.5) : size * (0.7 + a * 0.6), size);
+        // Wide size spread on purpose. Uniform trees read as a texture or a
+        // moss mat rather than as a wood, because a real canopy is broken up
+        // by the height difference between old trees and young ones.
+        const size = isTree ? 0.55 + c * 1.5 : 0.5 + c * 1.3;
+        scale.set(size, isTree ? size * (0.8 + a * 0.85) : size * (0.7 + a * 0.6), size);
         slots.push(new Matrix4().compose(position, quaternion, scale));
+
+        if (isTree) {
+          const base = tile.terrain === 'legacySwamp' ? sourNeedle : darkNeedle;
+          tints.push(base.clone().lerp(lightNeedle, b * 0.85));
+        } else {
+          tints.push(darkStone.clone().lerp(paleStone, b));
+        }
       }
     };
 
-    place(cover.trees, treeSlots, 101, true);
-    place(cover.rocks, rockSlots, 811, false);
+    place(cover.trees, treeSlots, treeTints, 101, true);
+    place(cover.rocks, rockSlots, rockTints, 811, false);
   }
 
   const treeGeo = treeGeometry();
@@ -162,8 +185,12 @@ export function buildScatter(map: GameMap, terrain: Terrain): Scatter {
     const trees = new InstancedMesh(treeGeo, trunkMaterial, treeSlots.length);
     trees.castShadow = true;
     trees.receiveShadow = true;
-    for (let i = 0; i < treeSlots.length; i++) trees.setMatrixAt(i, treeSlots[i]!);
+    for (let i = 0; i < treeSlots.length; i++) {
+      trees.setMatrixAt(i, treeSlots[i]!);
+      trees.setColorAt(i, treeTints[i]!);
+    }
     trees.instanceMatrix.needsUpdate = true;
+    if (trees.instanceColor) trees.instanceColor.needsUpdate = true;
     // Instanced meshes have no useful bounding sphere until it is computed,
     // and without one three culls the whole batch as soon as the origin
     // leaves the frustum: the forest vanishes when the camera pans.
@@ -175,8 +202,12 @@ export function buildScatter(map: GameMap, terrain: Terrain): Scatter {
     const rocks = new InstancedMesh(rockGeo, rockMaterial, rockSlots.length);
     rocks.castShadow = true;
     rocks.receiveShadow = true;
-    for (let i = 0; i < rockSlots.length; i++) rocks.setMatrixAt(i, rockSlots[i]!);
+    for (let i = 0; i < rockSlots.length; i++) {
+      rocks.setMatrixAt(i, rockSlots[i]!);
+      rocks.setColorAt(i, rockTints[i]!);
+    }
     rocks.instanceMatrix.needsUpdate = true;
+    if (rocks.instanceColor) rocks.instanceColor.needsUpdate = true;
     rocks.computeBoundingSphere();
     group.add(rocks);
   }

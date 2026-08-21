@@ -17,6 +17,7 @@
  */
 
 import {
+  AdditiveBlending,
   BufferAttribute,
   BufferGeometry,
   CanvasTexture,
@@ -42,6 +43,7 @@ import {
   type TerrainId,
 } from '@fabric-empires/engine';
 import { fbm2, greyCanvas, heightCanvas } from './noise.js';
+import { erode, sampleGrid } from './erosion.js';
 
 /** World units per hex. Everything else is expressed in terms of this. */
 export const HEX_RADIUS = 1;
@@ -139,6 +141,8 @@ export interface Terrain {
    * responding to the sun.
    */
   readonly detailNormalZ: number;
+  /** Largest height change made by the erosion pass, in world units. */
+  readonly erosionMaxDelta: number;
   dispose(): void;
 }
 
@@ -261,6 +265,74 @@ export function buildTerrain(map: GameMap, subdivisions = 2): Terrain {
     if (!corner) return fallback;
     return corner.colour.clone().multiplyScalar(1 / corner.count);
   };
+
+  // Stage 1b: erosion ----------------------------------------------------
+  //
+  // Run on a regular grid rather than on the hex lattice, because water does
+  // not care about the playing field and a droplet needs a surface it can
+  // walk continuously. The grid is sampled from the same control surface the
+  // mesh is about to be built from, eroded, and the difference is applied to
+  // the finished vertices further down.
+  const worldHalfX = Math.sqrt(3) * HEX_RADIUS * map.radius + HEX_RADIUS;
+  const worldHalfZ = 1.5 * HEX_RADIUS * map.radius + HEX_RADIUS;
+  // Roughly five cells per hex: finer than the mesh can represent is wasted
+  // work, coarser and the channels come out blocky.
+  const cellSize = HEX_RADIUS / 5;
+  const gridW = Math.ceil((worldHalfX * 2) / cellSize) + 1;
+  const gridD = Math.ceil((worldHalfZ * 2) / cellSize) + 1;
+  const gridToWorldX = (gx: number) => gx * cellSize - worldHalfX;
+  const gridToWorldZ = (gy: number) => gy * cellSize - worldHalfZ;
+  const worldToGridX = (x: number) => (x + worldHalfX) / cellSize;
+  const worldToGridZ = (z: number) => (z + worldHalfZ) / cellSize;
+
+  /** The pre-erosion surface at any point: control lattice plus detail. */
+  function baseHeightAt(x: number, z: number): number {
+    const axial = worldToAxial(x, z);
+    const h = hexRound(axial.q, axial.r);
+    const tile = map.tiles.get(hexKey(h));
+    if (!tile) return SEA_LEVEL - 2;
+    const centre = hexToWorld(h);
+    const local = { x: x - centre.x, z: z - centre.z };
+
+    let best = 0;
+    let bestDot = -Infinity;
+    for (let i = 0; i < 6; i++) {
+      const a = cornerOffset(i);
+      const b = cornerOffset((i + 1) % 6);
+      const mid = Math.atan2((a.z + b.z) / 2, (a.x + b.x) / 2);
+      const dot = Math.cos(Math.atan2(local.z, local.x) - mid);
+      if (dot > bestDot) {
+        bestDot = dot;
+        best = i;
+      }
+    }
+    const o1 = cornerOffset(best);
+    const o2 = cornerOffset((best + 1) % 6);
+    const det = o1.x * o2.z - o1.z * o2.x;
+    let u = 0;
+    let v = 0;
+    if (Math.abs(det) > 1e-6) {
+      u = Math.min(1, Math.max(0, (local.x * o2.z - local.z * o2.x) / det));
+      v = Math.min(1, Math.max(0, (o1.x * local.z - o1.z * local.x) / det));
+    }
+    const w = Math.max(0, 1 - u - v);
+    const total = u + v + w || 1;
+    const centreY = centreHeight.get(hexKey(h)) ?? 0;
+    const y1 = cornerHeight(centre.x + o1.x, centre.z + o1.z);
+    const y2 = cornerHeight(centre.x + o2.x, centre.z + o2.z);
+    const control = (centreY * w + y1 * u + y2 * v) / total;
+    return control + detailAt(x, z) * TERRAIN_PROFILES[tile.terrain].roughness;
+  }
+
+  const erosionField = new Float32Array(gridW * gridD);
+  for (let gy = 0; gy < gridD; gy++) {
+    for (let gx = 0; gx < gridW; gx++) {
+      erosionField[gy * gridW + gx] = baseHeightAt(gridToWorldX(gx), gridToWorldZ(gy));
+    }
+  }
+  const erosion = erode(erosionField, gridW, gridD, cellSize);
+  const erosionAt = (x: number, z: number) =>
+    sampleGrid(erosion.delta, gridW, gridD, worldToGridX(x), worldToGridZ(z));
 
   // Stage 2: subdivide and displace --------------------------------------
   const steps = Math.max(1, 2 ** subdivisions);
@@ -422,6 +494,22 @@ export function buildTerrain(map: GameMap, subdivisions = 2): Terrain {
     }
   }
 
+  /**
+   * Erosion is applied last, after smoothing.
+   *
+   * Order matters and the obvious order is wrong. The Laplacian pass exists
+   * to remove the hex-umbrella creases, and it is an aggressive low-pass
+   * filter: run it after erosion and it removes the drainage channels along
+   * with the creases, which is most of the point of having simulated them.
+   */
+  {
+    const position = welded.getAttribute('position') as BufferAttribute;
+    for (let i = 0; i < position.count; i++) {
+      position.setY(i, position.getY(i) + erosionAt(position.getX(i), position.getZ(i)));
+    }
+    position.needsUpdate = true;
+  }
+
   welded.computeVertexNormals();
 
   /**
@@ -469,6 +557,54 @@ export function buildTerrain(map: GameMap, subdivisions = 2): Terrain {
   const snow = new Color('#b9c3c9');
   const tint = new Color();
 
+  /**
+   * Cavity occlusion, baked per vertex.
+   *
+   * Screen-space ambient occlusion handles contact between separate objects
+   * well and self-occlusion within a single large mesh badly, because the
+   * features are often larger than its sample radius. A vertex that sits
+   * below the average of its own neighbours, measured along its normal, is
+   * in a hollow, and gullies are exactly that. Darkening those is what makes
+   * the eroded channels read as cut into the ground rather than painted on.
+   */
+  const cavity = new Float32Array(pos.count);
+  {
+    const index = welded.getIndex();
+    if (index) {
+      const sumX = new Float32Array(pos.count);
+      const sumY = new Float32Array(pos.count);
+      const sumZ = new Float32Array(pos.count);
+      const counts = new Uint16Array(pos.count);
+      const link = (from: number, to: number) => {
+        sumX[from] = sumX[from]! + pos.getX(to);
+        sumY[from] = sumY[from]! + pos.getY(to);
+        sumZ[from] = sumZ[from]! + pos.getZ(to);
+        counts[from] = counts[from]! + 1;
+      };
+      for (let t = 0; t < index.count; t += 3) {
+        const a = index.getX(t);
+        const b = index.getX(t + 1);
+        const c = index.getX(t + 2);
+        link(a, b);
+        link(a, c);
+        link(b, a);
+        link(b, c);
+        link(c, a);
+        link(c, b);
+      }
+      for (let i = 0; i < pos.count; i++) {
+        const n = counts[i]!;
+        if (n === 0) continue;
+        const dx = sumX[i]! / n - pos.getX(i);
+        const dy = sumY[i]! / n - pos.getY(i);
+        const dz = sumZ[i]! / n - pos.getZ(i);
+        // Positive means the neighbourhood rises away along the normal.
+        const along = dx * nrm.getX(i) + dy * nrm.getY(i) + dz * nrm.getZ(i);
+        cavity[i] = Math.min(1, Math.max(0, along * 4.5));
+      }
+    }
+  }
+
   for (let i = 0; i < pos.count; i++) {
     const y = pos.getY(i);
     const slope = 1 - Math.min(1, Math.max(0, nrm.getY(i)));
@@ -488,8 +624,24 @@ export function buildTerrain(map: GameMap, subdivisions = 2): Terrain {
     tint.lerp(snow, snowMix);
 
     // A little large-scale variation so no biome is one flat colour.
+    // A wet band at the waterline. Ground that the sea reaches is darker and
+    // less saturated than the same ground a metre higher, and reproducing
+    // that is what stops the coast looking like a cut-out laid on water.
+    const wet = Math.min(1, Math.max(0, 1 - (y - SEA_LEVEL) / 0.34));
+    if (wet > 0) {
+      const grey = (tint.r + tint.g + tint.b) / 3;
+      tint.lerp(new Color(grey * 0.62, grey * 0.62, grey * 0.66), wet * 0.6);
+    }
+
+    // Hollows are darker than the ridges either side of them. Kept gentle:
+    // at the first strength the eroded channels rendered as near-black
+    // scribbles across the ground, which reads as cracked paint rather than
+    // as valleys. Occlusion should suggest depth, not draw it.
+    const shade = 1 - cavity[i]! * 0.16;
+
     const variation = 0.86 + fbm2(pos.getX(i) * 0.07, pos.getZ(i) * 0.07, { seed: 41 }) * 0.28;
-    col.setXYZ(i, tint.r * variation, tint.g * variation, tint.b * variation);
+    const factor = variation * shade;
+    col.setXYZ(i, tint.r * factor, tint.g * factor, tint.b * factor);
   }
   col.needsUpdate = true;
 
@@ -552,9 +704,30 @@ export function buildTerrain(map: GameMap, subdivisions = 2): Terrain {
    * map below provides the mottling instead, at no cost to the lighting,
    * because it multiplies colour rather than bending normals.
    */
+  /**
+   * Surface micro-relief, as a bump map rather than a normal map.
+   *
+   * This is the answer to the problem that defeated two earlier attempts. A
+   * normal map needs a tangent frame, and a world-space UV over this mesh
+   * cannot produce a usable one: derived frames come out degenerate on steep
+   * faces, and even an analytically correct explicit tangent measured darker
+   * than no map at all.
+   *
+   * Bump mapping needs no tangent frame. three perturbs the normal from the
+   * screen-space derivatives of a height value and of the surface position
+   * itself, so it works with any UV parameterisation, including one invented
+   * in the vertex shader. Same visual result, none of the fragility.
+   */
+  const bumpTexture = new CanvasTexture(greyCanvas(detailHeight, detailSize, 0, 1));
+  bumpTexture.colorSpace = NoColorSpace;
+  bumpTexture.wrapS = RepeatWrapping;
+  bumpTexture.wrapT = RepeatWrapping;
+
   const material = new MeshStandardMaterial({
     vertexColors: true,
     map: albedoTexture,
+    bumpMap: bumpTexture,
+    bumpScale: 9,
     roughnessMap: roughTexture,
     roughness: 1,
     metalness: 0,
@@ -563,16 +736,17 @@ export function buildTerrain(map: GameMap, subdivisions = 2): Terrain {
     envMapIntensity: 0.3,
   });
 
-  // Both maps are sampled in world space rather than from a UV set, which is
-  // what stops them visibly restarting at every hex. The per-map UV varyings
-  // are the ones three actually reads, so overwriting those is the injection
-  // that works; rewriting a generic `vUv` matches nothing.
+  // All three maps are sampled in world space rather than from a UV set,
+  // which is what stops them visibly restarting at every hex. The per-map UV
+  // varyings are the ones three actually reads, so overwriting those is the
+  // injection that works; rewriting a generic `vUv` matches nothing.
   material.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader.replace(
       '#include <uv_vertex>',
       `#include <uv_vertex>
         vec2 fabricWorldUv = ( modelMatrix * vec4( position, 1.0 ) ).xz;
         vMapUv = fabricWorldUv * 0.31;
+        vBumpMapUv = fabricWorldUv * 0.62;
         vRoughnessMapUv = fabricWorldUv * 0.55;`,
     );
   };
@@ -633,6 +807,7 @@ export function buildTerrain(map: GameMap, subdivisions = 2): Terrain {
     group,
     triangleCount: welded.getAttribute('position').count / 3,
     detailNormalZ: 1,
+    erosionMaxDelta: erosion.maxDelta,
 
     heightAt(h) {
       const key = hexKey(h);
@@ -703,27 +878,34 @@ export function buildTerrain(map: GameMap, subdivisions = 2): Terrain {
       material.dispose();
       roughTexture.dispose();
       albedoTexture.dispose();
+      bumpTexture.dispose();
       gridGeometry.dispose();
       (grid.material as LineBasicMaterial).dispose();
     },
   };
 }
 
-/** Shared marker material factory, used by the overlay meshes. */
+/**
+ * Shared marker material factory, used by the overlay meshes.
+ *
+ * Kept faint on purpose. These are the least realistic thing in an otherwise
+ * naturalistic frame, and at any opacity where they read as a solid surface
+ * they look like plastic sheets laid on the ground. Additive blending helps:
+ * it tints the terrain rather than covering it, so the grass underneath
+ * still shows through.
+ */
 export function overlayMaterial(colour: string, opacity: number): MeshStandardMaterial {
   return new MeshStandardMaterial({
-    color: new Color(colour),
+    color: new Color('#000000'),
     transparent: true,
     opacity,
     depthWrite: false,
     side: DoubleSide,
     roughness: 1,
     metalness: 0,
-    // Emissive only, with no environment response. An overlay that catches
-    // specular highlights reads as a sheet of plastic laid on the ground
-    // rather than as an annotation of it.
+    blending: AdditiveBlending,
     emissive: new Color(colour),
-    emissiveIntensity: 0.55,
+    emissiveIntensity: 1,
     envMapIntensity: 0,
   });
 }

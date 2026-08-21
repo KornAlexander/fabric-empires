@@ -35,7 +35,10 @@ export function createWater(size: number, level: number, quality = 512): WaterSu
     waterNormals: normals,
     sunDirection: new Vector3(0, 1, 0),
     sunColor: 0xfff0dd,
-    waterColor: 0x152b3a,
+    // A real sea is not the colour of deep water alone: most of what reaches
+    // the eye is reflected sky. Too dark a base and the whole ocean reads as
+    // mud no matter how good the reflection is.
+    waterColor: 0x1d4a63,
     // Low enough that the coastline stays readable. High distortion looks
     // impressive in isolation and makes a strategy map unplayable.
     distortionScale: 1.6,

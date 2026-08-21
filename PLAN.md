@@ -90,6 +90,9 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D59 | Assets | Still none. Terrain material, water normals and surface detail are all generated at runtime. A public repository with zero downloaded texture licences to defend is worth more than a slightly better rock |
 | D60 | Ground topology | A continuous smoothed surface, not extruded hex prisms. The hex grid decides control points and material, then the surface is subdivided, displaced, welded and Laplacian-smoothed. The grid is an overlay that can be switched off with `g` |
 | D61 | **Realism, honestly scoped** | **"Photoreal" is not reachable here: no artist, no scanned materials, no time. What is reachable, and is what D58 delivers, is physically based: a scattering sky, one dominant sun, real shadows, filmic tone mapping and ground that responds correctly to light. See 16.1 for what is still missing** |
+| D62 | **Erosion** | **The landform is carved by a simulated hydraulic erosion pass, not sculpted from noise. 140,000 droplets over a grid at five cells per hex, run once at map generation. See 16.4** |
+| D63 | Micro-relief | Bump mapping, not normal mapping. Bump perturbs the normal from screen-space derivatives and needs no tangent frame, which is exactly what defeated the normal map twice |
+| D64 | Erosion ordering | Erosion is applied after the Laplacian smoothing pass, not before. The smoothing exists to remove hex-umbrella creases and is an aggressive low-pass filter; run first, it removes the drainage channels along with them |
 
 ### 16.1 What "realistic" does and does not mean in this build
 
@@ -118,13 +121,61 @@ normals, so it cannot cost the scene its light.
 
 ### 16.3 Ground cover
 
-Roughly 1600 trees and 500 boulders, instanced, one draw call per type,
+Roughly 1200 trees and 500 boulders, instanced, one draw call per type,
 scattered by biome with a noise field so woodland forms patches instead of
 an even sprinkle. This turned out to be the largest gain in perceived realism
 per hour spent, and for a reason worth remembering: bare shaded ground reads
 as a model of a landscape, whereas the same ground with things standing on it
 reads as a place, because the props give the eye a scale reference that a
 smooth surface cannot.
+
+Uniform props undo most of that. At one size and one colour a wood renders as
+a flat green mat, because a real canopy is broken up by the height and hue
+difference between old trees and young ones. Per-instance colour and a wide
+size spread cost nothing and fix it. A related trap: instance colour
+multiplies the base material in linear space, so plausible-looking values
+near 1.0 against a white base are roughly five times an ordinary rock albedo,
+and every boulder on the map glows.
+
+### 16.4 Why the terrain is eroded rather than sculpted
+
+Fractal noise makes convincing lumps and unconvincing landscapes, because it
+has no memory of water. Real ground is carved: ridges are sharp because
+everything either side of them has been removed, valleys are V-shaped at the
+head and flat-bottomed at the mouth, and the whole surface is organised into
+drainage basins that run downhill to the sea. None of that emerges from
+summing octaves, and viewers know it even when they cannot say why.
+
+So water is simulated. Droplets run downhill, gather speed, pick up material
+in proportion to speed and slope, and drop it when they slow or flatten out.
+Deposition matters as much as removal: it is what builds the fans at the
+mouth of every valley, and it is half of why the result reads as landscape
+rather than as scratches.
+
+Three settings were found by looking rather than by theory. Erosion applied
+to a single cell cuts one-pixel gullies, so removal is spread over a weighted
+disc. Channels cut at the first strength read as cracks rather than valleys,
+so the rate was more than halved and the brush widened. And the per-vertex
+cavity shading that darkens hollows was initially strong enough to draw the
+channels as near-black scribbles across the ground: occlusion should suggest
+depth, not draw it.
+
+### 16.5 Two lighting ratios that keep being relearned
+
+**Sun against fill.** Fill light is untinted by definition, so every unit of
+it removes colour from the scene. At the first setting the fill beat the sun
+and a green island rendered uniformly blue. At the correction it was so low
+that valley shadows went pure black, which real skylight never does. Measured
+saturation is the honest referee: the current balance holds 0.24 with under a
+third of a percent of the frame crushed to black.
+
+**Sun elevation.** A high sun casts almost no shadow, and shadow is how a
+viewer reads relief on a flat screen. Dropping it to the mid thirties roughly
+doubles every shadow on the map and is the cheapest single change that makes
+terrain look three-dimensional. It has a cost: at grazing angles the depth
+gradient across a shadow-map texel grows, and a bias tuned at noon leaves
+hard dark ribbons of self-shadowing down every slope. Normal bias is the
+setting that fixes that; depth bias alone just moves the artefact.
 
 ### 16.2 The lighting bug hunt, and the lesson
 
