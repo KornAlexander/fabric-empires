@@ -1,0 +1,17 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Secrets and tenant coordinates. Never commit.
+.env
+.env.local
+rayfin/.deployments.json
+
+# Generated art and audio. Reproducible from tools/art and tools/audio.
+app/public/assets/art/**/*.png
+app/public/assets/art/**/*.webp
+app/public/assets/audio/**/*.mp3
+app/public/assets/audio/**/*.ogg
+
+# Draft questions awaiting review are not shipped.
+learn/content/**/*.draft.json

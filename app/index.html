@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fabric Empires</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --panel: rgba(16, 20, 28, 0.86);
+        --border: rgba(255, 255, 255, 0.12);
+        --text: #e8eaf0;
+        --muted: #97a0b5;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0e14; }
+      body {
+        font: 13px/1.5 "Segoe UI", system-ui, sans-serif;
+        color: var(--text);
+      }
+      #map { display: block; width: 100vw; height: 100vh; cursor: grab; }
+      #map.dragging { cursor: grabbing; }
+      .panel {
+        position: fixed;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px 14px;
+        backdrop-filter: blur(8px);
+      }
+      #hud { top: 14px; left: 14px; min-width: 220px; }
+      #hud h1 {
+        margin: 0 0 6px;
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+      #hud .row { display: flex; justify-content: space-between; gap: 18px; }
+      #hud .row span:first-child { color: var(--muted); }
+      #tile { bottom: 14px; left: 14px; min-width: 220px; }
+      #tile .name { font-weight: 600; margin-bottom: 4px; }
+      #tile .yields { color: var(--muted); }
+      #help { bottom: 14px; right: 14px; color: var(--muted); text-align: right; }
+      #controls { top: 14px; right: 14px; display: flex; gap: 8px; align-items: center; }
+      #controls input {
+        background: #0b0e14;
+        border: 1px solid var(--border);
+        color: var(--text);
+        border-radius: 6px;
+        padding: 5px 8px;
+        width: 120px;
+        font: inherit;
+        text-transform: uppercase;
+      }
+      #controls button {
+        background: #1d2636;
+        border: 1px solid var(--border);
+        color: var(--text);
+        border-radius: 6px;
+        padding: 5px 12px;
+        font: inherit;
+        cursor: pointer;
+      }
+      #controls button:hover { background: #27334a; }
+    </style>
+  </head>
+  <body>
+    <canvas id="map"></canvas>
+
+    <div class="panel" id="hud">
+      <h1>Fabric Empires</h1>
+      <div class="row"><span>Seed</span><span id="hud-seed">-</span></div>
+      <div class="row"><span>Land</span><span id="hud-land">-</span></div>
+      <div class="row"><span>Zoom</span><span id="hud-zoom">-</span></div>
+      <div class="row"><span>Drawn</span><span id="hud-drawn">-</span></div>
+      <div class="row"><span>Frame</span><span id="hud-frame">-</span></div>
+    </div>
+
+    <div class="panel" id="controls">
+      <input id="seed-input" value="FABRIC" spellcheck="false" />
+      <button id="seed-go">Generate</button>
+    </div>
+
+    <div class="panel" id="tile">
+      <div class="name" id="tile-name">Hover a tile</div>
+      <div class="yields" id="tile-yields">&nbsp;</div>
+      <div class="yields" id="tile-coords">&nbsp;</div>
+    </div>
+
+    <div class="panel" id="help">
+      drag to pan &middot; wheel to zoom &middot; click to select
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

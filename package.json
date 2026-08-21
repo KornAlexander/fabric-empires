@@ -1,0 +1,26 @@
+{
+  "name": "fabric-empires",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "A turn-based 4X empire strategy game where the tech tree is the DP-600 exam outline.",
+  "license": "MIT",
+  "workspaces": [
+    "engine",
+    "learn",
+    "app"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @fabric-empires/app",
+    "build": "npm run build --workspace @fabric-empires/app",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -b && tsc -p app --noEmit",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}

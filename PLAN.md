@@ -1,0 +1,948 @@
+# Fabric Empires
+
+**A turn-based 4X strategy game where the tech tree is the DP-600 exam outline.**
+
+Living plan document. Status legend: `[ ]` open, `[~]` in progress, `[x]` done.
+
+---
+
+## 1. Context
+
+Entry for the **Microsoft Fabric Discord User Group Certification Prep Challenge**, builder track.
+
+| Fact | Value |
+|---|---|
+| Contest opens / closes | 18 August 2026 / 1 September 2026 |
+| Track | Builder (live URL + public GitHub repo required) |
+| Suggested effort | 1-2 hours (we are deliberately ignoring this) |
+| Actual build window | 21 August to ~21 September 2026 |
+| Submission checkpoint | 31 August 2026, whatever exists ships |
+| Prize | Microsoft swag, per track |
+
+The contest also asks entrants to report rough edges in Fabric Apps and Rayfin, both in public preview. We collect those as we hit them.
+
+---
+
+## 2. Decision log
+
+Every decision below was made explicitly. Do not silently revisit one; if a decision needs to change, strike it here with a reason.
+
+| # | Decision | Choice |
+|---|---|---|
+| D01 | Genre | Turn-based 4X empire strategy (see 12.1 on why no product is named here) |
+| D02 | Title / repo | Fabric Empires / `fabric-empires` |
+| D03 | Cert scope v1 | DP-600 only. DP-700 and PL-300 after the contest |
+| D04 | Resources | Classic four, renamed: Data (food), Compute (wood), Capacity Units (gold), Trust (stone) |
+| D05 | Map | Hex grid with real unit movement |
+| D06 | Map generation | Procedural, seeded, shareable seed |
+| D07 | Session length | 45-60 minutes, save and resume at any point |
+| D08 | Combat | Civ-style HP combat. Strength plus HP, with the question applying a large plus/minus modifier to the attack roll |
+| D09 | Loss consequence | Army versus army. You lose units, not territory. Territory changes hands only when a city actually falls |
+| D10 | Timers | 20 s battle, 30 s research, 45 s boss. Tight on everything |
+| D11 | Victory conditions | Domination, Science (full tech tree), and The Exam (timed final siege) |
+| D12 | Question types | Multiple choice single, multi-select, hotspot on a diagram |
+| D13 | Explanations | Always, on right and wrong, with a Microsoft Learn deep link |
+| D14 | Mastery model | SM-2 per leaf skill (delegated decision, see 6.4 for why) |
+| D15 | Adaptive difficulty | Tier scaling only, no targeting of weak areas |
+| D16 | Exam readiness | Shown as a real percentage, weighted by the published exam percentages, with a per-domain breakdown |
+| D17 | Tech tree fidelity | 1:1 with the published outline. 3 branches, 7 clusters, 41 leaf nodes, real skill names |
+| D18 | Factions | 8: one per skill cluster (7) plus a final boss |
+| D19 | Question bank | 250+ for DP-600, weighted to the real domain percentages |
+| D20 | Answer key | Obfuscated. Answers hashed, explanations encrypted under the answer |
+| D21 | Art | AI generated, ~250 assets, painterly isometric. Style described self-contained, no product references (see 12.1) |
+| D22 | Art pipeline | `gpt-image-1` via Azure OpenAI in the MCAP subscription (resource to be created) |
+| D23 | Diagrams | Code drawn SVG/canvas with defined click regions, not AI images |
+| D24 | Audio | AI generated ambient soundtrack plus code generated WebAudio SFX |
+| D25 | Difficulty | Three levels: Apprentice, Analyst, Architect |
+| D26 | Onboarding | Scripted tutorial, first 5 turns guided |
+| D27 | Platform | Desktop first, tablet friendly, phone shows a "use a bigger screen" notice |
+| D28 | Persistence | Anonymous local play, sign in to sync and rank |
+| D29 | Entities | `CampaignSave`, `SkillMastery`, `GameStats`, `LeaderboardEntry` |
+| D30 | Leaderboards | Two boards side by side: campaign score, and exam readiness |
+| D31 | Deploy target | Fabric capacity `prdsweden` (F8) |
+| D32 | Licence / language | MIT, English only |
+| D33 | Disclaimer | README only. Two parts: original questions, and personal project not a Microsoft product |
+| D34 | Publishing | Standalone public repo now, `awesome-rayfin` template PR afterwards |
+| D35 | **Architecture** | **Two layers with a hard boundary. The engine is a complete strategy game that knows nothing about certifications. Learning content plugs in via `ChallengeProvider`** |
+| D36 | Monuments | "Wonders" renamed to "Monuments" throughout |
+| D37 | Static fallback | A static GitHub Pages build ships alongside the Fabric App, so the game is playable even when the capacity is paused |
+| D38 | Hosting order | Rayfin first as the primary submitted URL, Pages as the fallback link |
+| D39 | Daily challenge | Not building one. Async seed sharing instead: send a friend your seed and compare results |
+| D40 | Share card | Shareable result image (score, readiness, domain bars, seed) rendered to canvas and copied to clipboard |
+| D41 | Item analytics | Anonymous aggregate per-question counters only (seen, correct, mean time). No per-user attempt rows |
+| D42 | Localisation | i18n-structured from day one, English only at launch |
+| D43 | Art fallback | If `gpt-image-1` is unavailable in the MCAP subscription, fall back to a personal ChatGPT / Copilot Pro subscription, checking output licence terms for whichever is used |
+| D44 | Review coverage | Spot-check 20% of the bank plus all tier-3 items. See the risk note in 15.2 |
+| D45 | Exam NDA | Author has not taken DP-600. Questions are still authored strictly from the public study guide and public documentation |
+| D46 | Accessibility | Best effort, no formal WCAG target |
+| D47 | Trademark scan | CI warns, does not fail |
+| D48 | **Provenance** | **Mandatory `sourceSkillBullet` + `sourceLearnUrl` on every question, enforced by a test** (delegated, see 2.3) |
+| D49 | **Unrest framing** | **Opportunity, never punishment. No unrest accrues while the player is away** (delegated, see 2.3) |
+| D50 | **Timers** | **Timed by default, but every modal is pausable without penalty outside Exam mode. Tutorial untimed. Relaxed offered as an equal option at campaign start** (delegated, see 2.3) |
+| D51 | **D35 enforcement** | **Interface plus the ESLint boundary rule now. The full NullProvider campaign test is post-contest** (delegated, see 2.3) |
+| D52 | **Great Library** | **The reference screen is called the Great Library, reachable from the main menu without starting a campaign** (delegated, see 2.3) |
+| D53 | Magic moment | A scripted first-battle set piece showing combat and the question modifier together |
+| D54 | Scope stance | Ambitious plan retained. Risk is managed by the cut list in 15.1, which carries dated trigger conditions |
+
+### 2.1 Why D35 is the decision that shapes everything
+
+The stated goal is to be able to lift the game out and ship it later without the learning layer. That rules out the single-file canvas approach used by the IBCS trainer, and it rules out sprinkling question logic through the game loop.
+
+Concretely, the engine must compile and play with a `NullChallengeProvider` that auto-resolves every challenge as a neutral modifier. Per D51 the ESLint boundary rule ships now; the full standalone-campaign test is post-contest.
+
+### 2.2 The critique, and what was accepted
+
+The plan was stress-tested on 21 August. Its verdict was that this is "a multi-month game plan with a 10-day checkpoint stapled onto it", and it recommended shrinking the 31 August target to a Contest Slice.
+
+**That recommendation was considered and declined (D54).** The ambitious plan stands. What was accepted instead:
+
+| Finding | Response |
+|---|---|
+| The schedule is not achievable as written | Accepted as a risk, not a plan change. Mitigated by 15.1, which now carries dated trigger conditions rather than a list nobody looks at |
+| The cut list is too shallow to save the date | **Accepted and fixed.** 15.1 rebuilt to cut load-bearing complexity, not ornament |
+| The unrest loop is emotionally hostile | **Accepted.** Redesigned in 5.10 |
+| Tight timers punish real-world interruption | **Accepted in part.** Timed stays default, pause added (D50) |
+| D35 enforcement is ceremony under a deadline | **Accepted in part.** Lint rule now, campaign test later (D51) |
+| 20% review will actively mis-teach people | Declined (D44). Risk documented in 15.2 |
+| Provenance should be mandatory | **Accepted** (D48) |
+| Cut Rayfin, ship static only | **Declined.** The contest text explicitly rewards trying Fabric Apps and Rayfin and asks for preview feedback. Cutting it cuts the thing these judges are running the contest to see. Static-first build, Rayfin as the primary link (D37, D38) |
+
+### 2.3 The six delegated decisions
+
+Decided on the author's instruction, with reasoning so they can be reversed knowingly.
+
+- **D48 provenance: yes, mandatory and test-enforced.** This flips precisely *because* D44 keeps 250 questions at 20% review. Provenance is the only mechanism that makes the unreviewed remainder auditable and repairable. Without review and without provenance, a disputed answer has no way to be settled, and there is no way to re-audit the bank when Fabric behaviour or the study guide changes. It costs nothing at draft time, when the source is already open, and is expensive to reconstruct later.
+- **D49 unrest: opportunity, never punishment.** Keeps the differentiating mechanic, removes the quit trigger. See 5.10.
+- **D50 timers: timed by default, pausable.** The author chose exam pressure twice, so it stays. The real defect found was not the timer but that a real-world interruption silently costs a unit. Pause fixes that without softening the mode.
+- **D51 boundary enforcement: lint rule now, campaign test later.** The ESLint rule is a config entry and prevents the leak. The full standalone-campaign test is real effort for a promise that pays out after the contest.
+- **Never-cut list: guided first mission, explanation plus Learn link, the 41 real skill names, the share image.** The readiness gauge drops off the list because it degrades gracefully to a plain progress meter. The other four do not degrade, they simply vanish.
+- **D52 Great Library: reachable from the menu.** Cheap, and it means someone who will not play a 4X still gets a usable DP-600 revision list.
+
+---
+
+## 3. Architecture
+
+### 3.1 Layer boundary
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  app/            Rayfin host: auth, data sync, routing   │
+├─────────────────────────────────────────────────────────┤
+│  learn/          DP-600 content, SM-2, exam readiness    │
+│                  implements ChallengeProvider            │
+├─────────────────────────────────────────────────────────┤
+│  engine/         Hex 4X: map, units, combat, tech, AI    │
+│                  ZERO imports from learn/ or app/        │
+└─────────────────────────────────────────────────────────┘
+```
+
+The single interface between engine and learning:
+
+```ts
+// engine/src/challenge/ChallengeProvider.ts
+export interface ChallengeRequest {
+  kind: 'battle' | 'research' | 'unrest' | 'boss';
+  /** Opaque topic id. The engine never interprets this. */
+  topicId: string;
+  /** 1..3, set by difficulty and enemy tier. */
+  tier: 1 | 2 | 3;
+  timeLimitMs: number;
+}
+
+export interface ChallengeOutcome {
+  /** -1..+1. The engine scales this into a combat or research modifier. */
+  score: number;
+  elapsedMs: number;
+  abandoned: boolean;
+}
+
+export interface ChallengeProvider {
+  /** Topics the provider can serve. The engine uses these as tech node ids. */
+  topics(): TopicGraph;
+  present(req: ChallengeRequest): Promise<ChallengeOutcome>;
+  /** Topics that are 'due' for review. Drives the unrest system. Empty is valid. */
+  dueTopics(now: number): string[];
+}
+```
+
+Three implementations:
+
+1. `Dp600ChallengeProvider` (the product)
+2. `NullChallengeProvider` (returns `score: 0` instantly, gives the standalone game)
+3. `ScriptedChallengeProvider` (deterministic, for tests and the tutorial)
+
+**Rule: `engine/` has no dependency on `learn/`.** Enforced by an ESLint `no-restricted-imports` rule and a test that walks the import graph.
+
+### 3.2 Repo layout
+
+```
+fabric-empires/
+├── PLAN.md                      # this file
+├── README.md                    # English, disclaimer, screenshots, getting started
+├── LICENSE                      # MIT
+├── PREVIEW-FEEDBACK.md          # Rayfin/Fabric Apps rough edges hit during the build
+├── NOTICE.md                    # AI art provenance, audio provenance, third-party
+├── package.json                 # workspaces: engine, learn, app
+├── engine/
+│   ├── src/
+│   │   ├── hex/                 # coordinates, neighbours, distance, ring, spiral, layout
+│   │   ├── map/                 # generator, terrain, features, rivers, resources
+│   │   ├── rng/                 # seeded PRNG (mulberry32), one stream per subsystem
+│   │   ├── entities/            # City, Unit, Improvement, Faction
+│   │   ├── rules/               # combat, movement, yields, production, upkeep
+│   │   ├── tech/                # TopicGraph -> tech tree, research state
+│   │   ├── ai/                  # enemy faction AI (utility scoring)
+│   │   ├── turn/                # turn pipeline, phases, event bus
+│   │   ├── save/                # serialise, deserialise, versioned migrations
+│   │   └── challenge/           # ChallengeProvider interface + Null + Scripted
+│   └── test/                    # vitest, pure, no DOM
+├── learn/
+│   ├── content/
+│   │   └── dp-600/
+│   │       ├── outline.json     # the skills-measured tree, verbatim skill names
+│   │       ├── questions/*.json # authored bank, one file per cluster
+│   │       └── diagrams/*.ts    # code-drawn hotspot diagrams
+│   ├── src/
+│   │   ├── Dp600ChallengeProvider.ts
+│   │   ├── sm2.ts               # SuperMemo-2
+│   │   ├── readiness.ts         # weighted exam readiness
+│   │   ├── crypto.ts            # answer hashing + explanation decryption
+│   │   └── ui/                  # question modal components
+│   └── test/
+├── app/
+│   ├── src/
+│   │   ├── main.tsx
+│   │   ├── pages/               # Menu, Game, GreatLibrary, Leaderboard, Profile
+│   │   ├── render/              # canvas renderer, camera, picking, sprite atlas
+│   │   ├── services/            # Rayfin auth + data client
+│   │   └── sync/                # local save <-> cloud save reconciliation
+│   ├── public/assets/
+│   │   ├── art/                 # generated PNG/WEBP, committed
+│   │   └── audio/
+│   └── index.html
+├── rayfin/
+│   ├── rayfin.yml
+│   └── data/                    # CampaignSave, SkillMastery, GameStats, LeaderboardEntry
+└── tools/
+    ├── art/                     # manifest.json, generate.py, postprocess.py
+    ├── content/                 # bank validator, answer encryptor, outline sync check
+    └── verify_publishable.py
+```
+
+### 3.3 Rendering
+
+Canvas 2D with a sprite atlas, not DOM and not WebGL.
+
+- Hex layout: pointy-top, axial coordinates `(q, r)`, `size = 48 px` at zoom 1.
+- Camera: pan (drag, WASD, edge scroll), zoom 0.5x to 2.0x in 6 steps.
+- Draw order: terrain, rivers, improvements, borders, cities, units, overlays, fog, UI.
+- Dirty-rect redraw for the terrain layer, full redraw for units and overlays.
+- Picking: pixel to axial conversion, no hit testing loop.
+- Target: 60 fps at 2000 visible hexes on a Surface Laptop. Budget checked with a perf test.
+
+### 3.4 Tech choices
+
+| Concern | Choice | Why |
+|---|---|---|
+| Language | TypeScript strict | Engine is the long-lived asset |
+| Build | Vite 7 | Matches the Rayfin toolchain |
+| UI | React 19 for chrome, canvas for the map | The map must not go through React |
+| State | Plain reducer over an immutable `GameState`, no external state library | Save/load and replay come free |
+| Tests | Vitest | Matches ibcs-trainer-rayfin |
+| Auth/data | `@microsoft/rayfin-*` ^1.33 | Same as the IBCS trainer |
+| Crypto | WebCrypto (SHA-256, PBKDF2, AES-GCM) | No dependency |
+
+---
+
+## 4. The DP-600 outline as a tech tree
+
+Source: study guide for DP-600, skills measured **as of 21 July 2026**. Fetched 21 August 2026. `learn/content/dp-600/outline.json` holds the verbatim skill names; a test fails if a question references a skill id that is not in it.
+
+| Branch | Exam weight | Cluster | Leaf nodes |
+|---|---|---|---|
+| **A. Maintain a data analytics solution** | 25-30% | A1 Implement security and governance | 5 |
+| | | A2 Maintain the analytics development lifecycle | 6 |
+| **B. Prepare data** | 45-50% | B1 Get data | 5 |
+| | | B2 Transform data | 9 |
+| | | B3 Query and analyze data | 4 |
+| **C. Implement and manage semantic models** | 25-30% | C1 Design and build semantic models | 7 |
+| | | C2 Optimize enterprise-scale semantic models | 5 |
+| | | | **41 total** |
+
+Full node list:
+
+**A1 Implement security and governance**
+1. Workspace-level access controls
+2. Item-level access controls
+3. Row-level, column-level, object-level and file-level access control
+4. Apply sensitivity labels to items
+5. Endorse items
+
+**A2 Maintain the analytics development lifecycle**
+6. Configure version control for a workspace
+7. Create and manage a Power BI Desktop project (.pbip)
+8. Create and configure deployment pipelines
+9. Impact analysis of downstream dependencies
+10. Deploy and manage semantic models via the XMLA endpoint
+11. Reusable assets (.pbit, .pbids, shared semantic models)
+
+**B1 Get data**
+12. Create a data connection
+13. Discover data with OneLake catalog and Real-Time hub
+14. Ingest or access data as needed
+15. Choose between different data stores
+16. OneLake integration for Eventhouse and semantic models
+
+**B2 Transform data**
+17. Views, functions and stored procedures
+18. Enrich data by adding new columns or tables
+19. Implement a star schema for a lakehouse or warehouse
+20. Denormalize data
+21. Aggregate data
+22. Merge or join data
+23. Resolve duplicate data, missing data and null values
+24. Convert column data types
+25. Filter data
+
+**B3 Query and analyze data**
+26. Visual Query Editor
+27. SQL
+28. KQL
+29. DAX
+
+**C1 Design and build semantic models**
+30. Choose a storage mode
+31. Star schema for a semantic model
+32. Relationships, bridge tables, many-to-many
+33. DAX variables and functions (iterators, table filtering, windowing, information functions)
+34. Calculation groups, dynamic format strings, field parameters
+35. Large semantic model storage format
+36. Composite models
+
+**C2 Optimize enterprise-scale semantic models**
+37. Performance improvements in queries and report visuals
+38. Improve DAX performance
+39. Direct Lake, including default fallback and refresh behavior
+40. Direct Lake on OneLake versus Direct Lake on SQL analytics endpoint
+41. Incremental refresh
+
+### 4.1 Tech tree mechanics
+
+- Each node costs **Compute** and requires its cluster predecessor.
+- Researching a node fires a `research` challenge (30 s). Correct completes it. Wrong costs the Compute and the node stays locked until the next turn, so failure is a delay, not a wall.
+- A node unlocks one of: a unit, a building, an improvement, a policy, or a monument.
+- Branch B is the biggest tree and sits on the largest landmass, so the map physically reflects that "Prepare data" is half the exam. This is the single best teaching moment in the design and must survive any scope cut.
+- Tree completion is the **Science victory**.
+
+---
+
+## 5. Game design
+
+### 5.1 Resources
+
+| Resource | Classic analogue | Produced by | Spent on |
+|---|---|---|---|
+| **Data** | Food | Raw File Plains, Streaming Rivers, lakehouse tiles | City growth, unit population cost |
+| **Compute** | Wood | Delta Highlands, forests of Spark clusters | Research, production, buildings |
+| **Capacity Units** | Gold | CU Geothermal Vents, trade routes | Unit upkeep, rush-buy, diplomacy |
+| **Trust** | Stone | Parquet Quarries, Semantic Peaks | Walls, governance buildings, endorsement monuments, unrest suppression |
+
+Trust deserves note: it is the resource that pays for the unrest mechanic, which makes governance economically real rather than decorative.
+
+### 5.2 Terrain
+
+| Terrain | Yield | Movement | Notes |
+|---|---|---|---|
+| Raw File Plains | Data 2 | 1 | Default open terrain |
+| Delta Highlands | Compute 2, Trust 1 | 2 | Defensive bonus +25% |
+| Parquet Quarry | Trust 3 | 2 | Rare |
+| Streaming River | Data 1, Compute 1 | 1 along, 3 across | Fast movement along, chokepoint across |
+| Legacy Swamp | Data 1 | 3 | Yield penalty, no city founding |
+| Semantic Peaks | Trust 2 | impassable | Blocks movement, high visibility if adjacent |
+| CU Geothermal Vent | CU 3 | 1 | Strategic resource, contested |
+| OneLake (water) | Data 1 | naval only | The sea. Shortcuts cross it |
+| Ungoverned Wastes | none | 2 | Enemy spawn, spreads if unchecked |
+
+Seasonal variants (3 per terrain) exist purely as art, driven by a per-map palette roll.
+
+### 5.3 Cities and buildings
+
+Cities are Fabric items. The capital is a **Workspace**.
+
+| City type | Founded on | Speciality |
+|---|---|---|
+| Lakehouse | Any land adjacent to OneLake | Data heavy, cheap, flexible |
+| Warehouse | Plains or Highlands | Compute and Trust, strong walls |
+| Eventhouse | Adjacent to a Streaming River | Fast production, weak defence |
+| Semantic Model | Highlands or Peaks adjacent | Low yield, huge score and readiness output |
+
+Buildings are unlocked by tech nodes, for example node 19 (star schema for a lakehouse or warehouse) unlocks the **Star Forge**, which raises Compute yield and grants +10% combat strength to units trained in that city. The flavour always encodes the real benefit of the real practice.
+
+### 5.4 Units
+
+| Unit | Role | Strength | Unlocked by |
+|---|---|---|---|
+| Architect | Founds cities | 0 | start |
+| Engineer | Builds improvements | 0 | start |
+| Profiler | Scout, reveals fog | 8 | start |
+| Pipeline Runner | Melee | 20 | node 14 |
+| Query Slinger | Ranged (2 tiles) | 18 | node 27 |
+| Notebook Cannon | Siege, +100% vs cities | 25 | node 17 |
+| RLS Sentinel | Defensive, +50% fortified | 22 | node 3 |
+| Shortcut Skiff | Naval transport | 12 | node 16 |
+| Lineage Hawk | Recon, ignores zone of control | 14 | node 9 |
+| Refresh Guard | Heals adjacent units | 16 | node 41 |
+| Semantic Colossus | Late-game heavy | 45 | node 36 |
+| Direct Lake Titan | Ultimate unit | 60 | node 39 |
+
+Each of the 8 factions gets one unique unit variant, art-differentiated, with one stat tweak.
+
+### 5.5 Combat maths
+
+```
+effectiveStrength =
+    baseStrength
+  * (0.5 + 0.5 * hp / maxHp)          // wounded units hit softer
+  * (1 + terrainBonus)                 // 0, 0.25, 0.5
+  * (1 + fortifyBonus)                 // 0, 0.2, 0.4
+  * (1 + techBonus)                    // sum of researched combat techs
+  + challengeModifier                  // THE QUESTION
+```
+
+`challengeModifier` from `ChallengeOutcome.score` in `-1..+1`:
+
+| Result | score | modifier |
+|---|---|---|
+| Correct, under half the timer | +1.0 | +18 |
+| Correct | +0.6 | +12 |
+| No answer / timeout | -0.6 | -12 |
+| Wrong | -1.0 | -18 |
+
+With base strengths of 8 to 60, a swing of 36 points between best and worst is decisive at low tier and merely important at high tier. That is the intended feel: **early on, knowledge is everything; later, a well-built empire forgives one wrong answer.**
+
+Damage, using a standard power-curve ratio model:
+
+```
+ratio  = attackerEff / defenderEff
+damage = clamp(30 * pow(ratio, 1.5) * randomBetween(0.9, 1.1), 10, 100)
+```
+
+Both sides take damage in melee; the ranged attacker takes none. A unit at 0 HP dies. **Losing a battle costs the unit, not the tile.** Territory changes hands only when a city's HP reaches 0 and a melee unit enters it (D09).
+
+### 5.6 Turn pipeline
+
+```
+1. UPKEEP        yields collected, CU upkeep paid, starvation checked
+2. UNREST        SM-2 due check, unrest ticks up, revolts resolved
+3. RESEARCH      player allocates Compute, research challenge fires if a node completes
+4. PRODUCTION    cities produce, buildings complete
+5. ORDERS        player moves units, initiates combat (battle challenge per attack)
+6. ENEMY         8 faction AIs act in initiative order
+7. EVENTS        monument progress, victory checks, autosave
+```
+
+Autosave at the end of every turn to localStorage, and to `CampaignSave` when signed in.
+
+### 5.7 The eight factions
+
+Seven antagonists, one per skill cluster, plus the final boss. Each attacks with questions drawn from its own cluster, so **who is attacking you tells you what you are about to be tested on**. That is the diegetic study planner.
+
+| Faction | Leader | Cluster | Theme |
+|---|---|---|---|
+| The Open Gate | Warden Nullpermission | A1 Security and governance | Sprawl with no access control |
+| The Untracked | The Overwriter | A2 Development lifecycle | No version control, no pipelines |
+| The Silo Horde | Chieftain Copy-Paste | B1 Get data | Data duplicated everywhere, connected nowhere |
+| The Denormalizers | Grand Duplicator | B2 Transform data | One big table, forever |
+| The Scan Wraiths | Cartesian the Endless | B3 Query and analyze | Full scans and cross joins |
+| The Flat Table Cult | Prophet One-Big-Table | C1 Design and build models | Rejects the star schema |
+| The Import Zealots | The Refresh Baron | C2 Optimize models | Refuses Direct Lake, refreshes forever |
+| **The Proctor** | (the exam itself) | all | Final boss, appears at the Exam victory trigger |
+
+No competitor products, no real vendors, no real people. The antagonists are misconceptions.
+
+### 5.8 Victory conditions
+
+| Victory | Trigger |
+|---|---|
+| **Domination** | All 7 antagonist capitals captured |
+| **Science** | All 41 tech nodes researched |
+| **The Exam** | Reach 80% exam readiness to summon The Proctor, then survive a timed siege of 40-45 questions in ~100 minutes of game time, matching the real exam shape. Winning mints a shareable trophy card |
+
+Defeat: capital captured, or empire-wide unrest sustained at 100 for 5 consecutive turns.
+
+### 5.9 Difficulty
+
+| Level | Enemy strength | Timers | Question tier | Unrest rate |
+|---|---|---|---|---|
+| Apprentice | 0.75x | 1.5x | mostly tier 1 | 0.5x |
+| Analyst | 1.0x | 1.0x | mixed 1-2 | 1.0x |
+| Architect | 1.35x | 0.8x | mixed 2-3 | 1.5x |
+
+Tier scaling only. Enemies do not deliberately hunt your weak domains (D15).
+
+**Timer rules (D50).** Timed is the default, because exam pressure is the point. But:
+- The **tutorial is untimed**, always.
+- **Relaxed** is offered as an equal choice on the campaign setup screen, next to difficulty. Not buried in an accessibility menu.
+- **Any challenge modal can be paused without penalty**, outside Exam mode. A Teams ping must never cost a unit. This is the actual defect the timer design had, and it is separate from whether timers exist.
+- Speed is scored as a **bonus** (the +18 fast-correct modifier), never as an extra penalty beyond the existing timeout result.
+
+### 5.10 Unrest: spaced repetition as the economy
+
+This is the mechanic that makes the game a genuine study tool rather than a quiz with a map.
+
+- Every city is **bound to 1-3 leaf skills**, namely the tech nodes whose buildings it contains.
+- Every leaf skill carries an **SM-2 record** (see 6.4).
+- When a skill's SM-2 due date passes, every city bound to it opens a **Council review**: an available action, flagged on the city, that costs one turn.
+- Answering it correctly **grants** Trust and a yield bonus for several turns, and pushes the SM-2 interval out. Answering it wrongly costs the turn and reschedules it. Ignoring it forfeits the bonus.
+- A city that has ignored several reviews in the **current run** accumulates unrest, which dampens yields. Unrest is capped, and a city can never defect purely from review debt.
+- **Nothing bad happens while the player is away** (D49). Returning after two weeks presents a stack of available reviews and a pile of unclaimed Trust, not a burning empire.
+
+⚠️ The original design had overdue skills riot cities into defecting. That teaches "you neglected your homework, now suffer", which is a reason to stop playing rather than a reason to review. The mechanic is worth more as a carrot: the cheapest way to run a strong economy is to keep reviewing, and the player is chasing a bonus rather than fleeing a penalty. Same retrieval practice, opposite emotion.
+
+Real time versus game time: SM-2 intervals run on **wall-clock time between sessions**, not turns. Within a single session, intervals are compressed so the mechanic is still visible in a 60 minute play.
+
+⚠️ **Known tension:** SM-2 wants short frequent sessions, the 45-60 minute session target (D07) wants long absorbed ones. These two motivational loops pull against each other and the design does not fully resolve it. The mitigation is that reviews are opportunities, so a long session is never blocked by them and a short session can consist of nothing but claiming reviews. Watch this in playtests; if sessions bifurcate cleanly into "long campaign" and "quick review sweep", the tension has resolved itself in a good way.
+
+---
+
+## 6. Learning layer
+
+### 6.1 Question schema
+
+```ts
+interface Question {
+  id: string;                    // 'dp600-b2-019-003'
+  cert: 'DP-600';
+  branch: 'A' | 'B' | 'C';
+  cluster: string;               // 'B2'
+  skillId: number;               // 1..41, must exist in outline.json
+  type: 'mcq' | 'multi' | 'hotspot';
+  tier: 1 | 2 | 3;
+  stem: string;
+  options?: string[];            // mcq, multi
+  diagram?: string;              // hotspot: id of a code-drawn diagram
+  regions?: string[];            // hotspot: named click regions
+  selectCount?: number;          // multi: 'choose 2'
+  answerHash: string;            // sha256(salt + id + normalisedAnswer)
+  explanationCipher: string;     // AES-GCM, key derived from the answer
+  learnUrl: string;              // must be under learn.microsoft.com
+  sourceSkillBullet: string;     // D48: verbatim study-guide bullet it was written from
+  sourceLearnUrl: string;        // D48: the doc page the fact came from
+  reviewStatus: 'draft' | 'reviewed';   // D44: set by the review UI
+  tags: string[];
+}
+```
+
+⚠️ `sourceSkillBullet` and `sourceLearnUrl` are **mandatory and test-enforced** (D48). A question without them fails the content test and does not build. This is the audit trail that makes the 80% of the bank which is not individually reviewed (D44) repairable rather than merely disclaimed.
+
+### 6.2 Bank size and weighting
+
+Target **250+ items for DP-600**, distributed to the published weights:
+
+| Branch | Weight | Items | Per leaf node |
+|---|---|---|---|
+| A (11 nodes) | 27.5% | ~69 | ~6 |
+| B (18 nodes) | 47.5% | ~119 | ~6.6 |
+| C (12 nodes) | 27.5% | ~69 | ~5.7 |
+| | | **~257** | |
+
+Tier split per node: 3 x tier 1, 2 x tier 2, 1 x tier 3, roughly.
+
+**All items are original**, authored from the public skills-measured outline and the linked documentation. No recalled, reproduced or paraphrased exam content. This is both a legal requirement and the reason the disclaimer exists.
+
+Authoring workflow:
+1. I draft a cluster's items into `learn/content/dp-600/questions/<cluster>.draft.json`.
+2. You review in a purpose-built review page (`npm run review`) that shows stem, options, answer, explanation and Learn link, with accept / edit / reject.
+3. Accepted items go through `tools/content/encrypt.py` into the shipped `<cluster>.json`.
+
+### 6.3 Question types
+
+**MCQ** and **multi-select** are conventional. **Hotspot** is the differentiator and is code-drawn (D23):
+
+| Diagram | Regions | Used by |
+|---|---|---|
+| Star schema | fact table, dimension tables, bridge, wrong-direction relationship | nodes 19, 31, 32 |
+| Medallion architecture | bronze, silver, gold, the wrong hop | nodes 15, 19 |
+| Deployment pipeline | dev, test, prod, deployment rule, the misconfigured stage | node 8 |
+| Direct Lake decision | OneLake path, SQL endpoint path, fallback branch | nodes 39, 40 |
+| Workspace security | workspace role, item permission, RLS, the over-broad grant | nodes 1, 2, 3 |
+| Composite model | DirectQuery source, Import source, the weak relationship | node 36 |
+
+Each diagram is a TypeScript module exporting a draw function plus named polygon regions, so the same file provides both the picture and the hit test. No image drift, crisp at every zoom, and the answer key is a region name rather than a pixel.
+
+### 6.4 SM-2 and why (D14)
+
+You delegated this one. SM-2 over Leitner because the unrest mechanic needs to answer two questions per turn, per skill: *is this due?* and *how long until it is due again?* Leitner gives you a box number, which is a coarse answer to the first question and no answer at all to the second without inventing an interval table anyway. SM-2 gives both natively, per skill, and adapts to how hard you personally find each of the 41 skills.
+
+```ts
+interface SkillMastery {
+  skillId: number;
+  repetitions: number;   // consecutive correct
+  easeFactor: number;    // 1.3 .. 2.5, starts 2.5
+  intervalDays: number;
+  dueAt: number;         // epoch ms
+  lastQuality: 0 | 1 | 2 | 3 | 4 | 5;
+  totalSeen: number;
+  totalCorrect: number;
+}
+```
+
+Quality mapping from a `ChallengeOutcome`: correct and fast = 5, correct = 4, correct after hesitation = 3, timeout = 2, wrong = 1, abandoned = 0. Quality below 3 resets `repetitions` to 0, exactly as SM-2 prescribes.
+
+### 6.5 Exam readiness
+
+```
+nodeMastery   = clamp(totalCorrect / max(totalSeen, 3), 0, 1) * recencyDecay(dueAt)
+clusterScore  = mean(nodeMastery for nodes in cluster)
+branchScore   = mean(clusterScore for clusters in branch)
+readiness     = 0.275 * A + 0.475 * B + 0.275 * C     // published midpoints, normalised
+```
+
+Displayed as a percentage with three domain bars labelled with the real percentages, plus the honest caveat that this is a self-assessment against a study game and not a prediction of a real exam score.
+
+### 6.6 Answer obfuscation (D20)
+
+Two layers, and I want to be honest in the README about what they do and do not achieve.
+
+1. **Answer hashing.** `answerHash = SHA-256(SALT + questionId + normalisedAnswer)`. Verified in the browser. Stops a casual "view source, read the JSON" scrape of the whole bank.
+2. **Explanation encryption.** The explanation is AES-GCM encrypted with a key from `PBKDF2(normalisedAnswer + questionId + SALT, 100k iterations)`. It only decrypts once you have answered correctly, so the explanations cannot be mined for answers either.
+
+**Limitation, stated plainly in the README:** for a 4-option MCQ an attacker can brute force all 4 candidate answers locally. This is obfuscation, not security, and it is the correct amount of effort for a study game. It is also unavoidable, because the Fabric App shell is anonymous and everything in `public/` is served to anyone (see `PREVIEW-FEEDBACK.md`).
+
+---
+
+## 7. Art pipeline
+
+### 7.1 Azure OpenAI setup (D22, resource does not exist yet)
+
+```
+1. az login, select the MCAP subscription
+2. az cognitiveservices account create \
+     --name <name> --resource-group <rg> --kind OpenAI --sku S0 --location <region>
+3. Deploy gpt-image-1
+4. Store endpoint + key in .env.local. NEVER commit. No default in any script
+```
+
+Rationale over Bing Image Creator: output licensing. Designer and Bing Image Creator grant personal, non-commercial use, which does not fit an MIT-licensed public repo. Azure OpenAI output rights sit with the subscription owner.
+
+Cost estimate: ~250 images at roughly $0.02 to $0.19 each depending on size and quality, so a ballpark of **$20 to $45** including rejects and re-rolls. Budget two full re-roll passes.
+
+### 7.2 Manifest-driven generation
+
+`tools/art/manifest.json` holds one entry per asset:
+
+```json
+{
+  "id": "terrain/delta-highlands-summer",
+  "category": "terrain",
+  "size": "1024x1024",
+  "prompt": "isometric hex tile of rocky layered highlands, stacked slate strata suggesting stratified data files, sparse pines, warm afternoon light",
+  "seedNote": "match palette of terrain/raw-file-plains-summer"
+}
+```
+
+A shared **style suffix** is appended to every prompt so 250 assets look like one game:
+
+> painterly hand-illustrated strategy game art, warm saturated palette, soft rim light from upper left, clean silhouette, transparent background, no text, no letters, no logos, no user interface
+
+`tools/art/generate.py` reads the manifest, skips assets already present (so it is resumable), writes to `public/assets/art/`, and logs prompt plus model plus timestamp to `tools/art/generation-log.jsonl` for provenance in `NOTICE.md`.
+
+`tools/art/postprocess.py`: trim transparent margins, snap to the hex mask for terrain, resize to target, encode WEBP quality 85, and build a sprite atlas plus JSON index. Total art payload budget: **under 12 MB**.
+
+### 7.3 Asset budget (~250)
+
+| Category | Count |
+|---|---|
+| Terrain, 10 types x 3 seasonal variants | 30 |
+| Terrain features and resources | 12 |
+| Buildings | 30 |
+| Monuments | 8 |
+| Base unit sprites, 12 types | 12 |
+| Unit faction variants, 8 factions x 3 signature units | 24 |
+| Unit tier upgrades | 24 |
+| Faction leader portraits | 8 |
+| Tech node icons, one per leaf skill | 41 |
+| UI frames, panels, buttons, resource icons | 40 |
+| Splash, menu background, loading, trophy card | 8 |
+| Rejects and spares | ~13 |
+| **Total** | **~250** |
+
+⚠️ **Do not generate the 41 tech icons before the style is locked.** Generate 6 terrain tiles first, look at them together, iterate the style suffix, and only then batch.
+
+### 7.4 Style guide
+
+Painterly gouache illustration, warm saturated palette, soft rim light, stylised realism, clean silhouette (D21). No game product is named anywhere in the prompts, which are committed publicly (see 12.1). Hexes are pointy-top, drawn at a fixed 30 degree isometric tilt so tile art can be swapped without touching layout code. Units read as silhouettes at zoom 0.5. Faction colour is applied as a code-side tint on a greyscale banner region, not baked into the sprite, so 8 factions do not multiply the asset count.
+
+---
+
+## 8. Audio
+
+- **Soundtrack:** three AI generated ambient tracks (exploration, tension, battle) plus one main theme, produced with the existing song-creation workflow. Loopable, 2-3 minutes each, cross-faded by game state. Target under 8 MB total as compressed audio.
+- **SFX:** code generated WebAudio, no files. Unit move, attack, city founded, tech complete, correct answer, wrong answer, unrest warning, victory. A small synth helper in `app/src/audio/sfx.ts`.
+- Master mute plus separate music and SFX sliders, persisted. Default music at 40%.
+
+---
+
+## 9. Persistence and Rayfin data model
+
+### 9.1 Entities (D29)
+
+```ts
+CampaignSave      { userId, saveId, seed, difficulty, turn, stateBlob, updatedAt }
+SkillMastery      { userId, cert, skillId, repetitions, easeFactor, intervalDays,
+                    dueAt, totalSeen, totalCorrect, lastQuality, updatedAt }
+GameStats         { userId, runId, seed, difficulty, turns, victoryType, score,
+                    readinessAtEnd, questionsAnswered, accuracy, durationMs, endedAt }
+LeaderboardEntry  { userId, displayName, cert, bestScore, bestReadiness,
+                    runsCompleted, weekKey, updatedAt }
+```
+
+`stateBlob` is a versioned, compressed JSON serialisation of `GameState`. Migrations live in `engine/src/save/migrations/`, and there is a test per migration with a stored fixture from the previous version.
+
+### 9.2 Anonymous to signed-in (D28)
+
+1. Anonymous play writes to `localStorage` under `fabric-empires:v1:*`.
+2. On sign-in, the app detects a local save and offers to import it.
+3. Reconciliation rule: **most recent `updatedAt` wins per entity**, except `SkillMastery`, which merges by taking the higher `totalSeen` and the later `dueAt`, so review debt cannot be laundered by switching devices.
+4. Signed-in play writes through to Rayfin on turn end, debounced to at most one write every 10 seconds.
+
+### 9.3 Leaderboards (D30)
+
+Two boards side by side:
+- **Campaign score:** rewards playing well.
+- **Exam readiness:** rewards learning well.
+
+Each with an all-time and a weekly view (`weekKey` = ISO year-week). Display name comes from the Entra profile. Anti-cheat is out of scope and is stated as such in the README, because a client-side game cannot honestly claim otherwise.
+
+---
+
+## 10. UX and onboarding
+
+### 10.1 Screens
+
+| Screen | Content |
+|---|---|
+| Menu | New campaign (seed, difficulty, cert), Continue, Great Library, Leaderboard, Profile, About |
+| Game | Hex map, top resource bar, right panel (city or unit context), bottom tech bar, minimap, turn button |
+| Challenge modal | Stem, options or diagram, timer ring, submit. Post-answer: verdict, explanation, Learn link |
+| Great Library | The 41 skills as a browsable reference with mastery state and Learn links. Reachable from the main menu, so it is usable as a pure study tool with no game at all (D52) |
+| Profile | Exam readiness gauge, three domain bars, SM-2 review schedule, run history |
+| Leaderboard | Two boards, all-time and weekly |
+
+### 10.2 The magic moment (D53)
+
+⚠️ Judges will give this two to three minutes. Everything below is subordinate to what happens in the first 120 seconds.
+
+The hook is a **scripted first-battle set piece**: the player arrives already holding a small territory, an enemy column is visibly advancing, and the first interaction is a battle that opens a question. The question modifier is shown explicitly on the combat prediction bar, so the causal chain (I know this, therefore I win this) is visible in a single screen rather than explained. Winning flips a tile, lights a tech node, and moves the readiness bar.
+
+This is why the first-battle questions must come from the reviewed subset, and why the tutorial is untimed. The set piece has to land even for someone who has never played a 4X.
+
+### 10.3 Tutorial (D26)
+
+Five guided turns, teaching the game and the Fabric concepts in the same breath:
+
+1. **Found your Workspace.** "Every empire starts with a workspace." Teaches city founding.
+2. **Send an Engineer to the Raw File Plains.** Teaches improvements and the Data resource.
+3. **Research node 12, Create a data connection.** First research challenge, tier 1, timer relaxed for the tutorial. Teaches the tech tree and the question loop.
+4. **The Silo Horde raids.** First battle challenge. Deliberately winnable. Teaches combat and the question modifier.
+5. **Unrest appears on your capital.** Teaches the review mechanic and why governance matters.
+
+Then the rails come off. Skippable, and a "replay tutorial" entry stays in the menu.
+
+⚠️ Contest judges will play for about three minutes. If turn 1 is confusing, nothing else in this document matters.
+
+---
+
+## 11. Testing
+
+| Layer | What | Tool |
+|---|---|---|
+| Hex maths | Neighbours, distance, ring, line, pixel conversion round trip | vitest, property-based |
+| Map generation | Same seed produces byte-identical map, golden fixture | vitest |
+| Combat | Modifier table, damage curve, no negative HP, ranged takes no return damage | vitest |
+| Turn pipeline | Phase order, yields, upkeep, starvation | vitest |
+| SM-2 | Known SuperMemo-2 vectors reproduce exactly | vitest |
+| Readiness | Weighted maths, edge cases at 0 and 1 | vitest |
+| Content | Every `skillId` exists in `outline.json`; weight distribution within tolerance; every `learnUrl` is under `learn.microsoft.com`; no plaintext answers in shipped JSON | vitest |
+| Boundary | `engine/` imports nothing from `learn/` or `app/` | import-graph test |
+| **Standalone** | Full campaign playable to victory with `NullChallengeProvider` | vitest, headless |
+| Save | Every migration has a fixture from the prior version | vitest |
+| Render perf | 2000 hexes at 60 fps | perf test, non-blocking |
+| E2E | Tutorial completes, a battle resolves, sign-in syncs | Playwright, lane A |
+| Publishability | `tools/verify_publishable.py` | python |
+
+**The clean clone rule applies:** `git clone && npm i && npm test && npm run build` must pass with no generated art, no `.env.local` and no Fabric access. Tests needing generated assets skip with a reason naming the command that produces them.
+
+---
+
+## 12. Publishing and compliance
+
+- **English only**, everywhere: README, code comments, commit messages, test names, PR bodies, the game UI.
+- **MIT licence.**
+- **Disclaimer in the README** (D33): all questions are original, written from the publicly published skills-measured outline; the project is not affiliated with, endorsed by, or sponsored by Microsoft certification; it reproduces no exam content.
+- **No tenant coordinates:** no workspace, item or capacity GUIDs, no `*.webapp.fabricapps.net` hosts, no UPNs, no `C:\Users\<name>` paths. Read from env with no default.
+- `tools/verify_publishable.py` runs in CI with shape-matching regex classes, not a list of identifiers I happened to notice: fabric SQL endpoints, `*.pbidedicated.windows.net`, `*.openai.azure.com`, `*.vault.azure.net`, any bare GUID, plus an allowlist where every entry quotes the offending text.
+- ⚠️ `rayfin/.deployments.json` carries a `publishableKey`. **Gitignore it.**
+- `NOTICE.md` records AI art provenance (model, date, that prompts are committed) and audio provenance.
+- Grep the README and every PR body before publishing for German characters, customer names, and disclosure phrasing.
+
+### 12.1 Intellectual property: the genre, the trademarks, and the art prompts
+
+Not legal advice. This records the reasoning so it can be re-examined.
+
+**Game mechanics are not copyrightable.** 17 U.S.C. 102(b) excludes procedures, processes, systems and methods of operation. *Baker v. Selden* (1879) is the root; *Allen v. Academic Games League of America* (9th Cir. 1994) applied it to games directly. Hex grids, tech trees, four resources, settlers and workers, fog of war, strength-versus-HP combat, era progression and victory conditions are genre vocabulary. *Freeciv* has been GPL since 1996 and *Unciv* is an open-source reimplementation of a commercial 4X's rules, both long-lived and unchallenged. Mathematical damage formulas are functional and not protectable.
+
+**Visual expression is protectable, and that is where the real risk sits.** *Tetris Holding v. Xio Interactive* (D.N.J. 2012): copying the rules was permitted, copying the look was not.
+
+⚠️ The original art style suffix named a specific commercial game. Those prompts are committed publicly, so 250 files would have documented an intent to reproduce another product's art direction, generated by a model that has certainly seen it. **Corrected (D21):** the style vocabulary is now self-contained and names no product.
+
+**Rules that apply to this repo:**
+- No competitor or product names anywhere in the tree, including art prompts, code comments and commit messages. `tools/verify_publishable.py` carries a trademark class matching `Civilization|Civ ?[IVX0-9]|Sid Meier|Firaxis|Take-Two|2K Games|Age of Empires|Ensemble Studios`. It **warns** rather than fails (D47).
+- The public README describes the game as a "turn-based 4X strategy game". Genre comparisons stay out of the title, the tagline and the repo name.
+- Distinctive coined terminology from other titles is avoided. Generic terms (monument, settler, tech tree) are fine. "Wonders" was renamed to "Monuments" for distance (D36), though it was probably generic enough to keep.
+- No Microsoft logo, no Fabric logo, no certification badge. Referencing "Microsoft Fabric" and "DP-600" descriptively is nominative fair use; visual marks are not.
+- Two disclaimers in the README header (D33): questions are original and the project reproduces no exam content; and this is a personal project, not a Microsoft product, not affiliated with or endorsed by Microsoft.
+- The author has not taken DP-600 (D45), so the certification NDA is not engaged. Questions are nonetheless authored strictly from the public study guide and public documentation, and D48 provenance makes that checkable rather than merely asserted.
+
+---
+
+## 13. Deployment
+
+- Capacity `prdsweden` (F8), a dedicated workspace named **Fabric Empires** (D31).
+- ⚠️ Hosting a Fabric App converts a schedulable capacity into an effectively 24/7 one. A paused capacity serves the app HTTP 500 and `rayfin up` fails with `404 The requested endpoint does not exist` before it ever surfaces `CapacityNotActive`. Confirm `prdsweden` stays resumed for the contest window, and note the cost implication in `PREVIEW-FEEDBACK.md`.
+- The hostname is platform-owned and can change. Preserve `rayfin/.deployments.json` locally (untracked) so the URL stays stable across deploys, because a changed host breaks sign-in with AADSTS50011.
+- ⚠️ `rayfin up` never deletes. Once a URL is published it keeps serving. Plan the URL you want in the submission and do not churn it.
+
+---
+
+## 14. Schedule
+
+Four weeks, 21 August to 21 September. **31 August is a hard submission checkpoint: whatever exists ships.**
+
+### Week 0: Foundations (21-24 August)
+
+| Day | Work |
+|---|---|
+| Thu 21 | Repo scaffold, workspaces, TS strict, ESLint with the boundary rule, vitest, CI. Hex maths plus tests. `outline.json` transcribed and verified against Learn |
+| Fri 22 | Seeded map generator plus golden test. Terrain, rivers, resources. Canvas renderer, camera, picking. First screenshot of a real map |
+| Sat 23 | `GameState`, turn pipeline, yields, cities, units, movement, zone of control. Save/load round trip |
+| Sun 24 | Combat maths plus tests. `ChallengeProvider` interface, Null and Scripted providers. **Standalone game playable end to end with no questions at all.** Azure OpenAI resource created, style locked on 6 terrain tiles |
+
+**Week 0 exit gate: a playable, question-free 4X.** If this slips, cut factions from 8 to 3 before cutting anything else.
+
+### Week 1: Vertical slice and submission (25-31 August)
+
+| Day | Work |
+|---|---|
+| Mon 25 | Tech tree from `outline.json`, 41 nodes, research flow, unlocks. Question schema plus loader plus crypto |
+| Tue 26 | Question modal: MCQ, multi-select, timer ring, verdict, explanation, Learn link. Battle and research challenge wiring |
+| Wed 27 | First 90 questions authored (clusters B1, B2, B3, the heaviest branch). Review page. Enemy AI v1, 3 factions active |
+| Thu 28 | SM-2, unrest mechanic, readiness gauge, Great Library screen. Art batch 1: terrain, 8 buildings, 6 units |
+| Fri 29 | Rayfin host, auth, 4 entities, local-to-cloud sync, leaderboards. Deploy to `prdsweden`, first live URL |
+| Sat 30 | Tutorial, 5 scripted turns. Art batch 2. Audio. Balance pass. 150 questions total |
+| Sun 31 | **Freeze at 18:00.** README with screenshots and disclaimer, `PREVIEW-FEEDBACK.md`, `NOTICE.md`, publishability audit, public repo push, demo video, Discord submission, LinkedIn post staged |
+
+**Week 1 exit gate: a live URL, a public repo and a submitted entry.**
+
+### Week 2: Depth (1-7 September)
+
+Remaining 5 factions with distinct AI personalities. All 3 victory conditions including The Proctor siege. Hotspot question type plus the 6 code-drawn diagrams. Monuments. Naval and OneLake. Question bank to 250. Art batch 3, all 41 tech icons.
+
+### Week 3: Polish and content (8-14 September)
+
+Balance from real playtests. Animations and juice: unit movement tweening, combat shake, tech completion flourish, trophy card. Full accessibility pass: keyboard navigation, focus order, contrast, reduced motion, screen reader labels on the challenge modal. Performance to 60 fps at 2000 hexes. Tablet layout. Blog post for actionablereporting.com.
+
+### Week 4: Second and third certs, gallery (15-21 September)
+
+DP-700 outline transcribed, its own faction set, 200+ questions. PL-300 the same. Cert selector on the menu. `awesome-rayfin` template PR with `docs/previews/fabric-empires.webp` at 1280x800 under 200 KB.
+
+---
+
+## 15. Risks
+
+| Risk | Impact | Mitigation |
+|---|---|---|
+| Scope. A hex 4X with unit movement is genuinely large | Nothing ships by 31 Aug | Week 0 exit gate is a playable game with zero content. Content is additive from there. Pre-agreed cut list in 15.1 |
+| Question authoring is the real bottleneck, not code | Thin, repetitive bank | Author cluster by cluster in parallel with code. 90 by 27 Aug or trigger the cut list |
+| Art style drift across 250 assets | Looks like a collage | Lock the style on 6 tiles first. Shared style suffix. Faction colour as a code tint, never baked |
+| Rayfin preview instability | Deploy fails near the deadline | Deploy on 29 Aug, not 31 Aug. The game runs fine on `localhost` and as a static bundle, so a Fabric outage degrades to a local demo plus video |
+| Capacity `prdsweden` paused | Live URL returns 500 during judging | Verify resumed daily during the contest window. Note it as preview feedback |
+| Tight timers frustrate new players | Judges bounce | Tutorial timers are relaxed. Apprentice difficulty is 1.5x. A "relaxed timers" accessibility toggle is a strong candidate if playtests complain |
+| Answer key readable | Trivial cheating | Accepted and documented. Hashing plus encrypted explanations stop casual scraping (6.6) |
+| Legal or trademark concern about exam content | Take-down | 100% original items, README disclaimer, no exam content reproduced, no implied endorsement |
+
+### 15.1 Cut list, with trigger conditions
+
+⚠️ **A cut list only works if something forces you to look at it.** Each tier below has a dated trigger. When a trigger fires, the whole tier goes, that evening, without renegotiation. The ambitious plan (D54) is only survivable because this list cuts load-bearing complexity rather than ornament.
+
+**Tier 0, cut now, before writing any code.** These are not on the 31 August path at all:
+naval units and OneLake crossings, seasonal terrain variants, the weekly leaderboard, unique bespoke mechanics for all 41 tech nodes (keep the real names and grouping, share unlock archetypes).
+
+**Tier 1, trigger: the Week 0 gate is not met by end of Sunday 24 August.**
+1. Monuments
+2. Factions from 8 down to 3, one per branch
+3. Hotspot questions and the 6 diagrams, keep MCQ and multi-select
+4. Soundtrack, keep the code-generated SFX
+
+**Tier 2, trigger: no question is answerable in-game by end of Wednesday 27 August.**
+5. Domination victory, keep Science and The Exam
+6. Enemy AI personalities, script one pressure path instead
+7. Art from ~250 assets down to a coherent ~40
+8. Answer crypto, ship plain JSON with the limitation stated in the README
+
+**Tier 3, trigger: no live URL by end of Friday 29 August.**
+9. Rayfin auth, sync and leaderboards. Ship the static build as the submitted URL and write the reason up in `PREVIEW-FEEDBACK.md`, which is itself a legitimate contest deliverable
+10. Wall-clock SM-2 unrest, keep review debt as a display-only indicator
+11. The Exam victory, keep Science
+12. Question bank down to whatever is reviewed, at minimum 40 items across all three branches
+
+**Never cut**, in priority order:
+1. A guided first mission (not necessarily 5 scripted turns)
+2. Explanation plus Learn link on every question
+3. The 41 real skill names in the tech tree
+4. The shareable result image, because it is how the contest sees the project at all
+
+The readiness gauge is **not** on this list: it degrades gracefully into a plain per-branch progress meter, so it survives in some form without needing protection.
+
+### 15.2 The review-coverage risk, documented
+
+D44 ships ~250 questions with ~20% plus all tier-3 items personally reviewed. The remainder are AI-drafted and unreviewed.
+
+**The failure mode is not embarrassment, it is mis-teaching.** A learner does not mentally discount an individual answer while studying; if the tool says an answer is correct, it trains them. A wrong or ambiguous item in a certification study aid is worse than no item. The README disclaimer does not undo this, because it operates at the level of the project while the harm operates at the level of a single question.
+
+Accepted knowingly. Partial mitigations in place:
+- Mandatory provenance (D48) means any disputed item can be traced to its source and fixed quickly.
+- Anonymous aggregate item analytics (D41) surface items with anomalous accuracy or timing for targeted review after launch.
+- `reviewStatus` is stored per item, so a future build can badge or gate unreviewed content without re-authoring anything.
+- Reviewed items are prioritised for the tutorial and the first-battle set piece, so the highest-traffic questions are the vetted ones.
+
+⚠️ If review time runs short, cut bank **size**, not review coverage. Tier 3 item 12 exists for exactly this.
+
+---
+
+## 16. Deliverables checklist
+
+- [ ] Live URL on `prdsweden` (primary submitted link)
+- [ ] Static GitHub Pages build as the guaranteed-alive fallback link (D37)
+- [ ] Shareable result image working and pasteable into Discord (D40)
+- [ ] Public GitHub repo `fabric-empires`, MIT
+- [ ] README: English, disclaimer, screenshots, getting started, scripts table, honest limitations
+- [ ] `PREVIEW-FEEDBACK.md`: Rayfin and Fabric Apps rough edges actually hit, with workarounds
+- [ ] `NOTICE.md`: AI art and audio provenance
+- [ ] Demo video, screen capture plus AI voiceover, roughly 90 seconds
+- [ ] Discord submission text
+- [ ] LinkedIn post staged in the composer, not published
+- [ ] Blog post for actionablereporting.com
+- [ ] `awesome-rayfin` template PR (post contest)
+
+---
+
+## 17. Open items
+
+- [ ] Azure OpenAI resource: region and resource group to use in the MCAP subscription
+- [ ] Confirm `prdsweden` can stay resumed 21 Aug to 21 Sept, and what that costs
+- [ ] Discord server joined and the entries channel located
+
+---
+
+*Last updated: 21 August 2026*
