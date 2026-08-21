@@ -83,6 +83,9 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D52 | **Great Library** | **The reference screen is called the Great Library, reachable from the main menu without starting a campaign** (delegated, see 2.3) |
 | D53 | Magic moment | A scripted first-battle set piece showing combat and the question modifier together |
 | D54 | Scope stance | Ambitious plan retained. Risk is managed by the cut list in 15.1, which carries dated trigger conditions |
+| D55 | **Art direction** | **Data-dream: a night world lit from within. Land near-black, emissive terrain, rivers of light, cities as structures held above the ground under a beam** |
+| D56 | Corruption as a visual | The Ungoverned Wastes, and any tile the Silo Horde holds, are drawn with torn scanlines in clashing hues. The enemy advance is visible on the ground, not only in a border colour |
+| D57 | **Battle length** | **Two lengths. The full set piece is reserved for the first battle of a game and for any city assault; every other clash gets a short punchy version. Every battle follows a question, so a long sequence on all of them would be exhausting by the tenth** |
 
 ### 2.1 Why D35 is the decision that shapes everything
 

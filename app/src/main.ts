@@ -1,9 +1,11 @@
 import {
+  ANTAGONIST_FACTION_ID,
   PLAYER_FACTION_ID,
   canAttack,
   canFoundCity,
   centreOn,
   cityAt,
+  cityTerritory,
   clampToBounds,
   completeResearch,
   createCamera,
@@ -13,6 +15,7 @@ import {
   foundCity,
   hexAtScreen,
   hexKey,
+  hexNeighbour,
   hexToScreen,
   moveUnit,
   normaliseSeed,
@@ -41,9 +44,11 @@ import {
   type ReachableTile,
 } from '@fabric-empires/engine';
 import { Dp600ChallengeProvider, createQuestionPresenter } from '@fabric-empires/learn';
-import { drawMap } from './render/mapRenderer.js';
+import { drawMap, drawVignette } from './render/mapRenderer.js';
 import { drawEntities } from './render/entityRenderer.js';
+import { createEffects } from './render/effects.js';
 import { createQuestionModal } from './ui/questionModal.js';
+import { createBattleBanner, type BattleSide } from './ui/battleBanner.js';
 
 /**
  * The learning layer, injected at the edge of the app.
@@ -60,6 +65,27 @@ const provider = new Dp600ChallengeProvider({
 /** Timers from D50: tight, but every modal can be paused without penalty. */
 const BATTLE_TIME_MS = 20_000;
 const RESEARCH_TIME_MS = 30_000;
+
+/**
+ * The animation layer.
+ *
+ * Held here rather than inside a renderer because effects outlive a single
+ * frame and must not be owned by something that is allowed to be lazy.
+ */
+const effects = createEffects();
+const banner = createBattleBanner();
+
+/**
+ * Battles are choreographed at two lengths.
+ *
+ * Every fight is preceded by a question, so a long set piece on every single
+ * clash would be exhausting by the tenth one. The full treatment is reserved
+ * for the moments that deserve it: the player's first battle of a game, and
+ * any assault on a city. Everything else gets the short, punchy version.
+ */
+const DRAMA_MS = 900;
+const PUNCH_MS = 260;
+let hadFirstBattle = false;
 
 const canvas = document.querySelector<HTMLCanvasElement>('#map')!;
 const ctx = canvas.getContext('2d')!;
@@ -226,41 +252,181 @@ async function actOn(target: Hex): Promise<void> {
     if (!canAttack(state, unit.id, target).ok) return;
 
     const preview = previewAttack(state, unit.id, target, { challengeScore });
-    const outcome = resolveAttack(state, unit.id, target, { challengeScore });
-    if (!outcome.ok) {
-      log(outcome.reason, 'bad');
-      return;
-    }
-    state = outcome.result.state;
-    const { log: battle } = outcome.result;
-    const odds = preview
-      ? ` (${Math.round(preview.attacker.effective)} vs ${Math.round(preview.defender.effective)})`
-      : '';
-    if (challengeScore > 0) {
-      log(`Your answer strengthened the attack.`, 'good');
-    } else if (challengeScore < 0) {
-      log(`Your answer weakened the attack.`, 'bad');
-    }
-    log(
-      `Attack${odds}: dealt ${battle.damageToDefender}, took ${battle.damageToAttacker}`,
-      battle.damageToDefender >= battle.damageToAttacker ? 'good' : 'bad',
-    );
-    if (battle.defenderDestroyed) log('Enemy unit destroyed.', 'good');
-    if (battle.attackerDestroyed) log('Your unit was destroyed.', 'bad');
-    if (battle.cityCaptured) log('City captured.', 'good');
-    refreshSelection();
-    dirty = true;
+    const targetCity = cityAt(state, target);
+    const dramatic = !hadFirstBattle || targetCity !== undefined;
+    hadFirstBattle = true;
+
+    await playAttack(unit.id, target, challengeScore, preview, dramatic);
     return;
   }
 
+  const from = unit.hex;
   const moved = moveUnit(state, unit.id, target);
   if (!moved.ok) {
     log(moved.reason, 'bad');
     return;
   }
   state = moved.state;
+  const landed = state.units.get(unit.id);
+  if (landed && (landed.hex.q !== from.q || landed.hex.r !== from.r)) {
+    void effects.travel(unit.id, from, landed.hex);
+  }
   refreshSelection();
   dirty = true;
+}
+
+/**
+ * Run a battle as an animation rather than as a state change.
+ *
+ * The engine resolves the fight instantly; the point of this function is that
+ * the player sees the strike, the damage and the consequence in that order.
+ * Damage is applied at the moment of impact, not before, because a health bar
+ * that empties while the attacker is still winding up reads as a bug.
+ */
+async function playAttack(
+  unitId: string,
+  target: Hex,
+  challengeScore: number,
+  preview: ReturnType<typeof previewAttack>,
+  dramatic: boolean,
+): Promise<void> {
+  const attacker = state.units.get(unitId);
+  if (!attacker) return;
+
+  const ranged = preview?.ranged ?? !isAdjacent(attacker.hex, target);
+  const defenderUnit = unitAt(state, target);
+  const defenderCity = cityAt(state, target);
+  const defenderColour =
+    state.factions.get((defenderUnit ?? defenderCity)?.factionId ?? '')?.colour ?? '#b5533f';
+  const attackerColour = state.factions.get(attacker.factionId)?.colour ?? '#4a9fe0';
+
+  const hpBefore = {
+    attacker: attacker.hp,
+    defender: defenderUnit?.hp ?? defenderCity?.hp ?? 0,
+  };
+
+  if (dramatic) {
+    camera = clampToBounds(centreOn(camera, target), worldBounds(state.map.radius));
+    dirty = true;
+    await wait(220);
+  }
+
+  // A melee unit throws itself at the target; a ranged one stays put and
+  // sends a pulse instead, which is the whole visual difference between the
+  // two and costs one branch.
+  if (ranged) {
+    effects.pulse(attacker.hex, attackerColour, 1.2);
+    await wait(dramatic ? 320 : 160);
+  } else {
+    await effects.lunge(unitId, attacker.hex, target);
+  }
+
+  const outcome = resolveAttack(state, unitId, target, { challengeScore });
+  if (!outcome.ok) {
+    log(outcome.reason, 'bad');
+    return;
+  }
+  state = outcome.result.state;
+  const { log: battle } = outcome.result;
+
+  // Impact.
+  effects.flash(target, '#ffe6a8', dramatic ? 420 : 260);
+  effects.pulse(target, defenderColour, dramatic ? 2.1 : 1.5);
+  effects.shake(Math.min(14, 3 + battle.damageToDefender * 0.16) * (dramatic ? 1.5 : 1));
+  if (battle.damageToDefender > 0) {
+    effects.floatingText(target, `-${battle.damageToDefender}`, '#ffcf7a', dramatic ? 1.4 : 1.1);
+  }
+  if (battle.damageToAttacker > 0) {
+    effects.floatingText(
+      attacker.hex,
+      `-${battle.damageToAttacker}`,
+      '#ff9b91',
+      dramatic ? 1.2 : 1,
+    );
+  }
+  if (battle.defenderDestroyed && defenderUnit) effects.dissolve(defenderUnit.id);
+  if (battle.attackerDestroyed) effects.dissolve(unitId);
+  if (battle.cityCaptured) {
+    effects.pulse(target, '#8fd694', 3.2);
+    effects.floatingText(target, 'CAPTURED', '#8fd694', 1.5);
+    effects.shake(18);
+  }
+
+  // The banner is the only place the player can see how much the answer was
+  // worth, so it waits for the dust rather than competing with it.
+  await wait(dramatic ? DRAMA_MS : PUNCH_MS);
+
+  if (preview) {
+    // The engine reports the answer's contribution separately, which is the
+    // whole reason the banner can show it as its own bar segment instead of
+    // quietly folding it into a total the player has to take on trust.
+    const attackerType = unitType(attacker.typeId);
+    const attackerSide: BattleSide = {
+      label: attackerType.label,
+      colour: attackerColour,
+      base: preview.attacker.effective - preview.attacker.challengeModifier,
+      modifier: preview.attacker.challengeModifier,
+      effective: preview.attacker.effective,
+      hpBefore: hpBefore.attacker,
+      hpAfter: state.units.get(unitId)?.hp ?? 0,
+      maxHp: attackerType.maxHp,
+    };
+    const defenderLabel = defenderCity
+      ? defenderCity.name
+      : defenderUnit
+        ? unitType(defenderUnit.typeId).label
+        : 'Defender';
+    const defenderSide: BattleSide = {
+      label: defenderLabel,
+      colour: defenderColour,
+      base: preview.defender.effective - preview.defender.challengeModifier,
+      modifier: preview.defender.challengeModifier,
+      effective: preview.defender.effective,
+      hpBefore: hpBefore.defender,
+      hpAfter: Math.max(0, hpBefore.defender - battle.damageToDefender),
+      maxHp: Math.max(1, hpBefore.defender),
+    };
+    banner.show({
+      attacker: attackerSide,
+      defender: defenderSide,
+      damageToDefender: battle.damageToDefender,
+      damageToAttacker: battle.damageToAttacker,
+      defenderDestroyed: battle.defenderDestroyed,
+      attackerDestroyed: battle.attackerDestroyed,
+      cityCaptured: battle.cityCaptured,
+      ranged,
+    });
+  }
+
+  if (challengeScore > 0) {
+    log('Your answer strengthened the attack.', 'good');
+  } else if (challengeScore < 0) {
+    log('Your answer weakened the attack.', 'bad');
+  }
+  const odds = preview
+    ? ` (${Math.round(preview.attacker.effective)} vs ${Math.round(preview.defender.effective)})`
+    : '';
+  log(
+    `Attack${odds}: dealt ${battle.damageToDefender}, took ${battle.damageToAttacker}`,
+    battle.damageToDefender >= battle.damageToAttacker ? 'good' : 'bad',
+  );
+  if (battle.defenderDestroyed) log('Enemy unit destroyed.', 'good');
+  if (battle.attackerDestroyed) log('Your unit was destroyed.', 'bad');
+  if (battle.cityCaptured) log('City captured.', 'good');
+
+  refreshCorruption();
+  refreshSelection();
+  dirty = true;
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function isAdjacent(a: Hex, b: Hex): boolean {
+  const dq = a.q - b.q;
+  const dr = a.r - b.r;
+  return (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2 === 1;
 }
 
 function doFound(): void {
@@ -273,6 +439,11 @@ function doFound(): void {
   state = result.state;
   const city = [...state.cities.values()].at(-1);
   log(`Founded ${city?.name ?? 'a city'}.`, 'good');
+  if (city) {
+    effects.pulse(city.hex, '#8fd694', 3);
+    effects.floatingText(city.hex, city.name, '#cfe6ff', 1.2);
+  }
+  refreshCorruption();
   select(undefined);
 }
 
@@ -320,6 +491,7 @@ function doEndTurn(): void {
 
   refreshSelection();
   refreshResearch();
+  refreshCorruption();
   dirty = true;
 }
 
@@ -449,6 +621,8 @@ function fitCanvas(): void {
 function newGame(rawSeed: string): void {
   const seed = normaliseSeed(rawSeed);
   state = createGameState(seed, { topics: provider.topics() });
+  hadFirstBattle = false;
+  banner.hide();
   el.seedInput.value = seed;
   el.log.replaceChildren();
   log(`New empire on seed ${seed}.`);
@@ -463,6 +637,7 @@ function newGame(rawSeed: string): void {
   }
   refreshHud();
   refreshResearch();
+  refreshCorruption();
   dirty = true;
 }
 
@@ -583,17 +758,66 @@ el.seedInput.addEventListener('keydown', (e) => {
 // Render loop ----------------------------------------------------------
 
 let frameMs = 0;
+const startedAt = performance.now();
 
-function frame(): void {
-  if (dirty) {
+/**
+ * How often the map redraws when nothing is happening.
+ *
+ * The world has slow ambient motion: vents flicker, city beams breathe, the
+ * corruption tears. Running that at the display refresh rate would burn a
+ * core to animate something nobody is looking at, so idle frames are capped
+ * well below 60 and the cap is lifted the moment anything real occurs.
+ */
+const AMBIENT_INTERVAL_MS = 90;
+let lastAmbient = 0;
+
+/**
+ * Tiles the Silo Horde holds.
+ *
+ * Recomputed only when the state changes, not per frame: territory is a
+ * derived map over every city and its work radius, and it is stable between
+ * turns.
+ */
+let corrupted: ReadonlySet<string> = new Set();
+
+function refreshCorruption(): void {
+  const next = new Set<string>();
+  const territory = cityTerritory(state);
+  for (const [key, cityId] of territory) {
+    const city = state.cities.get(cityId);
+    if (city && city.factionId === ANTAGONIST_FACTION_ID) next.add(key);
+  }
+  corrupted = next;
+}
+
+function frame(now: number): void {
+  const time = now - startedAt;
+  const animating = effects.update(now);
+  const ambient = now - lastAmbient >= AMBIENT_INTERVAL_MS;
+
+  if (dirty || animating || ambient) {
+    if (ambient) lastAmbient = now;
     const started = performance.now();
-    drawMap(ctx, state.map, camera, { hover, selected: undefined });
+    const shake = effects.shakeOffset();
+
+    ctx.save();
+    ctx.translate(shake.x, shake.y);
+    drawMap(ctx, state.map, camera, { hover, selected: undefined, corrupted, time });
     drawEntities(ctx, state, camera, {
       selectedUnitId,
       reachable: reach,
       attackTargets,
       hover,
+      time,
+      offsetOf: (id) => effects.offsetOf(id),
+      opacityOf: (id) => effects.opacityOf(id),
     });
+    effects.draw(ctx, camera);
+    ctx.restore();
+
+    // Outside the shake transform, so the frame edge never moves.
+    drawVignette(ctx, camera.viewport.width, camera.viewport.height);
+
     frameMs = performance.now() - started;
     dirty = false;
     refreshHud();
@@ -633,6 +857,7 @@ declare global {
       };
       startResearch: (topicId: string) => boolean;
       grantCompute: (amount: number) => void;
+      spawnEnemyAdjacent: (unitId: string) => Hex | undefined;
       clickHex: (hex: Hex) => void;
       endTurn: () => void;
     };
@@ -693,6 +918,34 @@ window.__fabricEmpires = {
     });
     state = { ...state, factions };
     refreshHud();
+  },
+  spawnEnemyAdjacent: (unitId: string) => {
+    // Test affordance: put a hostile next door so the combat choreography
+    // can be exercised without marching across the continent first.
+    const unit = state.units.get(unitId);
+    if (!unit) return undefined;
+    for (let d = 0; d < 6; d++) {
+      const hex = hexNeighbour(unit.hex, d);
+      const tile = state.map.tiles.get(hexKey(hex));
+      if (!tile || tile.terrain === 'onelake' || tile.terrain === 'semanticPeaks') continue;
+      if (unitAt(state, hex) || cityAt(state, hex)) continue;
+      const id = `test-foe-${state.nextEntityId}`;
+      const units = new Map(state.units);
+      units.set(id, {
+        id,
+        typeId: 'pipelineRunner',
+        factionId: ANTAGONIST_FACTION_ID,
+        hex,
+        hp: 100,
+        movesLeft: 0,
+        fortified: false,
+      });
+      state = { ...state, units, nextEntityId: state.nextEntityId + 1 };
+      refreshSelection();
+      dirty = true;
+      return hex;
+    }
+    return undefined;
   },
   clickHex: (hex) => void actOn(hex),
   endTurn: () => doEndTurn(),
