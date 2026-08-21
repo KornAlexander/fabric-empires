@@ -41,6 +41,8 @@ export interface GameMap {
   readonly tiles: ReadonlyMap<string, MapTile>;
   /** Land tiles reachable on foot from one another, largest component only. */
   readonly landmassSize: number;
+  /** Keys of that component, so callers can test membership in O(1). */
+  readonly mainland: ReadonlySet<string>;
 }
 
 export interface MapOptions {
@@ -350,6 +352,7 @@ export function generateMap(
     radius: options.radius,
     tiles,
     landmassSize: mainlandSet.size,
+    mainland: mainlandSet,
   };
 }
 
