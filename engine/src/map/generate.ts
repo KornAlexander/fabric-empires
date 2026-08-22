@@ -203,37 +203,102 @@ function edgeFactor(h: Hex, radius: number, falloff: number): number {
  * is nearest. One centre at the origin reproduces the old behaviour exactly,
  * which is why the golden digests still hold.
  */
-function islandCentres(seed: string, radius: number, count: number): Hex[] {
-  if (count <= 1) return [{ q: 0, r: 0 }];
+/**
+ * An island: where its centre is, and how far its land reaches.
+ *
+ * Reach is per island rather than one number for all of them, because the home
+ * island is deliberately bigger than the rest. See `islandPlan`.
+ */
+interface IslandCentre {
+  readonly hex: Hex;
+  readonly reach: number;
+}
+
+/**
+ * ⚠️ **How big the home island is, relative to the lesser isles.**
+ *
+ * Doubling the reach makes it about four times the area. Measured on the first
+ * version of the archipelago preset, an even scatter of eight islands left a
+ * home island of **99 tiles** to hold the player and seven antagonist camps,
+ * which is not a map, it is a scrum: villages ended up two hexes apart and the
+ * opening was unsurvivable. Every faction has to be reachable by land (see
+ * `chooseAntagonistCamps`), so the island they all share has to be a real
+ * place.
+ */
+const HOME_ISLAND_BOOST = 2;
+
+/**
+ * Where the islands sit and how big each one is.
+ *
+ * The home island is centred on the origin and the lesser isles ring it, which
+ * is also what puts the player in the middle of their own world: the largest
+ * landmass becomes `map.mainland`, and `chooseStartPosition` starts the player
+ * on that.
+ *
+ * ⚠️ **The reach is solved from the land fraction, not chosen.** Classification
+ * is a quantile, so exactly `landFraction` of all tiles become land whatever
+ * the mask says. If the island discs are too small to hold that many, the
+ * surplus is taken from the masked-out sea between them and the islands grow
+ * together: asking for eight produced two. One home disc of radius `2r` and
+ * `n-1` discs of radius `r` cover about `3r^2 * (n + 3)` hexes on a hex grid
+ * that holds `3R^2`, so `r = R * sqrt(landFraction / (n + 3))` makes them
+ * exactly big enough and the spill disappears.
+ */
+function islandPlan(
+  seed: string,
+  radius: number,
+  count: number,
+  landFraction: number,
+): IslandCentre[] {
+  if (count <= 1) return [{ hex: { q: 0, r: 0 }, reach: radius }];
+
+  const n = Math.max(2, count);
+  const reach = Math.max(2, radius * Math.sqrt(landFraction / (n + 3)));
+  const homeReach = reach * HOME_ISLAND_BOOST;
+
+  const centres: IslandCentre[] = [{ hex: { q: 0, r: 0 }, reach: homeReach }];
 
   const rng = createRng(seed, 'map:islands');
-  const centres: Hex[] = [];
-  // Inside the rim so every island gets a coast, and apart from each other so
-  // they do not simply merge back into one continent.
-  const spread = radius * 0.72;
-  const separation = radius * 0.42;
+  // Clear of the home island, clear of each other, and inside the rim so every
+  // island still gets a coast rather than being cut off by the map edge.
+  const fromHome = homeReach + reach * 1.15;
+  const apart = reach * 2.15;
+  const rim = radius - reach * 0.9;
 
-  for (let attempt = 0; attempt < 400 && centres.length < count; attempt++) {
+  for (let attempt = 0; attempt < 4000 && centres.length < n; attempt++) {
     const angle = rng.float(0, Math.PI * 2);
-    const distance = Math.sqrt(rng.float(0, 1)) * spread;
+    /*
+     * Sampled on the annulus between the home island and the rim, by AREA.
+     *
+     * ⚠️ Uniform in radius would crowd the isles towards the middle, because
+     * an annulus has far more room in its outer rings than its inner ones.
+     * Measured on the first archipelago, the isles all sat inside about half
+     * the map and the outer third was empty ocean. Interpolating on r squared
+     * spreads them evenly over the water instead.
+     */
+    const distance = Math.sqrt(
+      fromHome * fromHome +
+        rng.float(0, 1) * Math.max(0, rim * rim - fromHome * fromHome),
+    );
     const x = Math.cos(angle) * distance;
     const y = Math.sin(angle) * distance;
     const q = Math.round((Math.sqrt(3) / 3) * x - y / 3);
     const r = Math.round((2 / 3) * y);
     const candidate = { q, r };
-    if (hexDistance({ q: 0, r: 0 }, candidate) > radius) continue;
-    if (centres.some((c) => hexDistance(c, candidate) < separation)) continue;
-    centres.push(candidate);
+    if (hexDistance({ q: 0, r: 0 }, candidate) > rim) continue;
+    if (hexDistance({ q: 0, r: 0 }, candidate) < fromHome) continue;
+    if (centres.slice(1).some((c) => hexDistance(c.hex, candidate) < apart)) continue;
+    centres.push({ hex: candidate, reach });
   }
 
-  return centres.length > 0 ? centres : [{ q: 0, r: 0 }];
+  return centres;
 }
 
 /** The land mask: distance to the nearest island centre, not to the origin. */
-function landFactor(h: Hex, centres: readonly Hex[], reach: number, falloff: number): number {
+function landFactor(h: Hex, centres: readonly IslandCentre[], falloff: number): number {
   let best = 0;
   for (const centre of centres) {
-    const d = hexDistance(centre, h) / reach;
+    const d = hexDistance(centre.hex, h) / centre.reach;
     const factor = Math.max(0, 1 - Math.pow(d, falloff));
     if (factor > best) best = factor;
   }
@@ -290,18 +355,11 @@ export function generateMap(
    * `edgeFactor` did. Several islands each get a share of it, or their
    * falloffs overlap and they grow back into a single continent.
    */
-  const centres = islandCentres(seed, options.radius, options.islands);
-  /*
-   * Islands must not be able to touch. Centres are kept 
-adius * 0.52 apart,
-   * so a reach under half of that guarantees open water between them however
-   * the noise falls.
-   */
-  const reach = centres.length === 1 ? options.radius : options.radius * 0.19;
+  const centres = islandPlan(seed, options.radius, options.islands, options.landFraction);
   const mask = (h: Hex): number =>
     centres.length === 1
       ? edgeFactor(h, options.radius, options.edgeFalloff)
-      : landFactor(h, centres, reach, options.edgeFalloff);
+      : landFactor(h, centres, options.edgeFalloff);
   const moistureNoise = createNoise2D(createRng(seed, 'map:moisture'));
   const corruptionNoise = createNoise2D(createRng(seed, 'map:corruption'));
 

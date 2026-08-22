@@ -312,39 +312,81 @@ export function chooseAntagonistCamps(
   count: number,
 ): Hex[] {
   /*
-   * ⚠️ Any island, not only the player's.
+   * ⚠️ **On the player's landmass, and nowhere else.**
    *
-   * This required map.mainland, which was correct while every map was a
-   * single continent. On an archipelago it quietly put all seven factions on
-   * the player's own island and left the rest of the world empty, which is the
-   * opposite of what islands are for.
+   * This has now been both ways. It originally required `map.mainland`, which
+   * was correct while every map was one continent. When archipelagos landed it
+   * was opened up to any island, on the reasoning that leaving the rest of the
+   * world empty defeated the point of islands.
+   *
+   * That reasoning was wrong, because land units cannot cross water. A faction
+   * on another island never raids you, you can never reach its village, and
+   * Domination becomes unwinnable while a rival still stands: the game quietly
+   * loses one of its three endings. Now that world shape is something a player
+   * CHOOSES at the start, that failure would be one menu click away.
+   *
+   * So islands are terrain, not separation, until ships can carry an army
+   * (phase 23). The other islands are unclaimed ground and look like it.
    */
-  const far = (tile: MapTile): boolean =>
-    isPassableByLand(tile.terrain) &&
-    hexDistance(tile.hex, playerStart) >= minAntagonistDistance(map.radius);
+  const onPlayerLand = (tile: MapTile): boolean =>
+    map.mainland.size === 0 || map.mainland.has(hexKey(tile.hex));
 
   const byDistance = (a: MapTile, b: MapTile): number =>
     hexDistance(a.hex, playerStart) - hexDistance(b.hex, playerStart) ||
     hexKey(a.hex).localeCompare(hexKey(b.hex));
 
-  const wastes = [...map.tiles.values()]
-    .filter((tile) => far(tile) && tile.terrain === 'ungovernedWastes')
-    .sort(byDistance);
+  /*
+   * Relax the spacing, and then the head start, rather than run out of camps.
+   *
+   * ⚠️ A small home island cannot hold seven camps six hexes apart and twelve
+   * hexes from the player, and the old code simply returned fewer anchors.
+   * That silently deleted factions, and since each faction carries one cluster
+   * of the exam, a missing faction is a missing BRANCH OF THE SYLLABUS: the
+   * world shape a player picked from a menu would have been quietly deciding
+   * how much of DP-600 they could be tested on. Crowding is much the lesser
+   * evil, so distance gives way before the roster does.
+   *
+   * Spacing is relaxed first because it only affects how clustered the enemy
+   * is. The minimum distance from the player is relaxed second because that is
+   * the opening breathing room, and losing it is felt immediately.
+   */
+  const fullSeparation = MIN_CAMP_SEPARATION * Math.max(1, map.radius / 25);
+  const fullDistance = minAntagonistDistance(map.radius);
 
-  // Fall back to any distant passable land if the wastes are unreachable or
-  // too few, so a strange map cannot produce a game with no opposition.
-  const rest = [...map.tiles.values()]
-    .filter((tile) => far(tile) && tile.terrain !== 'ungovernedWastes')
-    .sort(byDistance);
+  const attempt = (separation: number, minDistance: number): Hex[] => {
+    const far = (tile: MapTile): boolean =>
+      isPassableByLand(tile.terrain) &&
+      onPlayerLand(tile) &&
+      hexDistance(tile.hex, playerStart) >= minDistance;
 
-  const anchors: Hex[] = [];
-  const separation = MIN_CAMP_SEPARATION * Math.max(1, map.radius / 25);
-  for (const tile of [...wastes, ...rest]) {
-    if (anchors.length >= count) break;
-    if (anchors.some((a) => hexDistance(a, tile.hex) < separation)) continue;
-    anchors.push(tile.hex);
+    const wastes = [...map.tiles.values()]
+      .filter((tile) => far(tile) && tile.terrain === 'ungovernedWastes')
+      .sort(byDistance);
+
+    // Fall back to any distant passable land if the wastes are unreachable or
+    // too few, so a strange map cannot produce a game with no opposition.
+    const rest = [...map.tiles.values()]
+      .filter((tile) => far(tile) && tile.terrain !== 'ungovernedWastes')
+      .sort(byDistance);
+
+    const anchors: Hex[] = [];
+    for (const tile of [...wastes, ...rest]) {
+      if (anchors.length >= count) break;
+      if (anchors.some((a) => hexDistance(a, tile.hex) < separation)) continue;
+      anchors.push(tile.hex);
+    }
+    return anchors;
+  };
+
+  let best: Hex[] = [];
+  for (const distance of [fullDistance, fullDistance * 0.6, fullDistance * 0.35, 2]) {
+    for (const separation of [fullSeparation, fullSeparation * 0.6, fullSeparation * 0.35, 1]) {
+      const anchors = attempt(separation, distance);
+      if (anchors.length >= count) return anchors;
+      if (anchors.length > best.length) best = anchors;
+    }
   }
-  return anchors;
+  return best;
 }
 
 // Construction ----------------------------------------------------------

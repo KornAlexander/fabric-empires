@@ -51,22 +51,19 @@ function landmasses(map: GameMap): number[] {
  * `coastSmoothing` blurs the field that decides land from water, and its reach
  * grows by one hex per pass. The default of 6 is nothing against a 2,795-tile
  * continent 25 hexes thick, but it is comparable to the half-width of a small
- * island, so it dissolves them. Measured on these four seeds, asking for 5
- * islands actually yields:
+ * island, so it dissolves them. One pass is what the island presets use.
  *
- *   passes 0 -> 3 to 4 masses    passes 2 -> 2 to 4 masses
- *   passes 1 -> 3 to 4 masses    passes 3 -> 2 masses
- *   passes 6 -> 1 to 2 masses, and CONTOSO becomes a single continent
- *
- * One pass is the most that keeps every seed an archipelago, so that is what is
- * pinned. The rule behind it is that the blur must stay small relative to the
- * smallest landmass worth keeping, and the naval phase (23) will have to choose
- * this deliberately when it turns islands on rather than rediscover it.
+ * ⚠️ **And the land fraction is not free either.** The discs have to be able to
+ * hold every tile the quantile will make land, or the surplus is taken from the
+ * sea between them and the islands grow together. This config asked for 5
+ * islands at `landFraction: 0.3` and got **one mass of 1,770 tiles**, because
+ * the discs could hold about 1,818 and the quantile wanted 1,863. It is solved
+ * for in `islandPlan` now, and 0.15 is what the shipped presets use.
  */
 const ARCHIPELAGO = {
   islands: 5,
-  landFraction: 0.3,
-  minIslandSize: 12,
+  landFraction: 0.15,
+  minIslandSize: 14,
   coastSmoothing: 1,
 } as const;
 const SEEDS = ['FABRIC', 'CONTOSO', 'DP600', 'HORDE'];

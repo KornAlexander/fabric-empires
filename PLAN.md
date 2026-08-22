@@ -214,6 +214,52 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D183 | The golden digests are kept in two sets | Coast smoothing changed the default map, so those digests had to move. A second set pinned at `coastSmoothing: 0` still asserts the three original hashes, and they still hold, which proves the noise, mask and classification were untouched and only a new stage was added in front. Without it, "changed because I meant to" and "changed because I broke it" would look identical |
 | D184 | ⚠️ Archipelagos need one blur pass, not six | The blur reach grows a hex per pass, so 6 is nothing against a 25-hex-thick continent but comparable to a small island's half-width, and it dissolves them: asking for 5 islands gave 3 to 4 masses at 1 pass and 1 to 2 at 6, with one seed collapsing to a single continent. Pinned at 1 in the archipelago test. The naval phase must choose this deliberately |
 | D185 | Whole-mass averages could not see the problem | Slenderness over 2,800 tiles said the continent was fine, because it was fine in the middle. A fringe lives entirely on the boundary and any metric that averages over area will miss it. The lesson is not "measure", which was already being done, but **measure the thing being complained about**: the complaint was about the coast, so the metric had to be a property of the coast |
+| D186 | A setup screen before the world, not a settings panel beside it | Three choices: world shape, roughness, seed. It also pays for itself as a loading screen: the 8.1 second cold start in section 22.2 was the worst thing about the game and all of it was a blank page. The same wait spent reading a menu is not a wait |
+| D187 | ⚠️ Every faction stays on the player's landmass, whatever shape is chosen | Land units cannot cross water. A faction on another island never raids, can never be reached, and leaves Domination unwinnable because a rival still stands. That was tolerable while islands were an off-by-default capability; it is not tolerable when it is one click on a menu. Islands are terrain and strategy, not separation, until ships can carry an army |
+| D188 | ⚠️ Camp placement relaxes distance and spacing rather than returning fewer camps | It used to just return what fitted. Each faction carries one cluster of DP-600, so a dropped faction is **a dropped branch of the exam**: the world shape a player picked from a menu would have been quietly deciding how much of the syllabus they could be tested on. Spacing gives way first, then the opening head start, and the roster never does |
+| D189 | ⚠️ Island reach is solved from the land fraction, not chosen | Classification is a quantile, so exactly `landFraction` of tiles become land whatever the mask says. If the discs cannot hold that many, the surplus comes out of the sea between them and the islands merge: asking for eight gave two, and the old archipelago config produced **one mass of 1,770 tiles**. `reach = R * sqrt(landFraction / (n + 3))` sizes them to hold it exactly |
+| D190 | Island spacing scales with the count | It was a flat `radius * 0.42` however many were requested, so seven centres could never be placed and the generator silently settled for three or four. "Many small islands" measured as 3 to 4 masses |
+| D191 | ⚠️ The home island is twice the reach of the rest | An even scatter of eight left a **99-tile** home island holding the player and seven camps, with villages two hexes apart and an unsurvivable opening. Since every faction must share the player's landmass (D187), that island has to be a real place. Doubling reach quadruples area: 314 tiles, and the largest landmass is the one `chooseStartPosition` puts the player on |
+| D192 | Isles are scattered by area, not by radius | Uniform in radius crowds them inwards, because an annulus has far more room in its outer rings. Measured, the first archipelago left the outer third of the map empty. Interpolating on r squared spreads them over the water |
+| D193 | Roughness changes what the map IS, not how it is drawn | It moves the peaks and highlands shares, and peaks are impassable while highlands are slow, so it decides where armies can go and therefore where the war happens. 2%, 5% and 11% of the land impassable. A "taller hills" slider would have been a lie dressed as a choice |
+| D194 | Presets, not sliders | Land fraction, island count, blur radius and minimum island size are not independent, and seven islands at 45% land is not seven islands. Naming three combinations that were each measured is more honest than exposing six numbers and hoping. They live in the engine, so the UI renders them and cannot invent new ones |
+| D195 | A preset is a promise, so it gets a test | `worldSetup.test.ts` asserts across all 36 shape/roughness/seed combinations that seven camps are placed, all on the home island, that each shape gives the landmass count its label claims, that the home island stays above 150 tiles, and that roughness is ordered and identical on every seed |
+
+### 27. Choosing a world
+
+Three choices before the first turn, and the screen doubles as the loading
+screen the cold start always needed.
+
+| Setting | Options |
+|---|---|
+| The world | One great continent, A few large islands, Many small islands |
+| The land | Gentle, Rolling, Rugged |
+| The seed | Free text. Same seed and same choices, same world |
+
+#### 27.1 What each shape actually produces
+
+Measured across four seeds:
+
+| Shape | Landmasses | Home island | Others | Factions reachable |
+|---|---|---|---|---|
+| Continent | 1 | 2,795 | — | 7 of 7 |
+| A few large islands | 3 to 4 | 496 to 639 | ~145 | 7 of 7 |
+| Many small islands | 8 | 313 to 322 | ~89 | 7 of 7 |
+
+And roughness, as a share of land that is impassable peak: gentle 2%, rolling
+5%, rugged 11%. Identical on every seed, because composition is a quantile.
+
+#### 27.2 The rule that shaped the whole feature
+
+⚠️ **Land units cannot cross water**, so every antagonist has to be on the
+player's landmass. That single constraint is why the home island is twice the
+reach of the others, why camp placement relaxes its spacing rather than
+dropping a faction, and why islands are terrain rather than separation.
+
+The alternative was to let factions scatter and accept that Domination becomes
+unwinnable on two of the three settings. A menu option that silently removes
+one of the game's three endings, and two branches of the exam with it, is not
+an option worth offering. Ships (phase 23) are what change this.
 
 ### 26. The coastline
 

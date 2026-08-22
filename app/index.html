@@ -72,6 +72,62 @@
       .fe-choice-label { font-weight: 600; font-size: 13px; }
       .fe-choice-detail { color: var(--muted); font-size: 11px; line-height: 1.45; }
 
+      /* The setup screen, shown before the world is built. */
+      .fe-setup {
+        position: fixed; inset: 0; z-index: 60;
+        display: flex; align-items: center; justify-content: center;
+        background: radial-gradient(ellipse at 50% 30%, #14202a 0%, #070a0d 70%);
+        overflow: auto; padding: 24px 0;
+      }
+      .fe-setup-card {
+        width: min(760px, 92vw);
+        background: var(--panel); border: 1px solid var(--border);
+        border-radius: 14px; padding: 26px 30px;
+      }
+      .fe-setup-card h1 {
+        margin: 0 0 6px; font-size: 26px; font-weight: 600;
+        letter-spacing: 0.01em; color: var(--accent);
+      }
+      .fe-setup-blurb {
+        margin: 0 0 20px; color: var(--muted);
+        font-size: 12px; line-height: 1.6; max-width: 56ch;
+      }
+      .fe-setup-group { margin-bottom: 18px; }
+      .fe-setup-group h3 {
+        margin: 0 0 8px; font-size: 11px; font-weight: 600;
+        text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted);
+      }
+      .fe-setup-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+      .fe-setup-option {
+        display: flex; flex-direction: column; gap: 4px; text-align: left;
+        padding: 11px 13px; cursor: pointer; color: inherit; font: inherit;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid var(--border); border-radius: 9px;
+      }
+      .fe-setup-option:hover { background: rgba(255, 255, 255, 0.08); }
+      .fe-setup-option.active {
+        border-color: var(--accent);
+        background: rgba(74, 159, 224, 0.14);
+      }
+      .fe-setup-label { font-weight: 600; font-size: 13px; }
+      .fe-setup-detail { color: var(--muted); font-size: 11px; line-height: 1.45; }
+      .fe-setup-seed { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+      .fe-setup-seed input {
+        background: rgba(0, 0, 0, 0.35); color: inherit; font: inherit;
+        border: 1px solid var(--border); border-radius: 7px;
+        padding: 8px 10px; width: 190px;
+      }
+      .fe-setup-play {
+        margin-top: 6px; width: 100%; padding: 12px;
+        font: inherit; font-weight: 600; font-size: 14px; cursor: pointer;
+        color: #06222f; background: var(--accent);
+        border: none; border-radius: 9px;
+      }
+      .fe-setup-play:hover { filter: brightness(1.1); }
+      @media (max-width: 640px) {
+        .fe-setup-options { grid-template-columns: 1fr; }
+      }
+
       #resources { top: 14px; left: 14px; display: flex; gap: 18px; align-items: center; }
       #resources .res { display: flex; gap: 6px; align-items: baseline; }
       #resources .res b { font-size: 15px; font-weight: 600; }
@@ -192,7 +248,7 @@
 
     <div class="panel" id="controls">
       <input id="seed-input" value="FABRIC" spellcheck="false" />
-      <button id="seed-go">New game</button>
+      <button id="seed-go" title="Choose a world and start again">New game</button>
     </div>
 
     <div class="panel" id="help">

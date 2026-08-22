@@ -11,6 +11,9 @@ import {
   raidCity,
   ruinAt,
   cityAt,
+  DEFAULT_WORLD_CHOICE,
+  WORLD_SHAPES,
+  worldOptions,
   cityTerritory,
   completeResearch,
   createGameState,
@@ -80,6 +83,7 @@ import { Vector3 } from 'three';
 import { createEndScreen } from './ui/endScreen.js';
 import { createCinematicOverlay } from './ui/cinematicOverlay.js';
 import { createChoiceModal } from './ui/choice.js';
+import { createSetupScreen, type SetupResult } from './ui/setupScreen.js';
 import { approachShot, descendShot, orbitShot } from './three/cinematic.js';
 import { loadGame, localSlot, saveGame } from './persist.js';
 import { createBattleBanner, type BattleSide } from './ui/battleBanner.js';
@@ -123,6 +127,16 @@ const RESEARCH_TIME_MS = 30_000;
 const effects = createEffects();
 const banner = createBattleBanner();
 const choice = createChoiceModal();
+const setup = createSetupScreen();
+
+/**
+ * What the setup screen last produced.
+ *
+ * Kept so reopening it shows the previous choices rather than resetting to the
+ * defaults, and so the endgame's "play again" starts a comparable world rather
+ * than silently dropping the player back onto one continent.
+ */
+let lastSetup: SetupResult = { ...DEFAULT_WORLD_CHOICE, seed: 'FABRIC' };
 
 /**
  * The Great Library.
@@ -151,7 +165,10 @@ const droneHud = createDroneHud();
  * Starts the next one on the seed in the box, so a player who lost to a
  * particular map can immediately try it again knowing what is coming.
  */
-const endScreen = createEndScreen(() => newGame(el.seedInput.value));
+const endScreen = createEndScreen(() => {
+  lastSetup = { ...lastSetup, seed: el.seedInput.value };
+  void askAndStart();
+});
 
 /**
  * The cinematics.
@@ -1626,11 +1643,32 @@ function fitCanvas(): void {
 
 function newGame(rawSeed: string): void {
   const seed = normaliseSeed(rawSeed);
-  adopt(createGameState(seed, { topics: provider.topics() }), `New empire on seed ${seed}.`);
+  const shape = WORLD_SHAPES.find((s) => s.id === lastSetup.shape);
+  adopt(
+    createGameState(seed, {
+      map: worldOptions(lastSetup),
+      topics: provider.topics(),
+    }),
+    `New empire on seed ${seed}. ${shape?.label ?? ''}`.trim(),
+  );
   // Write immediately rather than waiting for the first turn to end, so a
   // player who starts a game and closes the tab comes back to that game and
   // not to the one before it.
   saveGame(slot, state);
+}
+
+/**
+ * Ask what kind of world, then build it.
+ *
+ * ⚠️ The await is what lets the setup screen double as a loading screen. Map
+ * generation and the terrain build together measured 8.1 seconds on the
+ * enlarged map (section 22.2), and until now every second of that was a blank
+ * page. Now it is spent on a menu, and the world appears when the player has
+ * finished choosing rather than before they have started.
+ */
+async function askAndStart(): Promise<void> {
+  lastSetup = await setup.ask(lastSetup);
+  newGame(lastSetup.seed);
 }
 
 /**
@@ -1696,7 +1734,8 @@ function boot(): void {
     adopt(loaded.state, `Resumed on seed ${loaded.state.seed}, turn ${loaded.state.turn}.`);
     return;
   }
-  newGame('FABRIC');
+  // No game to resume, so ask what kind of world this one should be.
+  void askAndStart();
   if (loaded.reason === 'unreadable') {
     log('A saved game was found but could not be read, so this is a new one.', 'bad');
   }
@@ -1802,9 +1841,15 @@ el.actRaid.addEventListener('click', doRaid);
 el.actFortify.addEventListener('click', doFortify);
 el.actSkip.addEventListener('click', doSkip);
 el.actCouncil.addEventListener('click', () => void doCouncil());
-el.seedGo.addEventListener('click', () => newGame(el.seedInput.value));
+el.seedGo.addEventListener('click', () => {
+  lastSetup = { ...lastSetup, seed: el.seedInput.value };
+  void askAndStart();
+});
 el.seedInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') newGame(el.seedInput.value);
+  if (e.key === 'Enter') {
+    lastSetup = { ...lastSetup, seed: el.seedInput.value };
+    void askAndStart();
+  }
 });
 
 // Render loop ----------------------------------------------------------
