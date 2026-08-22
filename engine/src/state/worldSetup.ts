@@ -90,24 +90,185 @@ export const ROUGHNESS_LEVELS: readonly Roughness[] = Object.freeze([
 export interface WorldChoice {
   readonly shape: WorldShapeId;
   readonly roughness: RoughnessId;
+  readonly size: WorldSizeId;
+  readonly focus: FocusId;
+  readonly rivals: number;
+  readonly pace: PaceId;
 }
 
 export const DEFAULT_WORLD_CHOICE: WorldChoice = Object.freeze({
   shape: 'continent',
   roughness: 'rolling',
+  size: 'standard',
+  focus: 'everything',
+  rivals: 7,
+  pace: 'standard',
 });
 
 /**
- * Turn a pair of choices into map overrides.
+ * Turn a set of choices into map overrides.
  *
- * Order matters: roughness is applied second so a shape can set a land
- * fraction without a roughness level silently overwriting it, and neither
- * touches keys the other owns.
+ * Order matters: shape is applied first because it owns the land fraction and
+ * the island count, then roughness, then size, and none of the three writes a
+ * key another one owns.
  */
 export function worldOptions(choice: WorldChoice): Partial<MapOptions> {
   const shape =
     WORLD_SHAPES.find((s) => s.id === choice.shape) ?? WORLD_SHAPES[0]!;
   const rough =
     ROUGHNESS_LEVELS.find((r) => r.id === choice.roughness) ?? ROUGHNESS_LEVELS[1]!;
-  return { ...shape.map, ...rough.map };
+  const size = WORLD_SIZES.find((s) => s.id === choice.size) ?? WORLD_SIZES[1]!;
+  return { ...shape.map, ...rough.map, ...size.map };
+}
+
+// How big -----------------------------------------------------------------
+
+export type WorldSizeId = 'small' | 'standard' | 'large';
+
+export interface WorldSize {
+  readonly id: WorldSizeId;
+  readonly label: string;
+  readonly detail: string;
+  readonly map: Partial<MapOptions>;
+}
+
+/**
+ * ⚠️ Size is also the loading time. A hex map of radius R holds `1 + 3R(R+1)`
+ * tiles, so this is not a linear dial: radius 30 is 2,791 tiles against 6,211
+ * at 45 and 9,577 at 56. Section 22 measured 8.1 seconds to playable at the
+ * standard size, nearly all of it terrain building, so "small" is the setting
+ * for someone who wants to be in a game rather than watching a progress bar.
+ */
+export const WORLD_SIZES: readonly WorldSize[] = Object.freeze([
+  {
+    id: 'small',
+    label: 'Small',
+    detail: 'About 2,800 tiles. Quick to build, and everyone is close.',
+    map: { radius: 30, riverCount: 8 },
+  },
+  {
+    id: 'standard',
+    label: 'Standard',
+    detail: 'About 6,200 tiles. Room to expand before anyone reaches you.',
+    map: { radius: 45, riverCount: 14 },
+  },
+  {
+    id: 'large',
+    label: 'Large',
+    detail: 'About 9,600 tiles. A long war, and a longer wait to begin it.',
+    map: { radius: 56, riverCount: 20 },
+  },
+]);
+
+// What you are revising ---------------------------------------------------
+
+export type FocusId = 'everything' | 'A' | 'B' | 'C';
+
+export interface Focus {
+  readonly id: FocusId;
+  readonly label: string;
+  readonly detail: string;
+}
+
+/**
+ * Which branch of the exam the rivals are drawn from first.
+ *
+ * ⚠️ **This narrows who TESTS you, not what you may learn.** The research tree
+ * is the whole outline whichever focus is chosen, and the Proctor still sets a
+ * paper across every branch in the published proportions. What changes is which
+ * clusters come at you in battle, and which clusters capturing a village opens.
+ * A candidate who knows they are weak on one branch can make that branch the
+ * war, and the setup screen says so rather than implying the rest disappears.
+ */
+export const FOCUS_OPTIONS: readonly Focus[] = Object.freeze([
+  {
+    id: 'everything',
+    label: 'The whole exam',
+    detail: 'Rivals drawn from every branch, nearest first.',
+  },
+  {
+    id: 'A',
+    label: 'Maintain and govern',
+    detail: 'Security, access control, version control, deployment pipelines.',
+  },
+  {
+    id: 'B',
+    label: 'Prepare data',
+    detail: 'Connections, ingestion, transformation, and querying.',
+  },
+  {
+    id: 'C',
+    label: 'Semantic models',
+    detail: 'Model design, storage modes, DAX, and optimisation.',
+  },
+]);
+
+/** How many rivals a game may have. Each one holds a cluster of the outline. */
+export const RIVAL_COUNTS: readonly number[] = Object.freeze([3, 5, 7]);
+
+// How long you get --------------------------------------------------------
+
+export type PaceId = 'relaxed' | 'standard' | 'exam';
+
+export interface Pace {
+  readonly id: PaceId;
+  readonly label: string;
+  readonly detail: string;
+  /** Multiplier on every question's time limit. */
+  readonly timeScale: number;
+}
+
+/**
+ * ⚠️ Real, not decorative: `scoreFor` grades on how much of the limit was used
+ * as well as on whether the answer was right, so this moves both how long you
+ * have to think and how much a fast answer is worth.
+ */
+export const PACES: readonly Pace[] = Object.freeze([
+  {
+    id: 'relaxed',
+    label: 'Relaxed',
+    detail: 'Half as long again to answer. For learning something new.',
+    timeScale: 1.5,
+  },
+  {
+    id: 'standard',
+    label: 'Standard',
+    detail: 'Twenty seconds in battle, forty-five under the Proctor.',
+    timeScale: 1,
+  },
+  {
+    id: 'exam',
+    label: 'Exam pace',
+    detail: 'A third less time. Closer to sitting the real thing.',
+    timeScale: 0.66,
+  },
+]);
+
+export function paceScale(id: PaceId): number {
+  return PACES.find((p) => p.id === id)?.timeScale ?? 1;
+}
+
+/**
+ * Which antagonists are in this game.
+ *
+ * Focus decides the ORDER, the count decides how many, and the rest of the
+ * roster fills in behind so that picking a focus never means fewer enemies than
+ * asked for. Cluster ids begin with their branch letter (`A1`, `B2`), which is
+ * the only thing this needs to know about the outline.
+ *
+ * ⚠️ Always returns at least one, because a game with no rivals has no
+ * Domination ending and nothing to be tested by.
+ */
+export function rosterFor(
+  antagonists: readonly { readonly id: string; readonly topicCluster: string }[],
+  focus: FocusId,
+  count: number,
+): string[] {
+  const wanted = Math.max(1, Math.min(count, antagonists.length));
+  const preferred =
+    focus === 'everything'
+      ? []
+      : antagonists.filter((a) => a.topicCluster.startsWith(focus));
+  const rest = antagonists.filter((a) => !preferred.includes(a));
+  return [...preferred, ...rest].slice(0, wanted).map((a) => a.id);
 }

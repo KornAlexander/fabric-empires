@@ -8,11 +8,18 @@
  */
 
 import {
+  FOCUS_OPTIONS,
+  PACES,
+  RIVAL_COUNTS,
   ROUGHNESS_LEVELS,
   WORLD_SHAPES,
+  WORLD_SIZES,
+  type FocusId,
+  type PaceId,
   type RoughnessId,
   type WorldChoice,
   type WorldShapeId,
+  type WorldSizeId,
 } from '@fabric-empires/engine';
 
 export interface SetupResult extends WorldChoice {
@@ -95,6 +102,10 @@ export function createSetupScreen(): SetupScreen {
 
       let shape: WorldShapeId = defaults.shape;
       let roughness: RoughnessId = defaults.roughness;
+      let size: WorldSizeId = defaults.size;
+      let focus: FocusId = defaults.focus;
+      let rivals: number = defaults.rivals;
+      let pace: PaceId = defaults.pace;
 
       const card = document.createElement('div');
       card.className = 'fe-setup-card';
@@ -106,17 +117,60 @@ export function createSetupScreen(): SetupScreen {
       const blurb = document.createElement('p');
       blurb.className = 'fe-setup-blurb';
       blurb.textContent =
-        'Seven rival factions hold the exam between them. Take what you need to know, or burn it and stay ignorant.';
+        'The DP-600 outline is the tech tree. Rival factions each hold one branch of it: beat them and take what they know, or burn it and stay ignorant.';
       card.append(blurb);
 
+      const section = (label: string): HTMLElement => {
+        const heading = document.createElement('h2');
+        heading.className = 'fe-setup-section';
+        heading.textContent = label;
+        card.append(heading);
+        return heading;
+      };
+
+      section('The world');
       card.append(
-        optionList('The world', WORLD_SHAPES, shape, (id) => {
+        optionList('Shape', WORLD_SHAPES, shape, (id) => {
           shape = id;
         }),
       );
       card.append(
-        optionList('The land', ROUGHNESS_LEVELS, roughness, (id) => {
+        optionList('Land', ROUGHNESS_LEVELS, roughness, (id) => {
           roughness = id;
+        }),
+      );
+      card.append(
+        optionList('Size', WORLD_SIZES, size, (id) => {
+          size = id;
+        }),
+      );
+
+      section('The exam');
+      card.append(
+        optionList('Focus', FOCUS_OPTIONS, focus, (id) => {
+          focus = id;
+        }),
+      );
+      card.append(
+        optionList(
+          'Rivals',
+          RIVAL_COUNTS.map((n) => ({
+            id: String(n),
+            label: `${n} rivals`,
+            detail:
+              n === RIVAL_COUNTS[RIVAL_COUNTS.length - 1]
+                ? 'Every branch of the outline has a faction holding it.'
+                : `${n} of the seven clusters come at you. A shorter war.`,
+          })),
+          String(rivals),
+          (id) => {
+            rivals = Number(id);
+          },
+        ),
+      );
+      card.append(
+        optionList('Pace', PACES, pace, (id) => {
+          pace = id;
         }),
       );
 
@@ -152,7 +206,15 @@ export function createSetupScreen(): SetupScreen {
         showing = false;
         root.style.display = 'none';
         root.innerHTML = '';
-        resolve({ shape, roughness, seed: seedInput.value.trim() || defaults.seed });
+        resolve({
+          shape,
+          roughness,
+          size,
+          focus,
+          rivals,
+          pace,
+          seed: seedInput.value.trim() || defaults.seed,
+        });
       };
       play.addEventListener('click', commit);
       seedInput.addEventListener('keydown', (e) => {

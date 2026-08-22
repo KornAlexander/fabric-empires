@@ -13,6 +13,9 @@ import {
   cityAt,
   DEFAULT_WORLD_CHOICE,
   WORLD_SHAPES,
+  WORLD_SIZES,
+  paceScale,
+  rosterFor,
   worldOptions,
   cityTerritory,
   completeResearch,
@@ -117,6 +120,22 @@ const provider = new Dp600ChallengeProvider({
 /** Timers from D50: tight, but every modal can be paused without penalty. */
 const BATTLE_TIME_MS = 20_000;
 const RESEARCH_TIME_MS = 30_000;
+
+/**
+ * Every question's time limit, scaled by the chosen pace.
+ *
+ * ⚠️ A function of `lastSetup` rather than a constant computed once, because
+ * the pace can change when a new game is started and a captured constant would
+ * keep the first game's timings for the rest of the session.
+ *
+ * `scoreFor` grades on how much of the limit was spent as well as on whether
+ * the answer was right, so this changes both the thinking time and what a fast
+ * answer is worth. Floored so a pace can never make a question expire on
+ * arrival.
+ */
+function timeLimit(base: number): number {
+  return Math.max(4_000, Math.round(base * paceScale(lastSetup.pace)));
+}
 
 /**
  * The animation layer.
@@ -507,7 +526,7 @@ async function actOn(target: Hex): Promise<void> {
         kind: 'battle',
         topicId,
         tier: 2,
-        timeLimitMs: BATTLE_TIME_MS,
+        timeLimitMs: timeLimit(BATTLE_TIME_MS),
       });
       challengeScore = outcome.score;
     }
@@ -930,7 +949,7 @@ async function doCouncil(): Promise<void> {
     kind: 'unrest',
     topicId: next.topicId,
     tier: 2,
-    timeLimitMs: RESEARCH_TIME_MS,
+    timeLimitMs: timeLimit(RESEARCH_TIME_MS),
   });
 
   const result = resolveReview(state, next.cityId, next.topicId, outcome.score);
@@ -992,7 +1011,7 @@ async function doEndTurn(): Promise<void> {
         kind: 'battle',
         topicId,
         tier: 2,
-        timeLimitMs: BATTLE_TIME_MS,
+        timeLimitMs: timeLimit(BATTLE_TIME_MS),
       });
       defenderChallengeScore = outcome.score;
     }
@@ -1219,7 +1238,7 @@ async function resolveResearch(topicId: string): Promise<void> {
     kind: 'research',
     topicId,
     tier: 1,
-    timeLimitMs: RESEARCH_TIME_MS,
+    timeLimitMs: timeLimit(RESEARCH_TIME_MS),
   });
 
   const done = completeResearch(state, outcome.score);
@@ -1460,7 +1479,7 @@ async function faceTheProctor(): Promise<void> {
         kind: 'boss' as const,
         topicId: `exam-${entry.position}`,
         tier: 3 as const,
-        timeLimitMs: SIEGE_QUESTION_MS,
+        timeLimitMs: timeLimit(SIEGE_QUESTION_MS),
       };
       const given = await modal.ask({ question: entry.question, request });
       const answer = given.answer;
@@ -1561,7 +1580,10 @@ function refreshThreats(): void {
   ];
   const limit = aggroRadius(state.turn);
 
-  const rows = ANTAGONISTS.map((antagonist) => {
+  // ⚠️ Only the factions this game actually has. A game can be started with
+  // three rivals rather than seven, and listing all of them would have shown
+  // four enemies that do not exist, permanently "gone" and at infinite range.
+  const rows = ANTAGONISTS.filter((a) => state.factions.has(a.id)).map((antagonist) => {
     const units = unitsOf(state, antagonist.id);
     let distance = Number.POSITIVE_INFINITY;
     for (const unit of units) {
@@ -1644,12 +1666,15 @@ function fitCanvas(): void {
 function newGame(rawSeed: string): void {
   const seed = normaliseSeed(rawSeed);
   const shape = WORLD_SHAPES.find((s) => s.id === lastSetup.shape);
+  const size = WORLD_SIZES.find((s) => s.id === lastSetup.size);
+  const roster = rosterFor(ANTAGONISTS, lastSetup.focus, lastSetup.rivals);
   adopt(
     createGameState(seed, {
       map: worldOptions(lastSetup),
       topics: provider.topics(),
+      antagonistIds: roster,
     }),
-    `New empire on seed ${seed}. ${shape?.label ?? ''}`.trim(),
+    `New empire on seed ${seed}. ${shape?.label ?? ''}, ${size?.label.toLowerCase() ?? ''}, ${roster.length} rivals.`,
   );
   // Write immediately rather than waiting for the first turn to end, so a
   // player who starts a game and closes the tab comes back to that game and

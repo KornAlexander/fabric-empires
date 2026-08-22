@@ -224,6 +224,33 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D193 | Roughness changes what the map IS, not how it is drawn | It moves the peaks and highlands shares, and peaks are impassable while highlands are slow, so it decides where armies can go and therefore where the war happens. 2%, 5% and 11% of the land impassable. A "taller hills" slider would have been a lie dressed as a choice |
 | D194 | Presets, not sliders | Land fraction, island count, blur radius and minimum island size are not independent, and seven islands at 45% land is not seven islands. Naming three combinations that were each measured is more honest than exposing six numbers and hoping. They live in the engine, so the UI renders them and cannot invent new ones |
 | D195 | A preset is a promise, so it gets a test | `worldSetup.test.ts` asserts across all 36 shape/roughness/seed combinations that seven camps are placed, all on the home island, that each shape gives the landmass count its label claims, that the home island stays above 150 tiles, and that roughness is ordered and identical on every seed |
+| D196 | ⚠️ Only settings that DO something get offered | `difficulty` has been on `GameState` and in every save since the beginning and is **read by nothing**. It was the obvious thing to put on a setup screen and it would have been a dial connected to no wire. Either a setting changes the game or it does not go on the screen |
+| D197 | Six settings, in two named groups | The world (shape, land, size) and the exam (focus, rivals, pace), then the seed. Grouping is what stops six controls reading as a config screen: each group answers one question, and the second group is the half that makes this a study tool rather than a strategy game |
+| D198 | Rivals are chosen by id, not by count | Each faction holds one cluster of the outline, so which factions are in play decides which clusters test you. A count alone would have meant "the first three" and made the study focus impossible to express. `antagonistIds` also ignores unknown ids and falls back to the full roster, because this comes from a saved choice and a stale id should cost a faction, not the game |
+| D199 | ⚠️ Study focus narrows who tests you, never what you may learn | The research tree is the whole outline whatever is chosen, and the Proctor still sets a paper across every branch in the published proportions. Focus decides which clusters come at you in battle and which cluster capturing a village opens. A candidate weak on one branch can make that branch the war. The screen says exactly this, because a "focus" that silently removed two thirds of the syllabus from a study tool would be the worst bug in the project |
+| D200 | Focus orders the roster, the count sizes it | Branch A has only two clusters, so "focus A, five rivals" has to borrow three from elsewhere rather than quietly return two. Fewer factions is fewer villages and a shorter game than the player asked for |
+| D201 | Pace scales every question's time limit, and is a function not a constant | `scoreFor` grades on how much of the limit was spent as well as on correctness, so pace moves both thinking time and what a fast answer is worth. Computed per question rather than captured once, or the first game of a session would keep its timings for every game after it. Floored at 4 s so no pace can make a question expire on arrival |
+| D202 | Size is offered because loading time is a feature | Radius 30, 45 and 56 is 2,791, 6,211 and 9,577 tiles. Measured end to end in the browser: **3.8 s, 5.3 s and 7.8 s** to playable. Section 22.2 called the cold start the worst thing about the game, and "small" is the answer for someone who wants to be in a game rather than watching one build |
+| D203 | ⚠️ The threats panel listed factions that did not exist | It mapped over all seven `ANTAGONISTS` rather than over the factions in the game, so a three-rival game showed four extra enemies, permanently "gone" and at infinite range. Found by counting the rendered rows against the chosen rival count, not by looking at it |
+| D204 | ⚠️ A loose Playwright selector silently tested the wrong thing | `getByRole('button', { name: 'Small', exact: false })` matched "Many **small** islands", which sits earlier in the DOM, so two runs used an archipelago neither had asked for and both reported the same land count. The giveaway was the number: 932 land tiles is exactly 0.15 x 6,211, a fraction no continent preset uses. Scope to the group and match exactly |
+
+#### 27.3 The full set of choices
+
+| Group | Setting | Options | What it really changes |
+|---|---|---|---|
+| The world | Shape | Continent, A few large islands, Many small islands | 1, 3 to 4, or 8 landmasses |
+| | Land | Gentle, Rolling, Rugged | 2%, 5%, 11% of land impassable |
+| | Size | Small, Standard, Large | 2,791 / 6,211 / 9,577 tiles; 3.8 / 5.3 / 7.8 s to play |
+| The exam | Focus | Whole exam, Maintain and govern, Prepare data, Semantic models | Which clusters attack you and which capturing opens |
+| | Rivals | 3, 5, 7 | Factions, villages, and clusters in play |
+| | Pace | Relaxed, Standard, Exam | Question time limit x1.5, x1, x0.66 |
+| | Seed | Free text | Everything, reproducibly |
+
+⚠️ **Focus and rivals narrow who tests you, not what you may learn.** The
+research tree is always the whole outline and the Proctor always sets a paper
+across every branch in the published proportions. This matters more than it
+looks: a study tool whose menu quietly deletes two thirds of the syllabus would
+be worse than one with no menu at all.
 
 ### 27. Choosing a world
 

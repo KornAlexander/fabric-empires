@@ -125,6 +125,18 @@ export interface NewGameOptions {
   readonly spawnAntagonists?: boolean;
   /** Tech tree to play with. Defaults to the subject-free generic tree. */
   readonly topics?: TopicGraph;
+  /**
+   * Which antagonists to spawn, by id. Defaults to all of them.
+   *
+   * ⚠️ Ids rather than a count, because WHICH factions are in play decides
+   * which clusters of the outline the player is tested on in battle. A count
+   * alone would have made "three rivals" mean "the first three", and the study
+   * focus on the setup screen needs to be able to say which three.
+   *
+   * Unknown ids are ignored rather than throwing: this comes from a saved
+   * choice, and a stale id should cost a faction, not the game.
+   */
+  readonly antagonistIds?: readonly string[];
 }
 
 // Lookups ---------------------------------------------------------------
@@ -443,10 +455,22 @@ export function createGameState(
      * this was meant to correct.
      */
     const roster: UnitTypeId[] = ['pipelineRunner', 'profiler'];
-    const camps = chooseAntagonistCamps(map, start, ANTAGONISTS.length);
+
+    /*
+     * Which factions are in this game.
+     *
+     * Filtered from `ANTAGONISTS` rather than taken from the caller's list, so
+     * the order, colours and seats stay the canonical ones and an unknown id
+     * simply does not appear.
+     */
+    const chosen = options.antagonistIds
+      ? ANTAGONISTS.filter((a) => options.antagonistIds!.includes(a.id))
+      : ANTAGONISTS;
+    const line = chosen.length > 0 ? chosen : ANTAGONISTS;
+    const camps = chooseAntagonistCamps(map, start, line.length);
 
     camps.forEach((anchor, index) => {
-      const definition = ANTAGONISTS[index];
+      const definition = line[index];
       if (!definition) return;
 
       factions.set(definition.id, {
