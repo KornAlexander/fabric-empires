@@ -265,6 +265,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D234 | ⚠️ `turn() >= 1` is not a signal that a game has started | `state` is initialised with a placeholder game at module load, so `turn()` returns 1 while the setup screen is still open, with seed FABRIC and a world nobody chose. Every browser test that waited on it was measuring the placeholder. Wait on `seed()` matching the seed that was typed |
 | D235–D242 | Two players on one screen | Recorded in full in section 30.3 |
 | D243–D253 | The period pass: units as wargame stands, a fort with an inside | Recorded in full in section 31.5 |
+| D254–D260 | The opening title sequence and the anthem | Recorded in full in section 32.6 |
 
 ### 28. Cheat codes
 
@@ -1723,6 +1724,7 @@ is allowed to block on it.
 | 3b | 23 Aug | **Fog of war** (D149). Per-faction visibility and memory, revealed by unit and city sight | **Done 22 Aug**, save v6 |
 | 3b+ | unplanned | **Two players, one screen** (section 30). A second seat answering `a b c d` from its own course, scores averaged | **Done 22 Aug** |
 | 3c | 23 to 26 Aug | **Units at 1600** (D148). Pike, shot, horse and cannon, replacing the tracked hulls | **Done 22 Aug**, section 31 |
+| 3d | unplanned | **The opening and the anthem** (section 32). A live title sequence over the seed's own world, and a 46 s trailer | **Done 22 Aug** |
 | 4 | 24 to 28 Aug | **The siege** (19). Walls, siege state, the assault set piece, the four defender options | Fog of war, for what a besieger can see |
 | 4b | 28 to 30 Aug | **Ships and islands** (23). Embark, cargo, AI crossings, coastal production, then flip `islands` on | |
 | 4c | 28 to 29 Aug | **Depth from Anno** (24). Progressive pacing tied to readiness, then reduced city tiers | Tiers need the city panel |
@@ -2373,6 +2375,150 @@ zoom will be visual noise" was right, and the answer was not to inflate them.
 - Hex plateau facets are still visible on the terrain. Left alone deliberately:
   it is the board the game is played on, and section 16.1 already records what
   happened the last two times the ground surface was attacked.
+
+---
+
+### 32. The opening, and the anthem
+
+A title sequence and a trailer, 22 Aug. The brief was an intro film with a
+"legendary" theme in the manner of the big orchestral game anthems, on the
+theme *learn Fabric, learn as a family*.
+
+#### 32.1 The song
+
+**`Familia Nostra`.** Original words and setting, generated with Suno from a
+style prompt that describes the genre and names no existing recording, melody
+or artist. Full text and translation in `media/familia-nostra.txt`.
+
+Latin, because the anthems of this kind work by singing a real text in a
+language that belongs to nobody in the audience, which is what makes them read
+as timeless rather than as a game jingle. It also turned out to be almost
+unfairly apt:
+
+| Latin | |
+|---|---|
+| `fabrica` | a craftsman's workshop, a forge |
+| `texere` | to weave |
+
+So "Fabric" is already a Latin pun, and the two halves of the chorus are the
+same sentence twice:
+
+> *Texamus una, filum et lumen* — Let us weave together, thread and light
+> *Familia nostra, discamus una* — Our family, let us learn together
+
+The German verse is the plainest language in the piece and is the only moment
+the anthem stops being grand: *Zwei Hände, eine Tastatur. Ein Kind, ein Vater,
+eine Spur.* Two hands, one keyboard. A child, a father, one track.
+
+⚠️ **Two takes came back and neither could be listened to here, so they were
+compared by measurement.** Mean volume in ten-second buckets across both:
+
+```
+take A   -21.5 -21.7 -21.3 -17.0 -15.6 -14.7 -20.0 -19.2 -15.9 -14.5 -14.5 -14.2
+take B   -21.1 -19.8 -20.3 -19.7 -15.3 -14.6 -16.8 -17.3 -16.5 -15.1 -15.1 -15.6
+```
+
+Take A was chosen on 7.5 dB of build against 6.5, and more tellingly on the dip
+to -20 dB at 60 to 80 seconds: that is the `[Bridge - almost silent]` direction
+actually landing. Take B runs flat through the same span.
+
+#### 32.2 The film
+
+`media/fabric-empires-intro.mp4`, 46 seconds, five cuts:
+
+| | Beat | From |
+|---|---|---|
+| 1 | The world, from too far away to play from | The opening, beats 1 to 3 |
+| 2 | The first town is founded | The existing founding cinematic |
+| 3 | The town, close | A held camera on the fort |
+| 4 | **Two questions at once** | A real battle in two-player mode |
+| 5 | Title and tagline | The opening, beat 4 |
+
+Beat 4 is the whole argument in one frame: *"Which semantic model storage mode
+reads Delta tables in OneLake directly?"* on the left in blue with keys 1 to 4,
+and *"Welcher Buchstabe ist KEIN Vokal?"* on the right in amber with keys A to
+D. Nothing else in the film needs to explain what the mode is.
+
+The music is cut, not faded down mid-phrase: the opening and the first build,
+then a crossfade into the final chorus and the outro, so the title card always
+lands on *Fabrica... nostra*. The split is proportional to the finished length,
+so re-cutting the picture re-fits the score without anyone doing arithmetic.
+
+#### 32.3 It is a feature, not a video file
+
+The cinematic module opens with a rule (D59): shots are rendered live, this
+project ships no assets, and a pre-rendered clip would show a world that is not
+the player's. The opening obeys it. `app/src/intro.ts` composes four shots over
+the world that was generated from the seed the player just typed, so no two
+players see the same film, and the trailer is a screen recording of a feature
+rather than a thing made for marketing.
+
+#### 32.4 ⚠️ The opening was 73 percent black, and that was the real work
+
+The first take looked wrong and the reason was not artistic. The opening runs
+at turn one, when the player has explored 61 of 6,211 hexes, so the widest,
+slowest and most expensive shot in the sequence was a small lit patch floating
+in fog. Measured on sampled frames:
+
+| | before | after |
+|---|---|---|
+| beat 1, the whole world | 73.4% black | 24.9% |
+| beat 2, the coast | 82.4% black | 26.9% |
+| beat 3, the descent | 39.9% black | 24.3% |
+
+The fix is not a cheat, it is the better reading of the scene: the land rises
+out of nothing, whole, and then the fog falls on it under the title card and
+you are left knowing only your own corner. That is the same order the words
+are in.
+
+#### 32.5 The licence problem, stated plainly
+
+Suno's free plan licenses its output for **non-commercial use**. This repository
+is meant to go public. So the anthem and the trailer that carries it are both
+gitignored, and `NOTICE.md` says why.
+
+⚠️ The interesting part is what that forced in the code. `app/src/audio.ts`
+does a `HEAD` request for `audio/anthem.mp3` at load; if it is missing, which
+is the state of every fresh clone, every call becomes a no-op and the opening
+plays in silence with nothing broken and nothing logged. The feature ships, the
+licence does not, and neither one is pretending.
+
+Also noted while there: **Suno's terms change on 3 September**, with download
+limits by plan. That is after the deadline, but it is why both takes were
+pulled down the moment they existed rather than left in the workspace.
+
+#### 32.6 Decisions
+
+| ID | Decision | Why |
+|---|---|---|
+| D254 | The intro is a live title sequence, not a video file | D59 applies to the opening as much as to the terrain. A pre-rendered clip would show a coastline that is not the player's, and would be the first thing in the project to lie about what it is showing |
+| D255 | Latin, with one German verse | The genre works by singing a real text in a language nobody in the audience owns. Latin also supplies `fabrica` and `texere` for free. The German verse exists so the song says once, in plain words, what the grand part is about |
+| D256 | ⚠️ **Original in the genre, never derivative of a specific work** | No existing song, melody or artist is named in the style prompt, deliberately. Asking a generator for "like *X*" is asking it for a derivative, and the difference between an homage and a copy is decided before the prompt is sent, not after |
+| D257 | ⚠️ **The fog lifts for the opening and falls under the title** | Measured, not judged: the establishing beats were 73 to 82 percent fog. Also the better scene. The land rises whole, then the fog takes it away, in the same order as the words |
+| D258 | The score is optional at load time | The one way to satisfy both "ship no assets" and "have an anthem". A missing file is silence, not an error. It also means the licence stays outside the repository without the feature being conditional on anything a reader can see |
+| D259 | The two takes were chosen by measurement | Neither could be listened to here. Ten-second mean-volume buckets show the build and, more usefully, show whether the quiet bridge the lyrics asked for actually happened. One take had it and one did not |
+| D260 | The setup screen was cut from the film | It showed how to switch the mode on, measured 86 percent black because no world exists behind the card at that moment, and a trailer should not be teaching menus. The two question panes make the same point with content instead |
+
+#### 32.7 Verified
+
+- 737 tests, 9 new, covering the sequence as data: the beats are named with the
+  words of the anthem, every card is readable for at least five seconds, the
+  whole flight is under a minute, the camera never drops below 1.5 units at any
+  moment of any beat **on every world size**, and no beat jumps.
+- Final file: 46.0 s, 1600x900 h264 plus AAC, mean -19.1 dB, peak -1.0 dB, no
+  clipping. Frames sampled per segment: no black holes at any cut.
+- The optional score is served and found: `HEAD audio/anthem.mp3` returns 200.
+
+#### 32.8 Open
+
+- The film has no armies marching and no Proctor. Both were in the plan and
+  neither is in the take, because a 46 second cut that already contains the
+  world, a founding, a town and two questions has no room left for them.
+- The trailer is recorded at 1600x900 rather than 1080p, which is the recording
+  viewport rather than a limit.
+- Nobody has listened to the anthem yet. Everything above about it is inferred
+  from its loudness envelope, which is a real measurement of a real property
+  and is not the same thing as it being good.
 
 ---
 

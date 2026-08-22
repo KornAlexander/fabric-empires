@@ -97,6 +97,8 @@ import { createRaidAlert } from './ui/raidAlert.js';
 import { createDuoModal } from './ui/duoModal.js';
 import { CHEATS, findCheat } from './cheats.js';
 import { approachShot, descendShot, orbitShot } from './three/cinematic.js';
+import { introShots } from './intro.js';
+import { createAnthem } from './audio.js';
 import { loadGame, localSlot, saveGame } from './persist.js';
 import { createBattleBanner, type BattleSide } from './ui/battleBanner.js';
 
@@ -367,6 +369,14 @@ const endScreen = createEndScreen(() => {
 const cinemaOverlay = createCinematicOverlay();
 cinemaOverlay.onSkip(() => scene.cinema.skip());
 const seenCinematics = new Set<string>();
+
+/**
+ * The optional score for the opening.
+ *
+ * Silent unless `public/audio/anthem.mp3` is present, which it is not in a
+ * fresh clone. See `audio.ts` for why the file is kept out of the repository.
+ */
+const anthem = createAnthem();
 
 async function playOnce(shot: ReturnType<typeof orbitShot>): Promise<void> {
   if (seenCinematics.has(shot.id) || finished) return;
@@ -2054,6 +2064,60 @@ async function askAndStart(): Promise<void> {
   lastSetup = await setup.ask(lastSetup);
   buildSecondSeat();
   newGame(lastSetup.seed);
+  await playOpening();
+}
+
+/**
+ * The opening: four shots over the world that has just been generated.
+ *
+ * ⚠️ **Runs after `newGame`, and that ordering is the whole feature.** The
+ * sequence flies over the map the player just chose the shape and the seed
+ * for, so it cannot be recorded once and reused, and it is not the same film
+ * twice. It is also why the music may start: clicking Begin is the user
+ * gesture browsers require before any audio will play.
+ */
+async function playOpening(): Promise<void> {
+  const home = homeOfPlayer();
+  if (!home) return;
+
+  const shots = introShots({
+    centre: scene.groundAt({ q: 0, r: 0 }),
+    // Hex centres are 2 * cos(30) apart, so this is the map's real reach.
+    extent: Math.max(12, (state.map.radius ?? 45) * 1.732 * 0.62),
+    home,
+  });
+
+  anthem.start();
+  revealingForOpening = true;
+  refreshFog();
+  try {
+    for (const shot of shots) {
+      if (finished) break;
+      cinemaOverlay.show(shot.title, shot.subtitle);
+      // The fog falls on the last beat, under the title, rather than after the
+      // sequence has ended. Letting it happen off screen wastes the one moment
+      // the player can see what was taken away from them.
+      if (shot.id === 'intro-title' && revealingForOpening) {
+        revealingForOpening = false;
+        fogSignature = '';
+        refreshFog();
+      }
+      await scene.cinema.play(shot);
+    }
+  } finally {
+    revealingForOpening = false;
+    fogSignature = '';
+    refreshFog();
+    cinemaOverlay.hide();
+    anthem.fade();
+  }
+}
+
+/** Where the player's people are standing, on the ground, or nothing. */
+function homeOfPlayer(): Vector3 | undefined {
+  const mine = unitsOf(state, PLAYER_FACTION_ID);
+  const first = mine[0];
+  return first ? scene.groundAt(first.hex) : undefined;
 }
 
 /**
@@ -2293,8 +2357,31 @@ let currentSight: ReadonlySet<string> = new Set();
  */
 let fogSignature = '';
 
+/**
+ * The opening sees the whole world; the game does not.
+ *
+ * ⚠️ **Measured: the establishing shots were 73 to 82 percent black without
+ * this.** The opening runs at turn one, when a player has explored 61 of 6,211
+ * hexes, so "here is the world you are about to play" was in fact a small lit
+ * patch in a void, and the widest, slowest, most expensive shot in the
+ * sequence was the emptiest thing on screen.
+ *
+ * Lifting it for the film is not a cheat, it is the better reading of the
+ * scene. The land rises out of nothing, whole, and then the fog falls on it
+ * and you are left knowing only your own corner. That is the same order the
+ * words are in.
+ */
+let revealingForOpening = false;
+
 function refreshFog(): void {
   currentSight = sightOf(state, PLAYER_FACTION_ID);
+
+  if (revealingForOpening) {
+    fogSignature = 'opening';
+    scene.setFog([], []);
+    dirty = true;
+    return;
+  }
 
   const signature = `${state.explored.size}:${currentSight.size}:${state.seed}`;
   if (signature === fogSignature) return;
@@ -2529,6 +2616,8 @@ declare global {
        * from the map camera is judging a thing four hundred pixels away.
        */
       look: (hex: Hex, distance?: number) => void;
+      playOpening: () => Promise<void>;
+      anthemReady: () => boolean;
       quality: (level: 'high' | 'low') => void;
       spawnEnemyAdjacent: (unitId: string) => Hex | undefined;
       clickHex: (hex: Hex) => void;
@@ -2798,6 +2887,9 @@ window.__fabricEmpires = {
 
   gfx: () => scene.world,
   look: (hex: Hex, distance = 8) => scene.focusWorld(scene.groundAt(hex), distance),
+  /** Replay the opening. Exists so the trailer can be recorded from the game. */
+  playOpening: () => playOpening(),
+  anthemReady: () => anthem.available,
   quality: (level: 'high' | 'low') => {
     scene.setQuality(level === 'low' ? LOW_QUALITY : HIGH_QUALITY);
     fitCanvas();

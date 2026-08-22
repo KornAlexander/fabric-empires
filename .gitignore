@@ -13,6 +13,16 @@ app/public/assets/art/**/*.webp
 app/public/assets/audio/**/*.mp3
 app/public/assets/audio/**/*.ogg
 
+# The anthem, and the trailer that carries it.
+#
+# ⚠️ Kept out on LICENCE grounds, not size. "Familia Nostra" was generated with
+# Suno on a free plan, whose output is licensed for non-commercial use, and this
+# repository is intended to go public. The opening title sequence is code and
+# ships; it simply plays in silence when the file below is absent, which is the
+# state of every fresh clone. See NOTICE.
+app/public/audio/
+media/
+
 # Question authoring sources ARE committed: see learn/content/dp-600/questions/src.
 # The answer obfuscation protects the shipped bundle, which is what a player
 # would inspect. It cannot protect a public repo, and pretending otherwise
