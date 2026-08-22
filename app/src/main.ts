@@ -1691,15 +1691,45 @@ let corrupted: ReadonlySet<string> = new Set();
 
 function refreshCorruption(): void {
   const next = new Set<string>();
+  const hexes: Hex[] = [];
+
+  /*
+   * ⚠️ Two sources, and the first one was missing entirely.
+   *
+   * D56 says the Ungoverned Wastes are corrupted ground in their own right,
+   * not only the tiles an antagonist has taken. Without the wastes the effect
+   * would not appear at all until a faction founded a city, which none of them
+   * currently do, so the whole thing would have stayed invisible on a second
+   * count.
+   */
+  for (const tile of state.map.tiles.values()) {
+    if (tile.terrain !== 'ungovernedWastes') continue;
+    const key = hexKey(tile.hex);
+    if (next.has(key)) continue;
+    next.add(key);
+    hexes.push(tile.hex);
+  }
+
   const territory = cityTerritory(state);
   for (const [key, cityId] of territory) {
     const city = state.cities.get(cityId);
     // Any antagonist's ground is corrupted, not just the Silo Horde's. This
     // checked one hard-coded faction id and would have silently ignored the
     // other six the moment they took a city.
-    if (city && city.factionId !== PLAYER_FACTION_ID) next.add(key);
+    if (!city || city.factionId === PLAYER_FACTION_ID) continue;
+    if (next.has(key)) continue;
+    next.add(key);
+    const hex = territoryHex(key);
+    if (hex) hexes.push(hex);
   }
+
   corrupted = next;
+  scene.setCorrupted(hexes);
+}
+
+/** Recover a hex from a map key, since city territory is keyed rather than typed. */
+function territoryHex(key: string): Hex | undefined {
+  return state.map.tiles.get(key)?.hex;
 }
 
 /**

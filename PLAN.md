@@ -164,6 +164,9 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D133 | The name stays | "Fabric Empires" keeps a product name in the title of a personal project. The two-part README disclaimer (D33) carries it, and the trademark scan stays a warning (D47) |
 | D134 | The demo voiceover is the cloned voice | Not `edge-tts`. It is a personal entry and it should sound like one |
 | D135 | **I draft every public post and never publish one** | The LinkedIn rule now covers Discord too. Entry text, LinkedIn post and blog draft all get written and staged; the submission itself is yours to make |
+| D136 | **Corruption is drawn at last (D56)** | `refreshCorruption` had been maintaining a set of corrupted hexes for days and assigning it to a variable **nothing ever read**. The rule existed as bookkeeping and never as a picture. Torn scanlines in clashing hues now cover the Ungoverned Wastes and any ground an antagonist holds |
+| D137 | The wastes are corrupted in their own right | The first pass only marked antagonist city territory, and no antagonist founds a city, so the effect would have stayed invisible for a second reason after being made visible for the first |
+| D138 | Corruption must be able to **darken**, not only add light | Purely additive, it washed out to a faint pink haze on sunlit sand: present in the scene graph, invisible on screen. It now goes almost black between the scanlines so only the lines glow, which is what reads as a broken signal rather than as coloured terrain. This is the one surreal thing in a scene that otherwise aims at plausibility, and it should look like it does not belong |
 
 ### 16.1 What "realistic" does and does not mean in this build
 
@@ -1263,6 +1266,48 @@ rest of the cut list: a trigger, not a hope.
 - **Terrain never becomes an asset.** Whatever happens to the art, the ground,
   the water and the ground cover stay generated at runtime. That is what keeps
   the repository free of binaries and the map free of tiling.
+
+---
+
+## 19. Phase 11: the siege (NOT on the 1 September path)
+
+⚠️ **Planned only, deliberately scheduled after the submission.** Attacking a
+city currently uses the same one-exchange resolution as a field battle, with a
+siege bonus for the right unit role. That is thin for what should be the
+largest thing that happens in a game, and the request is for something closer
+to **Stronghold**: walls that exist, an assault that takes time, and a
+defender who is doing something other than losing hit points.
+
+The design questions are open and listed in 19.2, because the shape of this
+changes what it costs by an order of magnitude.
+
+### 19.1 What is already in place
+
+- Cities have `hp`, a `kind` with a `baseHp`, and can be captured.
+- `cityCombatSide` exists and already applies a siege bonus to the siege role.
+- `SIEGE_CITY_BONUS` is a tuned constant, so the numbers have a home.
+- The cinematic system can take the camera and hold it for a set piece.
+- `defenderChallengeScore` means the defender answering is already expressible.
+- The Proctor siege shows a long multi-question sequence is workable.
+
+### 19.2 The open questions
+
+1. **Where it happens.** A separate tactical board, an extended state on the
+   main map, or a set-piece encounter at the city hex.
+2. **How questions enter.** One per assault round, questions unlocking siege
+   options, or a single breach question at the decisive moment.
+3. **Whether walls are built.** Cities gaining wall levels through production
+   is the Stronghold staple and the largest engine change here.
+4. **How long a siege lasts.** One dramatic encounter, or a multi-turn
+   investment the defender can break.
+5. **What the defender does.** Answer to hold, sally out, or spend resources.
+
+### 19.3 The constraint that does not move
+
+Whatever shape it takes, **the questions must decide something the player can
+see**, in the way the defence question already does: 36 damage against 100 on
+the same seed. A siege that asks four questions and then resolves on the same
+arithmetic as today would be a longer battle, not a better one.
 
 ---
 

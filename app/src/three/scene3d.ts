@@ -47,6 +47,7 @@ import { createCombatFx, type CombatFx } from './combatFx.js';
 import { buildCity, buildUnit, disposeEntityMaterials } from './entities.js';
 import { createFlyControls, type FlyTelemetry } from './flyControls.js';
 import type { CinematicShot } from './cinematic.js';
+import { createCorruption } from './corruption.js';
 
 export interface Scene3DView {
   readonly selectedUnitId?: string | undefined;
@@ -124,6 +125,11 @@ export interface Scene3D {
   setQuality(quality: WorldQuality): void;
   setGridVisible(visible: boolean): void;
   /**
+   * Which hexes are corrupted: the Ungoverned Wastes, and any ground an
+   * antagonist holds. Drawn as torn scanlines rather than a border tint (D56).
+   */
+  setCorrupted(hexes: readonly Hex[]): void;
+  /**
    * Draw one frame. The shake is applied to the camera for this frame only
    * and then undone, so it can never accumulate into the orbit state.
    */
@@ -184,6 +190,16 @@ export function createScene3D(
   const overlayGroup = new Group();
   const fx = createCombatFx();
   scene.add(terrainGroup, entityGroup, overlayGroup, fx.group);
+
+  const corruption = createCorruption((mesh) => {
+    for (const child of [...overlayGroup.children]) {
+      if (child.userData.corruption === true) overlayGroup.remove(child);
+    }
+    if (mesh) {
+      mesh.userData.corruption = true;
+      overlayGroup.add(mesh);
+    }
+  });
 
   let terrain: Terrain | undefined;
   let scatter: Scatter | undefined;
@@ -608,6 +624,10 @@ export function createScene3D(
       terrain?.setGridVisible(visible);
     },
 
+    setCorrupted(hexes) {
+      if (terrain) corruption.set(hexes, terrain);
+    },
+
     render(delta, shake) {
       /*
        * Exactly one thing may drive the camera per frame. While the drone is
@@ -654,6 +674,7 @@ export function createScene3D(
 
       water?.update(delta * 0.35);
       fx.update(delta);
+      corruption.update(delta);
 
       // Keep the shadow frustum around the camera target rather than the
       // whole map: a frustum big enough for a radius-25 map wastes most of
@@ -741,6 +762,7 @@ export function createScene3D(
 
     dispose() {
       endShot();
+      corruption.dispose();
       fly.dispose();
       controls.dispose();
       clearOverlays();
