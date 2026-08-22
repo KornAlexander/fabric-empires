@@ -316,6 +316,15 @@ let finished = false;
 let proctorAnnounced = false;
 /** Set while the exam is being sat, so it cannot be started twice. */
 let siegeRunning = false;
+/**
+ * True while a turn's result is being watched rather than applied.
+ *
+ * ⚠️ The raid is choreographed on the world as it was, so for those few
+ * seconds `state` is deliberately a turn behind the engine. A click during
+ * that window would move a unit in the old world and then have the whole move
+ * silently overwritten when the result is adopted.
+ */
+let resolvingTurn = false;
 
 /**
  * The topic a question's skill belongs to.
@@ -562,6 +571,8 @@ function battleTopicFor(defenderFactionId: string): string | undefined {
 
 async function actOn(target: Hex): Promise<void> {
   if (modal.isOpen()) return;
+  // The world on screen is a turn behind while a raid plays out.
+  if (resolvingTurn) return;
 
   const own = selectableUnitAt(state, target);
   if (own) {
@@ -1120,8 +1131,26 @@ async function doEndTurn(): Promise<void> {
   }
 
   const result = endTurn(state, { dueTopics, defenderChallengeScore });
-  state = result.state;
   const { report } = result;
+  /*
+   * ⚠️ **The result is held back until the raid has been watched.**
+   *
+   * `state` stays the pre-turn world for the next few lines so the first raid
+   * can be choreographed like any other fight: both units still exist, still
+   * stand where they stood, and the blow lands on screen at the moment the
+   * damage is applied. Adopting the result here instead, as this used to,
+   * meant the defender was already gone before anything could be drawn, which
+   * is why enemy raids only ever got a camera shake and a number.
+   *
+   * The log lines below are safe on the old state: they read the report, and
+   * city names, which are the same in both.
+   */
+  const nextState = result.state;
+  const adoptResult = (): void => {
+    state = nextState;
+    dirty = true;
+  };
+
   const gains: string[] = [];
   if (report.treasuryGained.compute) gains.push(`+${report.treasuryGained.compute} Compute`);
   if (report.treasuryGained.cu) gains.push(`${report.treasuryGained.cu >= 0 ? '+' : ''}${report.treasuryGained.cu} CU`);
@@ -1149,10 +1178,6 @@ async function doEndTurn(): Promise<void> {
       'bad',
     );
   }
-  if (report.researchReadyTopicId) {
-    void resolveResearch(report.researchReadyTopicId);
-  }
-
   // Reviews are reported as an opportunity, never as a demand (D49). Ignoring
   // them costs the bonus and, eventually, a little yield; nothing is lost and
   // nothing accrues while the player is away.
@@ -1168,6 +1193,39 @@ async function doEndTurn(): Promise<void> {
     );
   }
 
+  /*
+   * Watch the raid, then take the consequences.
+   *
+   * ⚠️ Awaited, unlike the rest of the presentation, because the world on
+   * screen is still the old one until this resolves. Letting the player act
+   * during it would mean acting on a state the engine has already replaced.
+   */
+  const presentedEnemyTurn = presentEnemyTurn(
+    report.enemyEvents,
+    defenderChallengeScore,
+    adoptResult,
+  );
+  resolvingTurn = true;
+  try {
+    await presentedEnemyTurn;
+  } finally {
+    // Never leave the game locked, whatever the presentation did.
+    resolvingTurn = false;
+  }
+  // Belt and braces: a turn with nothing to show still has to be adopted.
+  adoptResult();
+
+  /*
+   * ⚠️ After the result is adopted, never before.
+   *
+   * `resolveResearch` asks a question and then writes to `state`. Started
+   * while the turn's result was still being held back, its work would have
+   * been silently overwritten by the adoption a moment later.
+   */
+  if (report.researchReadyTopicId) {
+    void resolveResearch(report.researchReadyTopicId);
+  }
+
   refreshSelection();
   refreshResearch();
   refreshCorruption();
@@ -1175,9 +1233,6 @@ async function doEndTurn(): Promise<void> {
   refreshReadiness();
   refreshThreats();
   dirty = true;
-
-  const presentedEnemyTurn = presentEnemyTurn(report.enemyEvents, defenderChallengeScore);
-  void presentedEnemyTurn;
   /*
    * The autosave point.
    *
@@ -1223,15 +1278,66 @@ async function doEndTurn(): Promise<void> {
  * move the camera to the place they just lost health, or the first they will
  * know of it is a missing unit.
  */
+/**
+ * Show what the antagonists did.
+ *
+ * ⚠️ **The first raid against the player is now a real fight.** It used to get
+ * a camera shake and a floating number, because the engine had already applied
+ * the whole turn by the time this ran and the defender was gone before
+ * anything could be drawn. Being asked a question and then simply losing
+ * health, with no blow on screen, made the question feel like a toll rather
+ * than a defence.
+ *
+ * So `doEndTurn` now holds the result back and hands it over as `adopt`, which
+ * this calls at the exact frame of impact. That is the same contract the
+ * player's own attacks have always used.
+ *
+ * Only the first player-facing raid gets the full duel. Adopting the result
+ * applies the WHOLE turn at once, so every later raid is already resolved and
+ * cannot be choreographed; those keep the camera, the shake and the number,
+ * and the warning banner has already said how many fronts were coming.
+ */
 async function presentEnemyTurn(
   events: readonly AiEvent[],
   defenceScore = 0,
+  adopt?: () => void,
 ): Promise<void> {
-  if (events.length === 0) return;
+  if (events.length === 0) {
+    adopt?.();
+    return;
+  }
 
   const raids = events.filter((e) => e.intent.kind === 'raid');
   const movers = new Set(events.filter((e) => e.intent.kind === 'move').map((e) => e.unitId));
   const faction = (id: string) => state.factions.get(id)?.label ?? 'Something';
+
+  /**
+   * Where a raider was standing when it struck.
+   *
+   * ⚠️ Not simply its position in the state: a unit may move up to three times
+   * and then attack in the same turn, so the hex it started the turn on is not
+   * the hex it swung from. Replaying its own move events gives the real one,
+   * and a lunge that starts in the wrong place is worse than no lunge.
+   */
+  const strikeHexOf = (index: number): Hex | undefined => {
+    const raid = events[index];
+    if (!raid) return undefined;
+    let hex = state.units.get(raid.unitId)?.hex;
+    for (let i = 0; i < index; i++) {
+      const step = events[i];
+      if (step && step.unitId === raid.unitId && step.intent.kind === 'move') {
+        hex = step.intent.to;
+      }
+    }
+    return hex;
+  };
+
+  // The one the player was asked about, and the only one that can be fought
+  // on screen, because adopting the result resolves all of them at once.
+  const featuredIndex = events.findIndex(
+    (e) => e.intent.kind === 'raid' && defends(e.intent.target),
+  );
+  const featured = featuredIndex >= 0 ? events[featuredIndex] : undefined;
 
   if (movers.size > 0 && raids.length === 0) {
     /*
@@ -1250,16 +1356,67 @@ async function presentEnemyTurn(
     hordeAdvancing = false;
   }
 
+  if (featured && featured.intent.kind === 'raid' && featured.log) {
+    const target = featured.intent.target;
+    const from = strikeHexOf(featuredIndex);
+    const battle = featured.log;
+    const defender = unitAt(state, target);
+    const city = cityAt(state, target);
+    const attackerColour = state.factions.get(featured.factionId)?.colour ?? '#b5533f';
+    const defenderColour = state.factions.get(PLAYER_FACTION_ID)?.colour ?? '#4a9fe0';
+
+    if (from) {
+      await playDuel(
+        scene,
+        {
+          attackerId: featured.unitId,
+          attackerHex: from,
+          attackerColour,
+          defenderId: defender?.id,
+          defenderHex: target,
+          defenderColour,
+        },
+        {
+          damageToDefender: battle.damageToDefender,
+          damageToAttacker: battle.damageToAttacker,
+          defenderDestroyed: battle.defenderDestroyed,
+          attackerDestroyed: battle.attackerDestroyed,
+          ranged: !isAdjacent(from, target),
+          // A raid on a city is a set piece; a raid on a unit is a scuffle.
+          dramatic: city !== undefined,
+        },
+        {
+          onImpact: () => {
+            adopt?.();
+            if (battle.damageToDefender > 0) {
+              effects.floatingText(target, `-${battle.damageToDefender}`, '#ff9b91', 1.3);
+            }
+            if (battle.damageToAttacker > 0 && from) {
+              effects.floatingText(from, `-${battle.damageToAttacker}`, '#ffcf7a', 1.1);
+            }
+          },
+          shake: (magnitude) => effects.shake(magnitude),
+        },
+      );
+    }
+  }
+
+  // Whatever happened above, the turn's result is now the world.
+  adopt?.();
+
   for (const event of raids) {
     if (event.intent.kind !== 'raid') continue;
     const battle = event.log;
     const target = event.intent.target;
     const who = faction(event.factionId);
+    const wasFought = event === featured;
 
-    scene.focus(target);
-    effects.shake(battle?.defenderDestroyed ? 1.4 : 0.9);
-    if (battle && battle.damageToDefender > 0) {
-      effects.floatingText(target, `-${battle.damageToDefender}`, '#ff9b91', 1.3);
+    if (!wasFought) {
+      scene.focus(target);
+      effects.shake(battle?.defenderDestroyed ? 1.4 : 0.9);
+      if (battle && battle.damageToDefender > 0) {
+        effects.floatingText(target, `-${battle.damageToDefender}`, '#ff9b91', 1.3);
+      }
     }
 
     if (battle?.cityCaptured) {
@@ -1945,6 +2102,10 @@ window.addEventListener('keydown', (e) => {
     cheats.hide();
     return;
   }
+
+  // Unit actions are refused while a raid is being watched, for the same
+  // reason clicks are: the world on screen is a turn behind the engine.
+  if (resolvingTurn && e.key !== 'l') return;
 
   // The library is a reference screen, so it may be opened at any time, but
   // while it is up the map must not act on stray keys behind it.
