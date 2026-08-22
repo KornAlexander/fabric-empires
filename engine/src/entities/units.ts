@@ -109,3 +109,22 @@ export function isCivilian(id: UnitTypeId): boolean {
   const t = UNIT_TYPES[id];
   return t.role === 'settler' || t.role === 'worker';
 }
+
+/**
+ * The smallest topic graph that can unlock every unit.
+ *
+ * ⚠️ **A curriculum shorter than this silently loses its late units.**
+ * `unlockedBySkill` is a 1-based index into the topic graph, so a tree with
+ * thirty nodes never unlocks the unit gated at forty-one: `unitUnlocked`
+ * returns false forever and nothing anywhere says why. That was invisible
+ * while there was exactly one curriculum with exactly the right length.
+ *
+ * Computed from the table rather than written down, so retuning an unlock
+ * cannot leave a stale constant behind.
+ */
+export function minimumTopicCount(): number {
+  return Object.values(UNIT_TYPES).reduce(
+    (most, type) => Math.max(most, type.unlockedBySkill ?? 0),
+    0,
+  );
+}

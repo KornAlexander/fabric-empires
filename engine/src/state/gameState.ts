@@ -151,6 +151,19 @@ export interface NewGameOptions {
    * choice, and a stale id should cost a faction, not the game.
    */
   readonly antagonistIds?: readonly string[];
+  /**
+   * The whole roster, replacing the built-in one.
+   *
+   * ⚠️ This is how a different curriculum gets different enemies. `ANTAGONISTS`
+   * quiz on DP-600 clusters, which is correct for that campaign and meaningless
+   * for a Year 1 German class that needs Die Zahlendreher instead. The engine
+   * still treats every cluster id as an opaque string, so nothing here knows
+   * what subject is being taught.
+   *
+   * Applied before `antagonistIds`, so a campaign can supply seven and a player
+   * can still choose three of them.
+   */
+  readonly antagonists?: readonly AntagonistDefinition[];
 }
 
 // Lookups ---------------------------------------------------------------
@@ -473,14 +486,22 @@ export function createGameState(
     /*
      * Which factions are in this game.
      *
-     * Filtered from `ANTAGONISTS` rather than taken from the caller's list, so
-     * the order, colours and seats stay the canonical ones and an unknown id
-     * simply does not appear.
+     * The campaign's roster if it supplied a non-empty one, otherwise the
+     * built-in DP-600 line-up, then filtered by whichever ids the player chose.
+     *
+     * ⚠️ An EMPTY roster falls back rather than being obeyed. A campaign that
+     * forgot to declare its factions would otherwise produce a silent sandbox
+     * with no opposition, no Domination ending and nothing to be tested by.
+     * Asking for solitude deliberately is what `spawnAntagonists: false` is.
      */
+    const available =
+      options.antagonists && options.antagonists.length > 0
+        ? options.antagonists
+        : ANTAGONISTS;
     const chosen = options.antagonistIds
-      ? ANTAGONISTS.filter((a) => options.antagonistIds!.includes(a.id))
-      : ANTAGONISTS;
-    const line = chosen.length > 0 ? chosen : ANTAGONISTS;
+      ? available.filter((a) => options.antagonistIds!.includes(a.id))
+      : available;
+    const line = chosen.length > 0 ? chosen : available;
     const camps = chooseAntagonistCamps(map, start, line.length);
 
     camps.forEach((anchor, index) => {

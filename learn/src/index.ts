@@ -7,5 +7,6 @@ export * from './sm2.js';
 export * from './mastery.js';
 export * from './library.js';
 export * from './exam.js';
+export * from './campaign.js';
 export * from './Dp600ChallengeProvider.js';
 

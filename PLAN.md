@@ -239,6 +239,13 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D208 | Cheats used are saved, and the end screen says so | `cheatsUsed` is on `GameState` and in save v5. A cheat a reload forgets would let somebody win with help and then see a clean victory screen. The end screen names the codes and adds that the readiness figure did not have help and never does |
 | D209 | A console on the backtick, not a typed key sequence | Every letter is already taken: W A S D Q E R F fly the drone, and b, p, h, x, c, g, l are actions. A buffer listening for "onelake" would have flown the camera three times on the way. The console's input stops propagation, verified by typing `bpxh` into it and checking no city was founded and no unit moved |
 | D210 | Villages survive `dropthetable` | Wiping every rival unit still leaves seven villages to walk into, and taking a village is where the questions are. A code that handed over Domination outright would skip the only part of the war that teaches anything |
+| D211 | ⚠️ D35 was measured, not assumed, and it held | Every reference to DP-600 in `engine/` is a **comment**. `unlockedBySkill` is a 1-based index into the topic graph rather than a topic id, exactly as its doc comment promised. The seam is three methods on `ChallengeProvider`. A second campaign needs **no engine change**, which is what the boundary was for and what nothing had yet proved |
+| D212 | ⚠️ A campaign needs at least 41 topics, and now the tests say so | `UNIT_TYPES` unlocks at indices up to 41. A shorter curriculum silently never unlocks its late units and nothing warned. Found by reading the unlock table against the DP-600 node count, not by playing |
+| D213 | The antagonist roster moves out of the engine into campaign data | `ANTAGONISTS` hard-codes clusters `A1`..`C2`, which are DP-600's. They are opaque strings to the engine, so this was not a bug, but a Year 1 campaign needs Die Zahlendreher rather than the Silo Horde. `NewGameOptions` already takes `antagonistIds`, so the roster becomes a parameter rather than a rewrite |
+| D214 | Abstraction before 1 September, German content and interface after | The Discord challenge closes 1 Sep and is a DP-600 challenge. The campaign layer is additive, testable and makes the submission's central claim demonstrable. The i18n pass touches ~165 strings across every UI file the submission depends on, and that is not a thing to do in the last week |
+| D215 | A typed string catalogue, not English-as-key | Half of these strings are sentences with substitutions. Typing `de.ts` against the same key union as `en.ts` makes a missing translation a **compile error** rather than an English word appearing mid-sentence in a German game |
+| D216 | ⚠️ Year 1 questions are constrained by reading, not by curriculum | A six-year-old is still learning to read and this game asks written questions under a time limit. Stems of a few very simple words, single-word or numeric options, and `relaxed` as that campaign's default pace. A question needing a paragraph read is not a Year 1 question however good it is |
+| D217 | Identical mechanics for the school campaigns, softer wording | The request was "everything identical, just different questions". Forking the rules would fork the tests. Villages are "aufgelöst" rather than burned |
 
 ### 28. Cheat codes
 
@@ -430,6 +437,35 @@ a DP-600 preparation challenge. None of this is part of that submission, and
 step 3 touches every file the submission depends on. The safe sequencing is
 steps 1 and 2 before 1 Sep if at all (they are additive and testable), and
 everything from step 3 onwards after it.
+
+#### 29.8 What is built so far
+
+Step 1 is done, 22 Aug. DP-600 is unchanged and now runs through the campaign
+layer like any other subject.
+
+| Landed | Where |
+|---|---|
+| `Campaign` type: outline, questions, antagonists, exam settings, language | `learn/src/campaign.ts` |
+| `DP600_CAMPAIGN`, registry, `campaignById`, `DEFAULT_CAMPAIGN_ID` | same |
+| `validateCampaign`, returning every problem at once | same |
+| `minimumTopicCount()`, computed from the unit table | `engine/src/entities/units.ts` |
+| `NewGameOptions.antagonists`, a roster the engine has never seen | `engine/src/state/gameState.ts` |
+| 17 tests, including a German roster the engine places and fights | `learn/test/campaign.test.ts` |
+
+`validateCampaign` catches, with the exact message a content author needs: a
+curriculum too short to unlock every unit, a faction quizzing on a cluster the
+outline does not define, a cluster with no faction, a cluster with no questions,
+and an exam whose length or pass mark is not a real number of a real thing.
+
+⚠️ One bug found while writing those tests: an **empty** antagonist roster was
+obeyed rather than rejected, producing a silent sandbox with no opposition, no
+Domination ending and nothing to be tested by. A campaign that forgets to
+declare its factions now falls back to the built-in line-up. Asking for solitude
+deliberately is what `spawnAntagonists: false` has always been for.
+
+**Not built yet:** steps 2 through 7. Nothing German exists yet, and no
+interface string has been touched.
+
 
 #### 27.3 The full set of choices
 
