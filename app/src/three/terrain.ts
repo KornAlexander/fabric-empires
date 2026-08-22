@@ -788,6 +788,10 @@ export function buildTerrain(map: GameMap, subdivisions = 2): Terrain {
   // Drawn as its own object at a small vertical offset so it can be hidden
   // entirely. A hex game still needs to show its hexes, but the ground
   // should not have to carry them.
+  //
+  // The lift is small because the line now follows the surface: it only has
+  // to clear depth precision, not a bulge.
+  const GRID_LIFT = 0.02;
   const gridPoints: number[] = [];
   const seen = new Set<string>();
   for (const tile of map.tiles.values()) {
@@ -806,14 +810,35 @@ export function buildTerrain(map: GameMap, subdivisions = 2): Terrain {
           : `${cornerKey(bx, bz)}|${cornerKey(ax, az)}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      gridPoints.push(
-        ax,
-        finishedHeight(ax, az, cornerHeight(ax, az)) + 0.035,
-        az,
-        bx,
-        finishedHeight(bx, bz, cornerHeight(bx, bz)) + 0.035,
-        bz,
-      );
+
+      /*
+       * ⚠️ **Follow the ground, do not cut a chord across it.**
+       *
+       * This drew one straight segment from corner to corner while the
+       * surface between those corners is subdivided, displaced by detail
+       * noise and then eroded. A straight line under a curved surface sinks
+       * below it mid-edge and surfaces near the corners, which reads as a
+       * dark groove carved around every tile: the map looked cut apart into
+       * hexes with gaps between them.
+       *
+       * The terrain's own subdivision already places vertices along each hex
+       * edge, so sampling at those exact positions puts the line on the mesh
+       * rather than through it. `finishedHeight` returns the final smoothed
+       * and eroded height, which is the surface actually drawn.
+       */
+      let px = ax;
+      let pz = az;
+      let py = finishedHeight(ax, az, cornerHeight(ax, az)) + GRID_LIFT;
+      for (let s = 1; s <= steps; s++) {
+        const t = s / steps;
+        const qx = ax + (bx - ax) * t;
+        const qz = az + (bz - az) * t;
+        const qy = finishedHeight(qx, qz, cornerHeight(qx, qz)) + GRID_LIFT;
+        gridPoints.push(px, py, pz, qx, qy, qz);
+        px = qx;
+        pz = qz;
+        py = qy;
+      }
     }
   }
   const gridGeometry = new BufferGeometry();
