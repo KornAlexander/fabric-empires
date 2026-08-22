@@ -16,7 +16,7 @@ import { GENERIC_TOPIC_GRAPH, type TopicGraph } from '../challenge/index.js';
 import { EMPTY_RESEARCH, type ResearchState } from '../rules/research.js';
 import type { Difficulty, GameState } from '../state/index.js';
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 export interface SaveFile {
   readonly version: number;
@@ -69,6 +69,27 @@ const MIGRATIONS: Readonly<Record<number, (save: SaveFile) => SaveFile>> =
   Object.freeze({
     // 0 -> 1 is a placeholder for the shape of the thing. There are no
     // published saves older than version 1.
+
+    /**
+     * 1 -> 2: cities gained council review state.
+     *
+     * `boundSkills` also changed from numbers to opaque topic id strings. No
+     * version 1 save ever had a non-empty one, because nothing wrote to it,
+     * so the migration can simply drop whatever is there rather than trying
+     * to invent a mapping.
+     */
+    1: (save) => ({
+      ...save,
+      version: 2,
+      cities: save.cities.map((city) => ({
+        ...city,
+        boundSkills: [],
+        unrest: 0,
+        ignoredReviews: 0,
+        reviewBonusUntilTurn: 0,
+        lastReviewTurn: -1,
+      })),
+    }),
   });
 
 export function migrate(save: SaveFile): SaveFile {

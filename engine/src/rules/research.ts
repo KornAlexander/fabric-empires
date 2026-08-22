@@ -12,6 +12,7 @@
  */
 
 import { availableTopics, type TopicGraph, type TopicNode } from '../challenge/index.js';
+import { bindTopicToCity } from './review.js';
 import type { GameState } from '../state/index.js';
 
 /** Compute required per unit of topic weight. */
@@ -172,17 +173,20 @@ export function completeResearch(
     return { ok: true, state };
   }
 
-  return {
-    ok: true,
-    state: {
-      ...state,
-      research: {
-        known: [...state.research.known, ready],
-        current: undefined,
-        progress: 0,
-      },
+  // A learned topic becomes a building somewhere, and that is what makes the
+  // city responsible for reviewing it later. Binding here rather than in the
+  // app means a topic can never be marked known without something in the
+  // world holding it.
+  const withTopic: GameState = {
+    ...state,
+    research: {
+      known: [...state.research.known, ready],
+      current: undefined,
+      progress: 0,
     },
   };
+
+  return { ok: true, state: bindTopicToCity(withTopic, ready) };
 }
 
 /** Fraction of the whole tree completed, for progress display. */

@@ -10,6 +10,7 @@
 import { hexDistance, hexKey, hexSpiral, type Hex } from '../hex/index.js';
 import { tileYields, type MapTile, type ResourceId } from '../map/index.js';
 import { cityKind, isCivilian, type City, type Resources } from '../entities/index.js';
+import { cityMoraleMultiplier } from './review.js';
 import { tileAt, type GameState } from '../state/index.js';
 
 /** How far a city's borders reach. */
@@ -162,6 +163,16 @@ export function cityOutput(
   const biased: Record<ResourceId, number> = { ...total };
   for (const key of Object.keys(bias) as ResourceId[]) {
     biased[key] = total[key] * (bias[key] ?? 1);
+  }
+
+  // Morale last, so a city running on a fresh council review really is worth
+  // more than the same city that ignored one. Applying it here rather than at
+  // the call sites means no caller can collect yields and forget it.
+  const morale = cityMoraleMultiplier(city, state.turn);
+  if (morale !== 1) {
+    for (const key of Object.keys(biased) as ResourceId[]) {
+      biased[key] = biased[key]! * morale;
+    }
   }
 
   return floorResources(biased);

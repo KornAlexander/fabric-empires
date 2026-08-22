@@ -14,7 +14,19 @@
 import { unitType, type Faction } from '../entities/index.js';
 import { addResources, empireIncome, growthThreshold } from '../rules/yields.js';
 import { fundResearch, researchReady } from '../rules/research.js';
+import { reviewOpportunities, reviewPhase, type ReviewOpportunity } from '../rules/review.js';
 import type { GameState } from '../state/index.js';
+
+export interface TurnOptions {
+  /**
+   * Topics the learning layer says have fallen due.
+   *
+   * Passed in rather than looked up, because the engine has no idea what a
+   * topic is or when it should come back. Omitting it disables reviews
+   * entirely, which is what the standalone strategy game does (D35).
+   */
+  readonly dueTopics?: readonly string[] | undefined;
+}
 
 export interface TurnReport {
   /** The turn that just ended. */
@@ -39,6 +51,17 @@ export interface TurnReport {
   readonly researchReadyTopicId: string | undefined;
   /** True when upkeep could not be paid in full. */
   readonly bankrupt: boolean;
+  /**
+   * Council reviews the player can hold next turn.
+   *
+   * Reported as an opportunity rather than a demand: this is the list the UI
+   * flags on cities, and ignoring it costs only the bonus (D49).
+   */
+  readonly reviewsAvailable: readonly ReviewOpportunity[];
+  /** Reviews that were available this turn and were not held. */
+  readonly reviewsIgnored: readonly ReviewOpportunity[];
+  /** Cities whose unrest rose this turn. */
+  readonly citiesUnsettled: readonly string[];
 }
 
 export interface TurnResult {
@@ -109,6 +132,9 @@ function upkeepPhase(state: GameState, factionId: string): TurnResult {
       researchSpent: 0,
       researchReadyTopicId: undefined,
       bankrupt,
+      reviewsAvailable: [],
+      reviewsIgnored: [],
+      citiesUnsettled: [],
     },
   };
 }
@@ -134,18 +160,31 @@ function refreshPhase(state: GameState, factionId: string): GameState {
  * With one faction this is the whole turn. When antagonists arrive their AI
  * runs between the upkeep and refresh phases.
  */
-export function endTurn(state: GameState): TurnResult {
+export function endTurn(state: GameState, options: TurnOptions = {}): TurnResult {
   const factionId = state.activeFactionId;
   const afterUpkeep = upkeepPhase(state, factionId);
-  const funded = fundResearch(afterUpkeep.state, factionId);
+
+  // UNREST: anything still due at the end of a turn was not attended to. A
+  // review the player actually held has already been rescheduled by the
+  // learning layer and is therefore no longer in this list.
+  const due = options.dueTopics ?? [];
+  const reviewed = reviewPhase(afterUpkeep.state, due, factionId);
+
+  const funded = fundResearch(reviewed.state, factionId);
   const refreshed = refreshPhase(funded.state, factionId);
+  const next: GameState = { ...refreshed, turn: refreshed.turn + 1 };
 
   return {
-    state: { ...refreshed, turn: refreshed.turn + 1 },
+    state: next,
     report: {
       ...afterUpkeep.report,
       researchSpent: funded.spent,
       researchReadyTopicId: funded.readyTopicId ?? researchReady(funded.state),
+      // Recomputed against the new turn, so a city that reviewed this turn is
+      // offered again next turn rather than looking permanently spent.
+      reviewsAvailable: reviewOpportunities(next, due, factionId),
+      reviewsIgnored: reviewed.ignored,
+      citiesUnsettled: reviewed.unsettled,
     },
   };
 }

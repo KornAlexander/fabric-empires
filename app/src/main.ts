@@ -21,6 +21,8 @@ import {
   researchProgress,
   researchable,
   resolveAttack,
+  resolveReview,
+  reviewOpportunities,
   selectableUnitAt,
   skipUnit,
   startResearch,
@@ -34,7 +36,14 @@ import {
   type Hex,
   type ReachableTile,
 } from '@fabric-empires/engine';
-import { Dp600ChallengeProvider, createQuestionPresenter } from '@fabric-empires/learn';
+import {
+  DAY_MS,
+  Dp600ChallengeProvider,
+  checkAnswer,
+  createMasteryTracker,
+  createQuestionPresenter,
+  localStorageStore,
+} from '@fabric-empires/learn';
 import { createEffects } from './render/effects.js';
 import { createScene3D } from './three/scene3d.js';
 import { playDuel } from './three/duel.js';
@@ -51,8 +60,22 @@ import { createBattleBanner, type BattleSide } from './ui/battleBanner.js';
  */
 const modal = createQuestionModal();
 const askedThisSession = new Set<string>();
+
+/**
+ * Spaced repetition, persisted across sessions.
+ *
+ * The session start is handed over so the compressed in-session clock runs:
+ * real SM-2 intervals are measured in days, which would mean the review loop
+ * never fires during the hour somebody actually plays.
+ */
+const mastery = createMasteryTracker({
+  store: localStorageStore(),
+  sessionStart: Date.now(),
+});
+
 const provider = new Dp600ChallengeProvider({
   presenter: createQuestionPresenter(modal, { asked: askedThisSession }),
+  mastery,
 });
 
 /** Timers from D50: tight, but every modal can be paused without penalty. */
@@ -118,6 +141,7 @@ const el = {
   actFound: document.querySelector<HTMLButtonElement>('#act-found')!,
   actFortify: document.querySelector<HTMLButtonElement>('#act-fortify')!,
   actSkip: document.querySelector<HTMLButtonElement>('#act-skip')!,
+  actCouncil: document.querySelector<HTMLButtonElement>('#act-council')!,
   log: document.querySelector<HTMLElement>('#log')!,
   resTitle: document.querySelector<HTMLElement>('#res-title')!,
   resBar: document.querySelector<HTMLElement>('#res-bar')!,
@@ -163,6 +187,7 @@ function refreshSelection(): void {
     el.actFound.disabled = true;
     el.actFortify.disabled = true;
     el.actSkip.disabled = true;
+    refreshCouncil();
     return;
   }
 
@@ -185,6 +210,7 @@ function refreshSelection(): void {
   el.actFound.disabled = !canFoundCity(state, unit);
   el.actFortify.disabled = type.strength === 0 || unit.fortified;
   el.actSkip.disabled = unit.movesLeft <= 0;
+  refreshCouncil();
 }
 
 function select(unitId: string | undefined): void {
@@ -496,8 +522,68 @@ function doSkip(): void {
   selectNextIdle();
 }
 
+/**
+ * Refresh the council button.
+ *
+ * Cheap enough to call on every state change: the due list is a filter over a
+ * handful of records and the opportunity list a filter over the cities.
+ */
+function pendingReviews(): ReturnType<typeof reviewOpportunities> {
+  return reviewOpportunities(state, provider.dueTopics(Date.now()));
+}
+
+function refreshCouncil(): void {
+  const available = pendingReviews();
+  el.actCouncil.disabled = available.length === 0;
+  el.actCouncil.textContent =
+    available.length > 1 ? `Council (${available.length})` : 'Council';
+}
+
+/**
+ * Hold a council review.
+ *
+ * The whole learning loop in one action: a topic the player learned a while
+ * ago has fallen due, the city that holds it asks about it again, and getting
+ * it right pays. Retrieval practice with a reason to want it.
+ */
+async function doCouncil(): Promise<void> {
+  if (modal.isOpen()) return;
+  const available = pendingReviews();
+  const next = available[0];
+  if (!next) return;
+
+  const city = state.cities.get(next.cityId);
+  if (city) scene.focus(city.hex);
+
+  const outcome = await provider.present({
+    kind: 'unrest',
+    topicId: next.topicId,
+    tier: 2,
+    timeLimitMs: RESEARCH_TIME_MS,
+  });
+
+  const result = resolveReview(state, next.cityId, next.topicId, outcome.score);
+  if (!result.ok) {
+    log(result.reason, 'bad');
+    return;
+  }
+  state = result.state;
+
+  const node = topicById(state.topics, next.topicId);
+  const label = node?.label ?? next.topicId;
+  if (outcome.score >= 0) {
+    log(`${next.cityName} recalled ${label}. +${result.trustGained} Trust.`, 'good');
+  } else {
+    log(`${next.cityName} could not recall ${label}. It will come round again.`, 'bad');
+  }
+
+  refreshSelection();
+  refreshHud();
+  dirty = true;
+}
+
 function doEndTurn(): void {
-  const result = endTurn(state);
+  const result = endTurn(state, { dueTopics: provider.dueTopics(Date.now()) });
   state = result.state;
   const { report } = result;
   const gains: string[] = [];
@@ -516,6 +602,21 @@ function doEndTurn(): void {
   }
   if (report.researchReadyTopicId) {
     void resolveResearch(report.researchReadyTopicId);
+  }
+
+  // Reviews are reported as an opportunity, never as a demand (D49). Ignoring
+  // them costs the bonus and, eventually, a little yield; nothing is lost and
+  // nothing accrues while the player is away.
+  for (const cityId of report.citiesUnsettled) {
+    log(`${state.cities.get(cityId)?.name ?? 'A city'} is restless without its council.`, 'bad');
+  }
+  if (report.reviewsAvailable.length > 0) {
+    const first = report.reviewsAvailable[0]!;
+    const extra = report.reviewsAvailable.length - 1;
+    log(
+      `${first.cityName} can hold a council${extra > 0 ? ` (and ${extra} more)` : ''}.`,
+      'good',
+    );
   }
 
   refreshSelection();
@@ -744,6 +845,8 @@ window.addEventListener('keydown', (e) => {
     doFortify();
   } else if (e.key === 's') {
     doSkip();
+  } else if (e.key === 'c') {
+    void doCouncil();
   } else if (e.key === 'g') {
     gridVisible = !gridVisible;
     scene.setGridVisible(gridVisible);
@@ -756,6 +859,7 @@ el.endTurn.addEventListener('click', doEndTurn);
 el.actFound.addEventListener('click', doFound);
 el.actFortify.addEventListener('click', doFortify);
 el.actSkip.addEventListener('click', doSkip);
+el.actCouncil.addEventListener('click', () => void doCouncil());
 el.seedGo.addEventListener('click', () => newGame(el.seedInput.value));
 el.seedInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') newGame(el.seedInput.value);
@@ -892,6 +996,10 @@ declare global {
       };
       startResearch: (topicId: string) => boolean;
       grantCompute: (amount: number) => void;
+      cityBindings: () => Record<string, readonly string[]>;
+      expireReviews: () => number;
+      masterySummary: () => Record<string, number>;
+      answerOpen: (correct?: boolean) => Promise<string | undefined>;
       terrainProbe: () => unknown;
       /**
        * The live three.js objects.
@@ -966,6 +1074,67 @@ window.__fabricEmpires = {
     refreshHud();
   },
   terrainProbe: () => ({ ...scene.probe(), ...scene.stats() }),
+
+  cityBindings: () => {
+    const out: Record<string, readonly string[]> = {};
+    for (const city of state.cities.values()) out[city.name] = city.boundSkills;
+    return out;
+  },
+
+  /**
+   * Test affordance: make every bound topic fall due immediately.
+   *
+   * Built from the tracker's public API by recording a review far enough in
+   * the past that any interval has elapsed. Waiting out a real interval in a
+   * test would mean either a slow test or a fake clock, and a fake clock
+   * would stop the test proving that the real wiring works.
+   */
+  expireReviews: () => {
+    const longAgo = Date.now() - 400 * DAY_MS;
+    let touched = 0;
+    for (const city of state.cities.values()) {
+      for (const topicId of city.boundSkills) {
+        mastery.record(topicId, 1, false, longAgo);
+        touched += 1;
+      }
+    }
+    refreshSelection();
+    return touched;
+  },
+
+  masterySummary: () => mastery.summary(state.topics.nodes.map((n) => n.id)),
+
+  /**
+   * Answer whatever question is on screen, correctly or deliberately wrongly.
+   *
+   * Needed because an automated run otherwise cannot get past research at
+   * all: the right answer is only revealed after submitting, and the retry
+   * next turn is a different question, so blind clicking never converges. The
+   * option is found the same way the player's click is judged, by hashing it,
+   * so this proves the real path rather than bypassing it.
+   *
+   * Returns the option that was chosen, or undefined if nothing is open.
+   */
+  answerOpen: async (correct = true) => {
+    const question = modal.current();
+    if (!question || !modal.isOpen()) return undefined;
+    const options = question.options ?? [];
+    let chosen: string | undefined;
+    for (const option of options) {
+      const isRight = await checkAnswer(question.id, option, question.answerHash);
+      if (isRight === correct) {
+        chosen = option;
+        break;
+      }
+    }
+    if (chosen === undefined) return undefined;
+
+    const index = options.indexOf(chosen);
+    const nodes = document.querySelectorAll<HTMLElement>('.fe-option');
+    nodes[index]?.click();
+    return chosen;
+  },
+
   gfx: () => scene.world,
   quality: (level: 'high' | 'low') => {
     scene.setQuality(level === 'low' ? LOW_QUALITY : HIGH_QUALITY);

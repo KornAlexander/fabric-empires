@@ -91,8 +91,21 @@ export interface City {
   readonly population: number;
   /** Data accumulated towards the next citizen. */
   readonly growthStore: number;
-  /** Tech node ids whose buildings stand here. Drives the review system. */
-  readonly boundSkills: readonly number[];
+  /**
+   * Opaque topic ids whose buildings stand here. Drives the review system.
+   *
+   * Strings rather than numbers, because a topic id is whatever the challenge
+   * provider says it is and the engine must not assume it can be counted.
+   */
+  readonly boundSkills: readonly string[];
+  /** Grumbling from ignored reviews. Capped, and only ever dampens yields. */
+  readonly unrest: number;
+  /** Consecutive reviews this city was offered and the player skipped. */
+  readonly ignoredReviews: number;
+  /** Turn until which a good review is still paying a yield bonus. */
+  readonly reviewBonusUntilTurn: number;
+  /** Last turn a council was held here, so it is one per city per turn. */
+  readonly lastReviewTurn: number;
 }
 
 export function cityKind(kind: CityKind): CityKindInfo {

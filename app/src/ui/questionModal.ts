@@ -1,4 +1,5 @@
 import type {
+  Question,
   QuestionAnswer,
   QuestionPrompt,
   QuestionResult,
@@ -96,6 +97,18 @@ function el<K extends keyof HTMLElementTagNameMap>(
 export interface QuestionModal extends QuestionUi {
   /** True while a question is on screen, so the map can ignore input. */
   isOpen(): boolean;
+  /**
+   * The question currently on screen, if any.
+   *
+   * Exposed for automated play. A test cannot answer correctly by reading the
+   * screen: the right answer is only revealed after submitting, and a retry
+   * serves a different question, so guessing never terminates. Handing out the
+   * question lets a harness check each option against the hash exactly as the
+   * player's click does. It leaks nothing a determined player could not
+   * already get from the shipped bundle, which is why the answers are hashed
+   * rather than merely hidden.
+   */
+  current(): Question | undefined;
 }
 
 export function createQuestionModal(): QuestionModal {
@@ -110,9 +123,11 @@ export function createQuestionModal(): QuestionModal {
   document.body.append(backdrop);
 
   let open = false;
+  let showing: Question | undefined;
 
   function render(prompt: QuestionPrompt): Promise<QuestionAnswer> {
     const { question, request } = prompt;
+    showing = question;
     const multi = question.type === 'multi';
     const needed = multi ? (question.selectCount ?? 2) : 1;
 
@@ -374,6 +389,7 @@ export function createQuestionModal(): QuestionModal {
 
   return {
     isOpen: () => open,
+    current: () => showing,
     ask: render,
     reveal,
   };

@@ -120,6 +120,10 @@ export function foundCity(
     population: 1,
     growthStore: 0,
     boundSkills: [],
+    unrest: 0,
+    ignoredReviews: 0,
+    reviewBonusUntilTurn: 0,
+    lastReviewTurn: -1,
   };
 
   const cities = new Map(state.cities);

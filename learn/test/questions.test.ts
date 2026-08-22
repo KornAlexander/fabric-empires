@@ -234,14 +234,31 @@ describe('the built bank', () => {
     }
   });
 
-  it('decrypts each explanation with its own answer', async () => {
-    for (const question of DP600_QUESTIONS) {
-      const draft = draftById.get(question.id)!;
-      expect(
-        await decryptExplanation(question.id, draft.answer, question.explanationCipher),
-      ).toBe(draft.explanation);
-    }
-  });
+  /*
+   * The slowest test in the suite, and unavoidably so.
+   *
+   * Each explanation is unlocked by deriving a key with PBKDF2 at 100,000
+   * iterations, which is deliberately expensive: that cost is the whole
+   * reason a player cannot cheaply brute-force the answer key out of the
+   * shipped bundle. Doing it 123 times is therefore meant to take seconds.
+   *
+   * It began failing when the bank grew from 54 questions to 123, purely on
+   * the default five second budget. Sampling a subset would make it fast and
+   * would stop it being the guarantee it exists to be, so the budget moves
+   * instead of the coverage.
+   */
+  it(
+    'decrypts each explanation with its own answer',
+    async () => {
+      for (const question of DP600_QUESTIONS) {
+        const draft = draftById.get(question.id)!;
+        expect(
+          await decryptExplanation(question.id, draft.answer, question.explanationCipher),
+        ).toBe(draft.explanation);
+      }
+    },
+    60_000,
+  );
 
   it('covers every skill in the loaded clusters', () => {
     const covered = coveredSkills();
