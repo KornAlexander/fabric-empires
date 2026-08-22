@@ -70,6 +70,18 @@ const GAP_MS = 7_000;
 const FADE_IN_MS = 1_500;
 
 /**
+ * How far the score drops while a cinematic is playing.
+ *
+ * ⚠️ Not zero. Cutting the music dead for four seconds and starting it again
+ * draws far more attention to itself than the cue it is making room for. This
+ * is the standard broadcast trick: pull the bed down under the thing that
+ * matters, leave it audible, put it back.
+ */
+export const DUCK = 0.3;
+const DUCK_DOWN_MS = 350;
+const DUCK_UP_MS = 900;
+
+/**
  * Fisher-Yates, with the randomness handed in.
  *
  * Exported because a shuffle is exactly the kind of code that looks obviously
@@ -115,11 +127,21 @@ export interface Soundtrack {
   setMuted(muted: boolean): void;
   /** Flip it. Returns the new state. */
   toggle(): boolean;
+  /**
+   * Pull the score down under a cinematic, and put it back afterwards.
+   *
+   * Safe to call when nothing is playing, when the files are missing and
+   * when it is already in the state being asked for, because the callers are
+   * a `try`/`finally` around a film that can be skipped at any frame.
+   */
+  duck(on: boolean): void;
   readonly muted: boolean;
   /** True once at least one track has been found. */
   readonly available: boolean;
   /** The title currently sounding, or nothing between tracks and when muted. */
   readonly nowPlaying: string | undefined;
+  /** What the score is sounding at right now, ducked or not. Zero when silent. */
+  readonly volume: number;
   /** Called whenever mute or the current track changes. */
   onChange(listener: () => void): void;
 }
@@ -152,6 +174,7 @@ export function createSoundtrack(
   let current: Track | undefined;
   let started = false;
   let muted = storedMute();
+  let ducked = false;
   let gapTimer: number | undefined;
   let fadeTimer: number | undefined;
   const listeners: (() => void)[] = [];
@@ -191,15 +214,33 @@ export function createSoundtrack(
 
   const fadeIn = (audio: HTMLAudioElement): void => {
     audio.volume = 0;
+    rampTo(audio, level(), FADE_IN_MS);
+  };
+
+  /** What the score should be sitting at right now. */
+  const level = (): number => (ducked ? VOLUME * DUCK : VOLUME);
+
+  /**
+   * Walk the volume to a target.
+   *
+   * ⚠️ One timer for fading in and for ducking, deliberately. Two would race:
+   * a cinematic that starts within a second and a half of a new track would
+   * have one interval climbing to full while the other pulled down to the
+   * duck, and the winner would be whichever happened to tick last.
+   */
+  function rampTo(audio: HTMLAudioElement, target: number, ms: number): void {
+    if (fadeTimer !== undefined) window.clearInterval(fadeTimer);
     const step = 50;
-    const rise = VOLUME / Math.max(1, FADE_IN_MS / step);
+    const delta = (target - audio.volume) / Math.max(1, ms / step);
     fadeTimer = window.setInterval(() => {
-      audio.volume = Math.min(VOLUME, audio.volume + rise);
-      if (audio.volume < VOLUME - 0.001) return;
+      const next = audio.volume + delta;
+      const done = delta >= 0 ? next >= target : next <= target;
+      audio.volume = Math.min(1, Math.max(0, done ? target : next));
+      if (!done) return;
       window.clearInterval(fadeTimer);
       fadeTimer = undefined;
     }, step);
-  };
+  }
 
   function play(): void {
     if (muted || found.length === 0) return;
@@ -266,6 +307,10 @@ export function createSoundtrack(
       return current?.title;
     },
 
+    get volume() {
+      return element && !element.paused ? element.volume : 0;
+    },
+
     onChange(listener) {
       listeners.push(listener);
     },
@@ -296,6 +341,13 @@ export function createSoundtrack(
       // which makes the mute button a second way into the first play.
       if (!muted && !started) this.start();
       return muted;
+    },
+
+    duck(on) {
+      if (on === ducked) return;
+      ducked = on;
+      if (!element || element.paused) return;
+      rampTo(element, level(), on ? DUCK_DOWN_MS : DUCK_UP_MS);
     },
   };
 }

@@ -273,6 +273,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D284–D290 | Bring your own questions, from a spreadsheet | Recorded in full in section 37.3 |
 | D291–D298 | Two editions, and a coach that reads your progress | Recorded in full in section 38.5 |
 | D299–D310 | A score that runs under the game | Recorded in full in section 39.6 |
+| D311–D323 | The films had no sound | Recorded in full in section 40.6 |
 
 ### 28. Cheat codes
 
@@ -3238,4 +3239,167 @@ lyrics field disappears from the DOM) before pressing Create.
 
 ---
 
-*Last updated: 22 August 2026*
+### 40. The films had no sound
+
+Four cinematics play during a game: the first workspace being founded, first
+blood, a city changing hands, and the Proctor arriving. All four played in
+**silence**. The opening had an anthem and the map now had a score, and the
+one moment in the game that is explicitly cinematic had nothing at all.
+
+#### 40.1 ⚠️ Synthesised, because a file would not ship
+
+The obvious move was four more Suno stingers. It is the wrong one twice over.
+
+Suno writes songs, not four second cues, and getting a clean stinger out of it
+is a fight. But the real objection is licensing. Section 39 had to keep the
+music **out of the repository** because a free plan licenses its output for
+non-commercial use, and that is a fine trade for a background bed nobody
+misses. It is a bad trade here: it would mean the cinematics are silent in
+every clone except this machine, and the cinematics are the part of the game
+people are shown first.
+
+So the cues are built from oscillators at the moment they play. No file, no
+licence, no download, and they work in a fresh checkout. That is also just
+D59, which this project has kept everywhere else: the terrain, the water, the
+sky and every object on the map are already generated at runtime, and the
+audio was the one place that had quietly stopped being true.
+
+Four voices are enough: a **bell**, a **drum**, a brass-ish **swell**, and a
+low **drone**.
+
+⚠️ The bell's partials are `1, 2, 2.76, 5.40, 8.93`, which is deliberately
+**not** a harmonic series. Whole-number multiples sound like an organ; struck
+metal rings at inharmonic ratios, and 2.76 in particular is what the ear reads
+as "a bell" rather than "a tone". The high partials are also given shorter
+lives than the low ones, which is what makes a bell soften as it rings instead
+of merely getting quieter.
+
+There is a **convolution reverb**, generated the same way: two and a half
+seconds of noise under a cubic decay, which is a convincing stone room in
+about fifteen lines. It is the single largest difference between "a
+synthesiser" and "a score", and it is why the cues do not sound like a test
+tone no matter how they are orchestrated.
+
+#### 40.2 The composition is data, and that is not tidiness
+
+WebAudio does not exist under test. So the synthesis cannot be checked at all
+by the suite, and the only part that can be is **which note sounds when**,
+which means that part has to be a table rather than a hundred imperative
+calls. `CUES` is keyed by the cinematic's id, and every entry says when, what
+voice, what pitch, how long and how loud.
+
+The cues have characters, and one of the rules is enforced rather than
+described. `first-city` is the only unambiguously major cue in the game: a
+bed, then a rising fifth into the octave. The other three get **no bell above
+the stave at all**, and there is a test for it, because `first-blood` and
+`city-falls` fire whether you won or lost and a bright chime over a city you
+have just lost reads as the game congratulating you.
+
+#### 40.3 ⚠️ The test that would have caught this in the first place
+
+Four films shipped silent for weeks. Nothing was broken; nothing anywhere
+connected "a shot was added" to "a shot needs a sound", and a person has to be
+looking at the right screen at the right moment to notice that something did
+not happen.
+
+So the important test in `cues.test.ts` is not about audio. It reads
+`main.ts`, finds every `orbitShot`, `descendShot` and `approachShot` in it,
+and fails if any of their ids has no entry in `CUES`. It fails in the other
+direction too, because a cue for a cinematic that has been renamed is worse
+than no cue: it looks like proof that the film has sound.
+
+It also asserts that it found at least four, so the scan cannot pass by
+quietly matching nothing.
+
+#### 40.4 ⚠️ "It was scheduled" is not "it is audible"
+
+Every test above passes on a cue that produces **complete silence**. A sign
+error in an envelope ramp, a filter cutting everything, a voice connected to
+nothing: the table is still correct, the schedule is still correct, and
+nothing comes out.
+
+The fix is to render the real code into an `OfflineAudioContext` in a real
+browser and look at the samples. That cost one parameter: `createCues` takes a
+context factory, so the same graph can be built into an offline context and
+measured instead of played.
+
+| cue | peak | RMS |
+| --- | --- | --- |
+| first-city | 0.371 | 0.0370 |
+| first-blood | 0.345 | 0.0322 |
+| city-falls | 0.486 | 0.0406 |
+| proctor | 0.257 | 0.0321 |
+| an id with no cue | 0.000 | 0.0000 |
+
+All four are well clear of the noise floor and well short of clipping, and
+their levels sit within a few dB of each other, which for a set of stingers
+matters as much as any of them being right on its own.
+
+#### 40.5 Ducking, and one switch
+
+A four second phrase over a background bed at the same level is not a cue, it
+is a second piece of music, and the two argue. The score drops to **30 percent
+for the length of the film** and ramps back over nine tenths of a second.
+
+⚠️ Not to zero. Cutting the music dead for four seconds and starting it again
+draws far more attention to itself than the cue it is making room for.
+
+⚠️ **The duck and the fade-in share one timer**, deliberately. Two would race,
+and not in some rare case: a cinematic that starts within a second and a half
+of a new track *is* the founding of the first city. With two intervals, one
+climbing to full and one pulling down to the duck, the winner would be
+whichever happened to tick last.
+
+The button from section 39 now silences the cues as well, and says **sound**
+rather than **music** because of it. It is the only audio control in the game,
+somebody who presses it wants quiet, and being hit by a gong ten seconds later
+because the cinematics are technically a different subsystem would read as a
+bug. They would be right.
+
+#### 40.6 Decisions
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D311 | ⚠️ **Cues are synthesised, never sampled** | A file would have to be gitignored under the same non-commercial licence as the music, which would mean silent cinematics in every clone. Oscillators have no licence and ship |
+| D312 | The composition is data; the synthesis reads it | WebAudio does not exist under test, so the schedule is the only part that can be checked, and it can only be checked if it is a table |
+| D313 | ⚠️ **A cinematic with no cue fails the build** | This is the actual defect: four films were silent because nothing connected adding a shot to giving it a sound. The test scans `main.ts` in both directions |
+| D314 | The scan asserts it found at least four | A coverage test whose regex has rotted passes by finding nothing, and reports success |
+| D315 | ⚠️ **Audibility is measured by rendering offline, not asserted** | Every unit test here passes on a cue that emits silence. Peak and RMS from a real browser is the only evidence that the graph makes a sound |
+| D316 | Inharmonic bell partials | A harmonic stack is an organ. 2.76 and 5.40 are what the ear hears as struck metal |
+| D317 | A generated convolution reverb, ~15 lines | The difference between a score and a test tone, at no cost in assets |
+| D318 | ⚠️ **No bright bell on the three dark cues** | `first-blood` and `city-falls` fire whether you won or lost. A high chime over a city you have just lost is the game congratulating you |
+| D319 | The score ducks to 30 percent, and does not stop | Silence under a cue is more distracting than the cue |
+| D320 | ⚠️ **One timer for fading in and for ducking** | Two would race, and the racing case is the founding of the first city, not an edge case |
+| D321 | One switch for all audio, retitled to sound | It is the only audio control there is, and a mute that leaves gongs running is a bug to the person who pressed it |
+| D322 | An unknown id is silence, not an error | `playOnce` is handed every shot including the opening's, which has the anthem instead |
+| D323 | Losing the sound must never cost the move | A browser with no `AudioContext`, or one that refuses to build one, gets a silent game and a working one |
+
+#### 40.7 Verified
+
+- 866 tests, 18 new across cues and ducking.
+- All four cues rendered offline in a real browser: audible, unclipped, and
+  level with one another. An id with no cue renders **exactly** zero.
+- The founding film driven end to end in a real page: the score went
+  `0.280 → 0.084` when the cinematic began and returned to `0.280` when it
+  ended, which is the duck depth exactly.
+- The ducking ramp is unit tested with fake timers, including the case that
+  motivated sharing the timer: a track starting while a film is already
+  running comes up **to the ducked level**, not to full.
+
+#### 40.8 Open
+
+- ⚠️ **A fresh clone still opens in silence.** The anthem is a file, so the
+  27 second opening has no sound where the mp3 is absent, which is everywhere
+  but this machine. Synthesising a fallback cue for the opening when
+  `anthem.available` is false would fix it and is deliberately not in this
+  change.
+- The cinematic titles and subtitles are still not translated. They go
+  straight to the overlay without passing through `t()`, which predates this
+  work.
+- The cues do not vary. `city-falls` sounds the same whether the city was won
+  or lost, though the subtitle already knows which it was.
+- Still no volume control, only on and off.
+
+---
+
+*Last updated: 23 August 2026*

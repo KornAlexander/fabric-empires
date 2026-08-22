@@ -107,6 +107,7 @@ import { approachShot, descendShot, orbitShot } from './three/cinematic.js';
 import { introShots } from './intro.js';
 import { createAnthem } from './audio.js';
 import { createSoundtrack } from './soundtrack.js';
+import { createCues } from './cues.js';
 import { applyStaticTranslations, lang, onLangChange, plural, t, toggleLang } from './i18n.js';
 import { allCampaigns } from './courses.js';
 import { probeEdition } from './coach.js';
@@ -469,6 +470,15 @@ const anthem = createAnthem();
  */
 const music = createSoundtrack();
 
+/**
+ * The sound the cinematics make.
+ *
+ * ⚠️ Unlike the music, this ships: it is synthesised from oscillators at the
+ * moment it plays, so it has no file, no licence and no download, and it
+ * works in a fresh clone. See `cues.ts`.
+ */
+const cues = createCues();
+
 /*
  * Which edition is this?
  *
@@ -484,10 +494,22 @@ async function playOnce(shot: ReturnType<typeof orbitShot>): Promise<void> {
   if (seenCinematics.has(shot.id) || finished) return;
   seenCinematics.add(shot.id);
   cinemaOverlay.show(shot.title, shot.subtitle);
+  /*
+   * Pull the score down and sound the cue.
+   *
+   * ⚠️ The duck is not decoration. A four second phrase played on top of a
+   * background bed at the same level is not a cue, it is a second piece of
+   * music, and the two argue. Pulling the bed to a third for the length of
+   * the film is the ordinary broadcast answer and the reason the cue reads as
+   * belonging to what is on screen.
+   */
+  music.duck(true);
+  cues.play(shot.id);
   try {
     await scene.cinema.play(shot);
   } finally {
     cinemaOverlay.hide();
+    music.duck(false);
   }
 }
 
@@ -633,7 +655,7 @@ el.langToggle.addEventListener('click', () => {
 });
 
 /*
- * The music switch.
+ * The sound switch.
  *
  * ⚠️ **Hidden until a track has actually been found.** A mute button in a
  * build with no audio files is a control that does nothing, and a control
@@ -641,19 +663,27 @@ el.langToggle.addEventListener('click', () => {
  * hears no change, and now distrusts the rest of the interface. The probe in
  * `soundtrack.ts` decides, and it decides after a round trip, so this repaints
  * on change rather than once at load.
+ *
+ * ⚠️ **One switch for everything that makes a noise**, which is why it says
+ * sound rather than music. It is the only audio control in the game, and
+ * somebody who presses it wants quiet; being hit by a gong ten seconds later
+ * because the cinematics are technically a different subsystem would read as
+ * a bug, and they would be right.
  */
 function paintMusicToggle(): void {
   el.musicToggle.hidden = !music.available;
   el.musicToggle.classList.toggle('muted', music.muted);
-  el.musicToggle.title = music.muted ? t('Turn the music on') : t('Turn the music off');
+  el.musicToggle.title = music.muted ? t('Turn the sound on') : t('Turn the sound off');
 }
 
 el.musicToggle.addEventListener('click', () => {
   music.toggle();
+  cues.setMuted(music.muted);
   paintMusicToggle();
 });
 
 music.onChange(paintMusicToggle);
+cues.setMuted(music.muted);
 paintMusicToggle();
 
 /*
@@ -2914,7 +2944,22 @@ declare global {
        * the page cannot find them with a DOM query and has no other way to
        * tell music from silence. Reported here rather than inferred.
        */
-      music: () => { available: boolean; muted: boolean; playing: string | undefined };
+      music: () => {
+        available: boolean;
+        muted: boolean;
+        playing: string | undefined;
+        volume: number;
+      };
+      /**
+       * Render a cinematic's cue without playing it, and measure it.
+       *
+       * ⚠️ The unit tests can check which note sounds when and can never
+       * check that the graph makes a sound, because WebAudio does not exist
+       * under test. This renders the real code into an `OfflineAudioContext`
+       * and returns the peak and RMS of the samples, which is the difference
+       * between "the cue was scheduled" and "the cue is audible".
+       */
+      renderCue: (id: string) => Promise<{ peak: number; rms: number; seconds: number }>;
       setRank: (
         rank: string,
         population: number,
@@ -3192,7 +3237,28 @@ window.__fabricEmpires = {
   /** Replay the opening. Exists so the trailer can be recorded from the game. */
   playOpening: () => playOpening(),
   anthemReady: () => anthem.available,
-  music: () => ({ available: music.available, muted: music.muted, playing: music.nowPlaying }),
+  music: () => ({
+    available: music.available,
+    muted: music.muted,
+    playing: music.nowPlaying,
+    volume: music.volume,
+  }),
+  renderCue: async (id: string) => {
+    const seconds = 8;
+    const rate = 44_100;
+    const offline = new OfflineAudioContext(2, rate * seconds, rate);
+    createCues(() => offline).play(id);
+    const rendered = await offline.startRendering();
+    const data = rendered.getChannelData(0);
+    let peak = 0;
+    let sum = 0;
+    for (let i = 0; i < data.length; i += 1) {
+      const v = Math.abs(data[i]!);
+      if (v > peak) peak = v;
+      sum += data[i]! * data[i]!;
+    }
+    return { peak, rms: Math.sqrt(sum / data.length), seconds };
+  },
   /**
    * Force the player's first settlement to a rank.
    *

@@ -15,7 +15,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SOUNDTRACK, createSoundtrack, nextRotation, shuffle, type Track } from '../src/soundtrack.js';
+import { DUCK, SOUNDTRACK, createSoundtrack, nextRotation, shuffle, type Track } from '../src/soundtrack.js';
 
 /**
  * A stand-in for `Audio`.
@@ -266,6 +266,76 @@ describe('the mute button', () => {
     seen.mockClear();
     music.setMuted(true);
     expect(seen).toHaveBeenCalled();
+  });
+});
+
+describe('ducking under a cinematic', () => {
+  /*
+   * ⚠️ The reason this is tested rather than eyeballed: the volume ramp shares
+   * one timer with the fade-in, because two timers would race. A cinematic
+   * starting within a second and a half of a new track is not a rare case,
+   * it is the founding of the first city, and with two timers the winner
+   * would be whichever happened to tick last.
+   */
+  const runUp = async (): Promise<{ music: ReturnType<typeof createSoundtrack>; el: FakeAudio }> => {
+    serve(['audio/one.mp3']);
+    const music = createSoundtrack(TRACKS);
+    await settle();
+    vi.useFakeTimers();
+    music.start();
+    vi.advanceTimersByTime(2_000); // Let the fade-in finish.
+    return { music, el: FakeAudio.made[0]! };
+  };
+
+  it('pulls the score down, and puts it back where it was', async () => {
+    const { music, el } = await runUp();
+    const full = el.volume;
+    expect(full).toBeGreaterThan(0.2);
+
+    music.duck(true);
+    vi.advanceTimersByTime(600);
+    expect(el.volume).toBeLessThan(full * 0.5);
+
+    music.duck(false);
+    vi.advanceTimersByTime(1_500);
+    expect(el.volume).toBeCloseTo(full, 2);
+  });
+
+  it('⚠️ leaves the bed audible rather than cutting it dead', () => {
+    // Silence under a cue draws more attention to itself than the cue does.
+    expect(DUCK).toBeGreaterThan(0.15);
+    expect(DUCK).toBeLessThan(0.6);
+  });
+
+  it('starts a new track at the ducked level if a film is already running', async () => {
+    const { music, el } = await runUp();
+    music.duck(true);
+    vi.advanceTimersByTime(600);
+    const under = el.volume;
+
+    el.onended?.();
+    vi.advanceTimersByTime(10_000); // The gap, then the next track's fade-in.
+    expect(el.volume).toBeCloseTo(under, 2);
+  });
+
+  it('is safe when nothing is playing, because a film can be skipped at any frame', async () => {
+    serve([]);
+    const music = createSoundtrack(TRACKS);
+    await settle();
+    expect(() => {
+      music.duck(true);
+      music.duck(false);
+    }).not.toThrow();
+  });
+
+  it('ignores being asked for the state it is already in', async () => {
+    const { music, el } = await runUp();
+    music.duck(true);
+    vi.advanceTimersByTime(600);
+    const under = el.volume;
+    music.duck(true);
+    vi.advanceTimersByTime(600);
+    expect(el.volume).toBeCloseTo(under, 5);
   });
 });
 

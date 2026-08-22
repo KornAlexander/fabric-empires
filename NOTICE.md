@@ -57,6 +57,14 @@ anthem, and the files are ignored by git for the same reason.
 To hear something, drop your own `.mp3` files at the paths listed in
 `SOUNDTRACK` in that file, or edit the list to name your own.
 
+### The cinematic cues are not an exception
+
+The four in-game films have sound, and unlike the music **it ships**. Every cue
+is built from oscillators at the moment it plays: a bell with inharmonic
+partials, a drum, a brass swell, a drone, and a reverb generated from noise.
+There is no file, so there is no licence and nothing to download, and a fresh
+clone hears them. See `app/src/cues.ts` and section 40 of PLAN.md.
+
 ### The trailer
 
 `media/fabric-empires-intro.mp4` carries the anthem, so it inherits the same
