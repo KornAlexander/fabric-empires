@@ -287,6 +287,150 @@ save (v5). The end screen names them and adds the line that matters: the
 readiness figure did not have help, and never does. An empire built with
 assistance is welcome, and says so.
 
+### 29. Campaigns: the same game, a different syllabus
+
+**Status: PLAN ONLY. Nothing below is built.** Requested 22 Aug: a Year 1
+version (Mathe und Deutsch) and a Year 4 version (Deutsch), identical game,
+different questions, with the interface in German for those two.
+
+#### 29.1 What the survey found, before designing anything
+
+This is the first real test of D35, the rule that the engine is a complete
+strategy game that knows nothing about certifications. Measured rather than
+assumed:
+
+| Question | Answer |
+|---|---|
+| Does the engine reference DP-600? | **Only in comments.** Five mentions, every one prose |
+| How do units unlock? | `unlockedBySkill` is a **1-based index** into the topic graph, explicitly so the engine need not know what a topic id looks like |
+| Where is the seam? | `ChallengeProvider`: `topics()`, `present()`, `dueTopics()`. Three methods |
+| How much is DP-600 specific? | All of `learn/`, which is the layer designed to be replaced |
+| How much English is baked into the UI? | ~147 string literals in `app/src`, 18 in `index.html` |
+| Size of the existing bank | 123 questions across 7 clusters, 41 topics |
+
+⚠️ **The one hard constraint nobody has hit yet.** `UNIT_TYPES` unlocks units at
+skill indices up to **41** (Refresh Guard 41, Direct Lake Titan 39, Semantic
+Colossus 36). A campaign with fewer than 41 topics silently never unlocks its
+late units, and nothing warns about it. Any new curriculum needs **at least 41
+topics**, or the unlock indices need to become fractions of the tree.
+
+#### 29.2 The shape: a Campaign
+
+A campaign is everything the game needs to teach a subject:
+
+```
+learn/content/<campaign>/
+  campaign.json     id, title, language, exam rules, antagonist roster
+  outline.json      branches -> clusters -> skills   (>= 41 skills)
+  questions/src/    authoring plaintext, one file per cluster
+  questions/        built bank: answers hashed, explanations encrypted
+```
+
+Three campaigns:
+
+| id | Title | Language | Subject |
+|---|---|---|---|
+| `dp600` | Fabric Empires | English | DP-600, unchanged |
+| `klasse1` | Reich der Zahlen und Buchstaben | German | Year 1 maths and German |
+| `klasse4` | Reich der Wörter | German | Year 4 German |
+
+#### 29.3 What has to move, and what does not
+
+**No change at all:** `engine/`. That is the point of D35 and it survived
+contact.
+
+**Moves out of the engine into campaign data:**
+
+| Today | Becomes |
+|---|---|
+| `ANTAGONISTS` with clusters `A1`..`C2` hard-coded in `gameState.ts` | `campaign.json` `antagonists[]`, passed in via `NewGameOptions`. The engine already accepts `antagonistIds`, so this is a constructor argument rather than a rewrite |
+
+**Generalises inside `learn/`:**
+
+| Today | Becomes |
+|---|---|
+| `topicIdFor` returns `dp600-${n}` | `${campaignId}-${n}` |
+| `ANSWER_SALT = 'fabric-empires:dp600:v1'` | Per campaign, or the built banks collide |
+| `bank.ts` statically imports 7 DP-600 files | A registry keyed by campaign |
+| `DP600_OUTLINE`, `DP600_QUESTIONS` | `outlineFor(id)`, `questionsFor(id)` |
+| `Dp600ChallengeProvider` | `CampaignChallengeProvider`, campaign injected |
+| `SIEGE_LENGTH = 40`, `PROCTOR_THRESHOLD = 0.8` | Campaign fields. Forty questions is a reasonable exam and a cruel thing to do to a six-year-old |
+| `build-questions.mjs` hard-coded paths | Loop over campaigns |
+
+#### 29.4 The German interface
+
+~165 strings. A typed catalogue rather than English-as-key, because half these
+strings are sentences with substitutions and the log lines carry the game's
+voice:
+
+```ts
+t('log.villageTaken', { name, from })   // "Silo Hold taken from The Silo Horde."
+```
+
+- `app/src/i18n/en.ts`, `app/src/i18n/de.ts`, both typed against one key union,
+  so a missing German string is a **compile error** rather than an English word
+  appearing mid-sentence in a German game.
+- Language comes from the campaign, with an explicit override on the setup
+  screen, because a German speaker may well want the DP-600 game in German too.
+- ⚠️ German is longer than English, typically 15 to 30 percent. The panels are
+  fixed-width (`#selection` is 290px, `#threats` 272px). Expect overflow and
+  budget a pass for it rather than discovering it in a screenshot.
+- ⚠️ Umlauts and ß throughout, never `ae`/`oe`/`ue`/`ss`.
+
+#### 29.5 Curriculum sketches, both needing 41+ topics
+
+**Year 1, seven clusters, both subjects:**
+
+| Cluster | Skills |
+|---|---|
+| M1 Zahlen bis 20 | Zählen, Nachbarzahlen, Vergleichen, Zahlzerlegung, Ordnen, Zahlenstrahl |
+| M2 Plus und Minus | Plus bis 10, Minus bis 10, Plus bis 20, Minus bis 20, Umkehraufgaben, Verdoppeln, Halbieren |
+| M3 Formen und Größen | Kreis Dreieck Quadrat Rechteck, Muster, Längen, Uhrzeit volle Stunde |
+| D1 Laute und Buchstaben | Anlaut, Inlaut, Auslaut, Vokale, Konsonanten, Alphabet |
+| D2 Silben | Silben klatschen, Silbenbögen, Trennen |
+| D3 Wörter schreiben | Lautgetreu schreiben, Wörter abschreiben, Groß und klein |
+| D4 Lesen und verstehen | Wort zu Bild, Satz lesen, Kurzer Text |
+
+**Year 4, seven clusters, German only:** D1 Rechtschreibung, D2 Wortarten,
+D3 Satzglieder, D4 Zeitformen, D5 Wörtliche Rede, D6 Texte verstehen,
+D7 Aufsatz. Roughly six skills each.
+
+⚠️ **The Year 1 reading problem.** A six-year-old is learning to read, and this
+game asks its questions in writing under a time limit. Three mitigations, all
+needed: stems of at most a handful of very simple words (`7 + 5 = ?`), the
+`relaxed` pace as the default for that campaign, and options that are numbers or
+single words. Anything requiring a paragraph to be read is not a Year 1 question
+however good it is.
+
+#### 29.6 Tone
+
+The DP-600 antagonists are misconceptions: the Silo Horde, the Flat Table Cult.
+The same joke works for children and is arguably better teaching:
+**Die Zahlendreher** (swaps 12 and 21), **Die Silbenschlucker**,
+**Die Großschreib-Muffel**. The mechanics stay exactly as they are, per the
+request. Wording of `raze` softens to "auflösen" rather than "niederbrennen".
+
+#### 29.7 Order of work
+
+| Step | Work | Risk |
+|---|---|---|
+| 1 | Campaign types, registry, antagonists out of the engine | Low, mechanical |
+| 2 | Generalise `learn/` and the content build | Low |
+| 3 | i18n catalogue, English extracted, `de.ts` stubbed | Medium: 165 strings, touches every UI file |
+| 4 | Year 4 outline plus ~45 questions | Content, not code |
+| 5 | Year 1 outline plus ~45 questions | Content, plus the reading constraint |
+| 6 | German UI pass, overflow fixes | Medium |
+| 7 | Campaign picker on the setup screen | Low |
+
+Steps 1 and 2 are worth doing **regardless**, because they are what the D35
+claim asserts and currently nothing proves. A second campaign is the proof.
+
+⚠️ **Against the deadline.** The Discord challenge closes **1 September** and is
+a DP-600 preparation challenge. None of this is part of that submission, and
+step 3 touches every file the submission depends on. The safe sequencing is
+steps 1 and 2 before 1 Sep if at all (they are additive and testable), and
+everything from step 3 onwards after it.
+
 #### 27.3 The full set of choices
 
 | Group | Setting | Options | What it really changes |
