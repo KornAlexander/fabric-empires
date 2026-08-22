@@ -58,8 +58,25 @@ export const BASE_AGGRO_RADIUS = 5;
  */
 export const AGGRO_TURNS_PER_HEX = 3;
 
-export function aggroRadius(turn: number): number {
-  return BASE_AGGRO_RADIUS + Math.floor(Math.max(0, turn - 1) / AGGRO_TURNS_PER_HEX);
+/**
+ * The map these numbers were measured against.
+ *
+ * ⚠️ **The leash is proportional to the world, not a fixed number of hexes.**
+ * Both constants above were tuned on a radius-25 map, where the first raid
+ * lands on turn 9 to 20. Left absolute, a map three times the area would put
+ * the far camps 45 hexes away and the leash would take 121 turns to reach
+ * them: six of the seven factions would simply never arrive, and making the
+ * map bigger would quietly make the game emptier.
+ *
+ * Scaling by the ratio keeps the measured pacing wherever the map size ends
+ * up, because a camp's distance scales with the map for the same reason.
+ */
+export const REFERENCE_MAP_RADIUS = 25;
+
+export function aggroRadius(turn: number, mapRadius: number = REFERENCE_MAP_RADIUS): number {
+  const scale = Math.max(1, mapRadius) / REFERENCE_MAP_RADIUS;
+  const widened = BASE_AGGRO_RADIUS + Math.floor(Math.max(0, turn - 1) / AGGRO_TURNS_PER_HEX);
+  return widened * scale;
 }
 
 export type AiIntent =
@@ -177,7 +194,7 @@ export function planUnitAction(state: GameState, unitId: string): AiIntent | und
   //
   // Only towards something inside the leash, though. Everything further away
   // is not yet this faction's business.
-  const limit = aggroRadius(state.turn);
+  const limit = aggroRadius(state.turn, state.map.radius);
   let towards: Hex | undefined;
   let bestDistance = Number.POSITIVE_INFINITY;
   for (const hex of hostile) {

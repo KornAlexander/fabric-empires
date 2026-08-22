@@ -340,7 +340,24 @@ export function buildTerrain(map: GameMap, subdivisions = 2): Terrain {
       erosionField[gy * gridW + gx] = baseHeightAt(gridToWorldX(gx), gridToWorldZ(gy));
     }
   }
-  const erosion = erode(erosionField, gridW, gridD, cellSize);
+  const erosion = erode(erosionField, gridW, gridD, cellSize, {
+    /*
+     * ⚠️ **Droplets scale with area, or a bigger map is a smoother one.**
+     *
+     * The default 140,000 was tuned against a radius-25 map, which is about
+     * 65,000 grid cells, so a little over two droplets per cell. Left fixed on
+     * a map three times the area, each cell gets a third of the rain and the
+     * valleys simply stop cutting: the terrain would come out visibly blander
+     * the larger the world got, which is the opposite of the intent.
+     *
+     * ⚠️ The cap is the cold-start budget, and it was measured, not chosen.
+     * At full density the enlarged map took **10.3 seconds** to become
+     * playable, which is a very long blank screen for someone opening a link
+     * out of curiosity. Erosion is the slowest stage by a distance, so the cap
+     * is what buys that back.
+     */
+    droplets: Math.min(240_000, Math.round(gridW * gridD * 2.15)),
+  });
   const erosionAt = (x: number, z: number) =>
     sampleGrid(erosion.delta, gridW, gridD, worldToGridX(x), worldToGridZ(z));
 

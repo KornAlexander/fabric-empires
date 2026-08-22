@@ -178,6 +178,11 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D147 | Highlands recoloured to moorland | `#9d8464` was a pale pinkish tan and was the ugliest thing on the map: a warm beige third of the landmass with nothing growing on it. Now a dark olive that lets the slope-driven rock mix show through on the steep faces, which is where the shape is |
 | D148 | ⚠️ **The units are now the mismatch** | With the town at 1600, the roster is visibly wrong: tracked hulls, gun rings, emissive strips. Pike, shot, horse and cannon instead. This is the single largest remaining visual job and it is what the art programme should spend itself on first |
 | D149 | **Fog of war from the first turn** | The whole map is currently visible from turn one, which gives away every camp, removes any reason to scout, and makes the Profiler pointless. Only what a unit or city can see is revealed, and what has been seen stays remembered but not live |
+| D150 | **The map is 3.2 times bigger** | Radius 25 to 45: about 6,200 hexes against 1,950, and 156 world units across against 87 |
+| D151 | Everything tuned against the map is now **proportional to it** | The aggro leash, the camp separation and the minimum spawn distance were all absolute numbers measured on a radius-25 map. Left alone, the far camps would have sat 45 hexes out and taken 121 turns to notice the player: a bigger map would have been an emptier one |
+| D152 | ⚠️ The spawn distance must stay ahead of the leash, and a test says so | Scaling the leash but not the spawn distance put camps *inside* the opening leash. Measured on seed DP600: raided turn 4, wiped turn 5, which is exactly the failure the leash exists to prevent. The test now asserts the ordering rather than comparing against a constant that was never the one that mattered |
+| D153 | Erosion droplets scale with grid area | Fixed at 140,000 on three times the area, each cell gets a third of the rain, the valleys stop cutting, and the bigger world comes out blander than the small one. Capped at 240,000 for the cold-start budget |
+| D154 | The golden map digests are pinned at an explicit radius | They called `generateMap(seed)` and so mixed determinism with default size, meaning a resize broke a test about determinism. Held at 25 they are **unchanged across the resize**, which is the actual evidence wanted: the world grew and the generator did not move |
 
 ### 16.1 What "realistic" does and does not mean in this build
 
@@ -1260,7 +1265,7 @@ is allowed to block on it.
 | 4 | 24 to 28 Aug | **The siege** (19). Walls, siege state, the assault set piece, the four defender options | Fog of war, for what a besieger can see |
 | 5 | 26 to 28 Aug | **Art integration.** Wire the generated set into the renderer and the interface | Phase 2 |
 | 6 | 28 to 29 Aug | **Docs.** README, `NOTICE.md` (art and audio provenance), `PREVIEW-FEEDBACK.md` | Phases 2 and 3 |
-| 7 | 29 Aug | **Share card** (D40) | |
+| 7 | 29 Aug | **Share card** (D40), and the **loading screen** the enlarged map now requires (22.2) | |
 | 8 | 29 to 30 Aug | **Deploy.** Flip the repo public, Pages fallback, then `prdsweden` as the primary link | Capacity confirmation |
 | 9 | 30 to 31 Aug | **Demo video.** Screen capture, cloned voiceover, roughly 90 seconds | Everything visual |
 | 10 | 31 Aug | **Drafts.** Discord entry, LinkedIn post staged, blog draft. None of them posted (D135) | |
@@ -1409,7 +1414,6 @@ the frame that belongs to no century at all, and that contrast is why it works.
 ---
 
 ## 21. Fog of war
-
 The whole map is visible from turn one. That gives away all seven camps before
 a single move, removes every reason to scout, and makes the Profiler, whose
 entire point is a sight radius, just a faster soldier.
@@ -1436,6 +1440,45 @@ stated here rather than left as an accident of implementation, because the
 alternative is seven factions wandering a dark map looking for someone. They
 are a besieging pressure on a learner, not an opponent in a fair match, and
 the leash (D92) is what keeps that fair rather than mutual blindness.
+
+---
+
+## 22. Map size, and what it cost
+
+**Radius 45** (D150): about 6,200 hexes and 156 world units across, against
+1,950 and 87. Roughly 3.2 times the area and twice the width.
+
+### 22.1 Measured, on this machine
+
+| | Before (r=25) | After (r=45) |
+|---|---|---|
+| Tiles | 1,951 | 6,211 |
+| Terrain vertices | | 309,418 |
+| Time to playable | | **8.1 s** |
+| Frame time, median | | 6.5 ms |
+| Frame time, worst | | 7.6 ms |
+| End turn | | 21 ms |
+
+Rendering is comfortable and turns are instant. **Cold start is the whole
+cost.** Erosion at full density took it to 10.3 s, and capping droplets at
+240,000 bought back 2.2 s while leaving the erosion visibly cutting
+(max delta 1.13 to 0.90).
+
+### 22.2 The consequence that has to be built
+
+⚠️ **Eight seconds of blank screen is the single worst thing about the game
+right now.** Someone opening a submitted link out of curiosity gets nothing to
+look at for longer than they will wait. The rest of the build is mesh
+construction rather than erosion, so trimming droplets further would cost
+terrain quality for very little time.
+
+The fix is a **loading screen with real progress**, not a smaller world. It is
+now a required deliverable rather than polish.
+
+### 22.3 What did not have to change
+
+Saves. The map is never serialised, only the seed and the overrides, so a
+3.2-times-larger world is still a save of about 1.1 kB.
 
 ---
 

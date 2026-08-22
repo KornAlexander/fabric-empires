@@ -120,8 +120,15 @@ export function erode(
   width: number,
   depth: number,
   cellSize: number,
-  options: ErosionOptions = DEFAULT_EROSION,
+  /*
+   * Partial on purpose. A plain default parameter REPLACES the whole object,
+   * so a caller who wanted to change only the droplet count would silently
+   * lose every other tuned constant and get an unrecognisably different
+   * landscape. Merging means a caller can override one number and mean it.
+   */
+  partial: Partial<ErosionOptions> = {},
 ): ErosionResult {
+  const options: ErosionOptions = { ...DEFAULT_EROSION, ...partial };
   const height = Float32Array.from(source);
   const brush = makeBrush(options.radius);
   const random = mulberry32(options.seed);

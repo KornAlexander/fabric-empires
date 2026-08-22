@@ -179,7 +179,15 @@ export function createScene3D(
   controls.mouseButtons = { LEFT: MOUSE.PAN, MIDDLE: MOUSE.DOLLY, RIGHT: MOUSE.ROTATE };
   controls.screenSpacePanning = false;
   controls.minDistance = 6;
-  controls.maxDistance = 150;
+  /*
+   * Far enough to see the whole world.
+   *
+   * This was 150, which framed a radius-25 map at 87 units across with room
+   * to spare. The map is now 156 units across, so 150 could not pull back far
+   * enough to see it: the limit silently became a cap on how much of your own
+   * empire you were allowed to look at.
+   */
+  controls.maxDistance = 320;
   // Stop just short of the horizon. Going below it shows the underside of
   // the world, and there is nothing there.
   controls.maxPolarAngle = Math.PI * 0.46;

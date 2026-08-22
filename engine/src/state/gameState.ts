@@ -246,12 +246,33 @@ function freeAdjacent(
 export const MIN_ANTAGONIST_DISTANCE = 7;
 
 /**
+ * The closest a camp may be, for a given map size.
+ *
+ * ⚠️ **This has to stay ahead of the aggro leash at turn one, and it did not.**
+ * When the map grew, the leash became proportional to the radius and this
+ * constant stayed absolute at 7. On a radius-45 map the leash opens at 9, so a
+ * camp spawning at 7 was already inside it: measured on seed DP600, the player
+ * was raided on turn 4 and wiped out on turn 5, which is precisely the
+ * "lost while still reading the interface" failure the leash exists to
+ * prevent.
+ *
+ * Both now scale from the same reference map, and a test asserts the ordering
+ * rather than trusting two constants to stay in step by hand.
+ */
+export function minAntagonistDistance(mapRadius: number): number {
+  return MIN_ANTAGONIST_DISTANCE * Math.max(1, mapRadius / 25);
+}
+
+/**
  * How far apart two camps must be.
  *
  * Without a separation rule the greedy pick takes the seven closest wastes
  * tiles, which are usually neighbours, and all seven factions spawn in one
  * heap: a single doom-stack rather than seven fronts, and six of the seven
  * clusters would still never reach the player.
+ *
+ * Like the aggro leash, this is expressed against a radius-25 map and scaled
+ * from there, so seven camps stay spread across whatever size the world is.
  */
 export const MIN_CAMP_SEPARATION = 6;
 
@@ -270,7 +291,7 @@ export function chooseAntagonistCamps(
   const far = (tile: MapTile): boolean =>
     map.mainland.has(hexKey(tile.hex)) &&
     isPassableByLand(tile.terrain) &&
-    hexDistance(tile.hex, playerStart) >= MIN_ANTAGONIST_DISTANCE;
+    hexDistance(tile.hex, playerStart) >= minAntagonistDistance(map.radius);
 
   const byDistance = (a: MapTile, b: MapTile): number =>
     hexDistance(a.hex, playerStart) - hexDistance(b.hex, playerStart) ||
@@ -287,9 +308,10 @@ export function chooseAntagonistCamps(
     .sort(byDistance);
 
   const anchors: Hex[] = [];
+  const separation = MIN_CAMP_SEPARATION * Math.max(1, map.radius / 25);
   for (const tile of [...wastes, ...rest]) {
     if (anchors.length >= count) break;
-    if (anchors.some((a) => hexDistance(a, tile.hex) < MIN_CAMP_SEPARATION)) continue;
+    if (anchors.some((a) => hexDistance(a, tile.hex) < separation)) continue;
     anchors.push(tile.hex);
   }
   return anchors;

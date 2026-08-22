@@ -35,11 +35,21 @@ describe('determinism', () => {
    * If a change to the generator or the noise breaks these, that is the test
    * doing its job: every previously shared seed now yields a different world.
    * Update the constants deliberately, never reflexively.
+   *
+   * ⚠️ **Pinned at an explicit radius, not the default.** They used to call
+   * `generateMap(seed)` and so mixed two separate things: whether the
+   * generator still behaves identically, and how big a new game happens to
+   * be. Raising the default map size then broke a test about determinism,
+   * which says nothing useful. Held at 25, these digests are unchanged across
+   * that resize, which is exactly the evidence wanted: the world got bigger
+   * and the generator did not move.
    */
+  const GOLDEN_RADIUS = 25;
+
   it('matches the golden digests', () => {
-    expect(mapDigest(generateMap('FABRIC'))).toBe('43c60ea9');
-    expect(mapDigest(generateMap('ALPHA'))).toBe('33bc72b1');
-    expect(mapDigest(generateMap('DP600'))).toBe('12c5f509');
+    expect(mapDigest(generateMap('FABRIC', { radius: GOLDEN_RADIUS }))).toBe('43c60ea9');
+    expect(mapDigest(generateMap('ALPHA', { radius: GOLDEN_RADIUS }))).toBe('33bc72b1');
+    expect(mapDigest(generateMap('DP600', { radius: GOLDEN_RADIUS }))).toBe('12c5f509');
   });
 
   it('different seeds produce different maps', () => {
@@ -70,8 +80,11 @@ describe('shape', () => {
     }
   });
 
-  it('the default radius gives roughly the 2000-tile target', () => {
-    expect(generateMap('SIZE').tiles.size).toBe(1951);
+  it('the default radius gives the intended world size', () => {
+    // 45 rings: 3 * 45 * 46 + 1. Raised from 25 (1,951) so the map is about
+    // 3.2 times the area and twice the width.
+    expect(generateMap('SIZE').tiles.size).toBe(6211);
+    expect(generateMap('SIZE').radius).toBe(45);
   });
 
   it('every tile key matches its own hex', () => {

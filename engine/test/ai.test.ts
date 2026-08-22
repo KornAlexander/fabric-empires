@@ -5,6 +5,7 @@ import {
   BASE_AGGRO_RADIUS,
   MIN_CAMP_SEPARATION,
   PLAYER_FACTION_ID,
+  aggroRadius,
   cityAt,
   createGameState,
   endTurn,
@@ -138,14 +139,29 @@ describe('the seven antagonists', () => {
   });
 
   it('starts every camp beyond the opening leash', () => {
-    for (const seed of ['FABRIC', 'CONTOSO', 'DP600', 'HORDE']) {
+    /*
+     * ⚠️ The invariant that actually broke when the map grew.
+     *
+     * The leash became proportional to the map radius and the minimum spawn
+     * distance stayed absolute at 7, so on a radius-45 map the leash opened
+     * at 9 and camps were spawning *inside* it. Seed DP600 raided the player
+     * on turn 4 and wiped them out on turn 5.
+     *
+     * Asserting the ordering directly is the point. Comparing against a bare
+     * `BASE_AGGRO_RADIUS` passed happily through that entire bug, because 12
+     * is greater than 5 and neither number was the one that mattered.
+     */
+    for (const seed of ['FABRIC', 'CONTOSO', 'DP600', 'HORDE', 'LAKEHOUSE']) {
       const state = createGameState(seed);
+      const opening = aggroRadius(1, state.map.radius);
+      expect(opening).toBeGreaterThanOrEqual(BASE_AGGRO_RADIUS);
+
       const mine = unitsOf(state, PLAYER_FACTION_ID);
       for (const antagonist of ANTAGONISTS) {
         for (const raider of unitsOf(state, antagonist.id)) {
           const closest = Math.min(...mine.map((m) => hexDistance(raider.hex, m.hex)));
-          expect(closest, `${seed}: ${antagonist.id} spawned too close`).toBeGreaterThan(
-            BASE_AGGRO_RADIUS,
+          expect(closest, `${seed}: ${antagonist.id} spawned inside the leash`).toBeGreaterThan(
+            opening,
           );
         }
       }
@@ -207,13 +223,16 @@ describe('the antagonist acts at all', () => {
     for (const seed of SEEDS) {
       let state = createGameState(seed);
       let raided = false;
-      for (let i = 0; i < 25 && !raided; i++) {
+      // 35, not 25: the map is 3.2 times the area and the far camps start
+      // further out, so the opening is measurably longer. Measured first raid
+      // across these seeds is turn 11 to 26.
+      for (let i = 0; i < 35 && !raided; i++) {
         const turn = endTurn(state);
         state = turn.state;
         raided = turn.report.enemyEvents.some((e) => e.intent.kind === 'raid');
       }
       // A leash that never lets go is just scenery with extra steps.
-      expect(raided, `${seed} should be raided within 25 turns`).toBe(true);
+      expect(raided, `${seed} should be raided within 35 turns`).toBe(true);
     }
   });
 

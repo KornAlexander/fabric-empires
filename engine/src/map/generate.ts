@@ -74,7 +74,18 @@ export interface MapOptions {
 }
 
 export const DEFAULT_MAP_OPTIONS: MapOptions = Object.freeze({
-  radius: 25,
+  /*
+   * ⚠️ Raised from 25. That is 3.2 times the tiles and roughly twice the
+   * width: about 6,200 hexes and 156 world units across, against 1,950 and 87.
+   *
+   * Two things had to move with it or a bigger map would have been a worse
+   * one. The aggro leash is now proportional to the map radius, or the far
+   * camps would sit 45 hexes out and take 121 turns to be noticed. Erosion
+   * droplets now scale with grid area, or each cell gets a third of the rain,
+   * the valleys stop cutting, and the larger world comes out visibly blander
+   * than the small one it replaced.
+   */
+  radius: 45,
   landFraction: 0.45,
   peaksFraction: 0.05,
   highlandsFraction: 0.22,
