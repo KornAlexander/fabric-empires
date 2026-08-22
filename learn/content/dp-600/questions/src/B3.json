@@ -65,7 +65,7 @@
       ],
       "answer": "Save the query as a view in the warehouse",
       "explanation": "Saving as a view persists the query definition in the warehouse, so anyone with permission can select from it by name and always gets the current data. Copying the T-SQL around leaves several copies to maintain, and exporting to CSV freezes the result at a point in time.",
-      "learnUrl": "https://learn.microsoft.com/fabric/data-warehouse/create-view",
+      "learnUrl": "https://learn.microsoft.com/fabric/data-warehouse/tsql-surface-area",
       "sourceSkillBullet": "Select, filter, and aggregate data by using the Visual Query Editor",
       "sourceLearnUrl": "https://learn.microsoft.com/fabric/data-warehouse/visual-query-editor",
       "reviewStatus": "draft",

@@ -28,6 +28,8 @@ import {
   type QuestionResult,
   type QuestionUi,
 } from '../src/index.js';
+import draftA1 from '../content/dp-600/questions/src/A1.json' with { type: 'json' };
+import draftA2 from '../content/dp-600/questions/src/A2.json' with { type: 'json' };
 import draftB1 from '../content/dp-600/questions/src/B1.json' with { type: 'json' };
 import draftB2 from '../content/dp-600/questions/src/B2.json' with { type: 'json' };
 import draftB3 from '../content/dp-600/questions/src/B3.json' with { type: 'json' };
@@ -40,14 +42,19 @@ interface Draft {
   readonly stem: string;
 }
 const DRAFTS = [
+  ...(draftA1 as { questions: Draft[] }).questions,
+  ...(draftA2 as { questions: Draft[] }).questions,
   ...(draftB1 as { questions: Draft[] }).questions,
   ...(draftB2 as { questions: Draft[] }).questions,
   ...(draftB3 as { questions: Draft[] }).questions,
 ];
 const draftById = new Map(DRAFTS.map((d) => [d.id, d]));
 
-/** Skills that currently have authored questions: all of branch B. */
-const COVERED = [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29];
+/** Skills that currently have authored questions: all of branch A and B. */
+const COVERED = [
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+  12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
+];
 
 function questionById(id: string): Question {
   const found = DP600_QUESTIONS.find((q) => q.id === id);
@@ -131,6 +138,8 @@ describe('explanation encryption', () => {
 
 describe('the built bank', () => {
   it('loaded the authored clusters', () => {
+    expect(LOADED_CLUSTERS).toContain('A1');
+    expect(LOADED_CLUSTERS).toContain('A2');
     expect(LOADED_CLUSTERS).toContain('B1');
     expect(LOADED_CLUSTERS).toContain('B2');
     expect(LOADED_CLUSTERS).toContain('B3');
@@ -139,10 +148,22 @@ describe('the built bank', () => {
 
   it('covers all of branch B, the half of the exam that matters most', () => {
     // "Prepare data" is 45 to 50 percent of DP-600 and 18 of the 41 skills.
-    // Finishing it first is the highest-value ordering for the bank.
+    // Finishing it first was the highest-value ordering for the bank.
     const branchB = DP600_QUESTIONS.filter((q) => q.branch === 'B');
-    expect(branchB.length).toBe(DP600_QUESTIONS.length);
     expect(new Set(branchB.map((q) => q.skillId)).size).toBe(18);
+  });
+
+  it('covers all of branch A, the maintain and govern half', () => {
+    // 11 skills across security and governance and the development lifecycle.
+    const branchA = DP600_QUESTIONS.filter((q) => q.branch === 'A');
+    expect(new Set(branchA.map((q) => q.skillId)).size).toBe(11);
+  });
+
+  it('draws every question from a branch that has actually been authored', () => {
+    // Guards against a stray branch letter in a new file, which would
+    // otherwise only surface as a topic that never asks a question.
+    const branches = new Set(DP600_QUESTIONS.map((q) => q.branch));
+    expect([...branches].sort()).toEqual(['A', 'B']);
   });
 
   it('passes validation', () => {
@@ -224,7 +245,7 @@ describe('the built bank', () => {
   });
 
   it('reports the skills still without questions, honestly', () => {
-    // 41 skills, two clusters written. The report must say so rather than
+    // 41 skills, four clusters written. The report must say so rather than
     // implying the bank is complete.
     const report = coverage(DP600_QUESTIONS);
     expect(report.uncovered.length).toBe(allSkills().length - COVERED.length);
@@ -354,8 +375,11 @@ describe('selecting a question', () => {
   });
 
   it('returns nothing for a topic with no questions yet', () => {
-    // Most of the 41 are in this state, and that must not break anything.
-    expect(selectQuestion('dp600-1')).toBeUndefined();
+    // Skill 30 is the first of branch C, which is not authored. Twelve of the
+    // 41 are in this state, and that must not break anything. When branch C
+    // is written this test needs a new example, and its failure is the
+    // reminder.
+    expect(selectQuestion('dp600-30')).toBeUndefined();
   });
 
   it('returns nothing for a nonsense topic id', () => {
@@ -387,10 +411,12 @@ describe('selecting a question', () => {
   });
 
   it('filters by cluster', () => {
+    expect(questionsForCluster(DP600_QUESTIONS, 'A1')).toHaveLength(15);
+    expect(questionsForCluster(DP600_QUESTIONS, 'A2')).toHaveLength(18);
     expect(questionsForCluster(DP600_QUESTIONS, 'B1')).toHaveLength(15);
     expect(questionsForCluster(DP600_QUESTIONS, 'B2')).toHaveLength(27);
     expect(questionsForCluster(DP600_QUESTIONS, 'B3')).toHaveLength(12);
-    expect(questionsForCluster(DP600_QUESTIONS, 'A1')).toHaveLength(0);
+    expect(questionsForCluster(DP600_QUESTIONS, 'C1')).toHaveLength(0);
   });
 });
 
@@ -523,8 +549,8 @@ describe('the presenter', () => {
   });
 
   it('resolves neutral without bothering the player when a topic has no questions', async () => {
-    // Most of the bank does not exist yet. An unfinished bank must degrade
-    // quietly rather than blocking research.
+    // Branch C does not exist yet. An unfinished bank must degrade quietly
+    // rather than blocking research.
     const { ui, prompts } = scriptedUi(() => ({
       answer: 'anything',
       elapsedMs: 1,
@@ -532,7 +558,7 @@ describe('the presenter', () => {
     }));
     const outcome = await createQuestionPresenter(ui)({
       ...request,
-      topicId: 'dp600-1',
+      topicId: 'dp600-30',
     });
     expect(outcome.score).toBe(0);
     expect(prompts).toHaveLength(0);

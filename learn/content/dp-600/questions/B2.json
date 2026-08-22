@@ -17,9 +17,9 @@
         "A view",
         "A common table expression"
       ],
-      "learnUrl": "https://learn.microsoft.com/fabric/data-warehouse/create-view",
+      "learnUrl": "https://learn.microsoft.com/fabric/data-warehouse/tsql-surface-area",
       "sourceSkillBullet": "Create views, functions, and stored procedures",
-      "sourceLearnUrl": "https://learn.microsoft.com/fabric/data-warehouse/create-view",
+      "sourceLearnUrl": "https://learn.microsoft.com/fabric/data-warehouse/tsql-surface-area",
       "reviewStatus": "draft",
       "tags": [
         "views",
@@ -43,9 +43,9 @@
         "A stored procedure",
         "A table-valued parameter"
       ],
-      "learnUrl": "https://learn.microsoft.com/fabric/data-warehouse/create-stored-procedure",
+      "learnUrl": "https://learn.microsoft.com/fabric/data-warehouse/tsql-surface-area",
       "sourceSkillBullet": "Create views, functions, and stored procedures",
-      "sourceLearnUrl": "https://learn.microsoft.com/fabric/data-warehouse/create-stored-procedure",
+      "sourceLearnUrl": "https://learn.microsoft.com/fabric/data-warehouse/tsql-surface-area",
       "reviewStatus": "draft",
       "tags": [
         "stored-procedures",
@@ -485,9 +485,9 @@
         "Remove Duplicates",
         "Remove Errors"
       ],
-      "learnUrl": "https://learn.microsoft.com/power-query/remove-duplicates",
+      "learnUrl": "https://learn.microsoft.com/power-query/working-with-duplicates",
       "sourceSkillBullet": "Identify and resolve duplicate data, missing data, or null values",
-      "sourceLearnUrl": "https://learn.microsoft.com/power-query/remove-duplicates",
+      "sourceLearnUrl": "https://learn.microsoft.com/power-query/working-with-duplicates",
       "reviewStatus": "draft",
       "tags": [
         "data-quality",
