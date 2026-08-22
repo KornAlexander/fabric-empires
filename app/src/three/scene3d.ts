@@ -46,6 +46,7 @@ import { buildScatter, type Scatter } from './scatter.js';
 import { createCombatFx, type CombatFx } from './combatFx.js';
 import { buildCity, buildUnit, disposeEntityMaterials } from './entities.js';
 import { createFlyControls, type FlyTelemetry } from './flyControls.js';
+import type { CinematicShot } from './cinematic.js';
 
 export interface Scene3DView {
   readonly selectedUnitId?: string | undefined;
@@ -87,6 +88,20 @@ export interface Scene3D {
     orbitTarget(): Vector3;
     /** Subscribe to the latch. Returns an unsubscribe. */
     onEngagedChange(listener: (engaged: boolean) => void): () => void;
+  };
+  /**
+   * Scripted camera moves for the game's first-time moments.
+   *
+   * Owns the camera outright while a shot runs, for the same reason the drone
+   * does: `OrbitControls.update()` re-applies the orbit pose on every call and
+   * would drag a cinematic back towards the orbit centre one frame at a time.
+   */
+  readonly cinema: {
+    /** Resolves when the shot ends, or immediately when one is already running. */
+    play(shot: CinematicShot): Promise<void>;
+    /** End the current shot now. The promise still resolves. */
+    skip(): void;
+    readonly active: boolean;
   };
   /** Rebuild the ground for a new map. Slow, and only called on a new game. */
   loadMap(map: GameMap): void;
@@ -259,6 +274,34 @@ export function createScene3D(
   let flightFromDistance = 0;
   const FLIGHT_MS = 520;
 
+  // Cinematics ----------------------------------------------------------
+  /*
+   * A shot owns the camera outright while it runs.
+   *
+   * ⚠️ It also has to put the orbit camera back on the way out. Leaving the
+   * player wherever the last frame ended would strand the map camera at a
+   * cinematic angle, frequently below the terrain, and `OrbitControls` would
+   * then snap it on the very next update. So the pose from before the shot is
+   * saved and restored, which is the same hand-back problem the drone had.
+   */
+  let shot: CinematicShot | undefined;
+  let shotStart = 0;
+  let shotResolve: (() => void) | undefined;
+  const shotReturnPosition = new Vector3();
+  const shotReturnTarget = new Vector3();
+
+  function endShot(): void {
+    if (!shot) return;
+    shot = undefined;
+    camera.position.copy(shotReturnPosition);
+    controls.target.copy(shotReturnTarget);
+    controls.enabled = true;
+    controls.update();
+    const resolve = shotResolve;
+    shotResolve = undefined;
+    resolve?.();
+  }
+
   function clearOverlays(): void {
     for (const object of overlayObjects) {
       overlayGroup.remove(object);
@@ -297,6 +340,32 @@ export function createScene3D(
       onEngagedChange(listener) {
         droneListeners.add(listener);
         return () => droneListeners.delete(listener);
+      },
+    },
+
+    cinema: {
+      play(next) {
+        // One shot at a time. A second trigger during a cinematic resolves at
+        // once rather than queueing, because the moment it was announcing has
+        // already passed by the time the first one ends.
+        if (shot) return Promise.resolve();
+        shot = next;
+        shotStart = performance.now();
+        shotReturnPosition.copy(camera.position);
+        shotReturnTarget.copy(controls.target);
+        // Hand the drone back first, so it cannot fight the shot for the camera.
+        fly.setEngaged(false);
+        controls.enabled = false;
+        flightFrom = undefined;
+        flightTo = undefined;
+        flightDistance = undefined;
+        return new Promise<void>((resolve) => {
+          shotResolve = resolve;
+        });
+      },
+      skip: endShot,
+      get active() {
+        return shot !== undefined;
       },
     },
 
@@ -547,7 +616,14 @@ export function createScene3D(
        * silently drag the camera back towards the orbit centre and the drone
        * would feel like it was flying through treacle.
        */
-      if (fly.engaged) {
+      if (shot) {
+        // A shot outranks everything: no orbit, no drone, no scripted flight.
+        const elapsed = performance.now() - shotStart;
+        const frame = shot.frame(Math.min(1, elapsed / shot.durationMs));
+        camera.position.copy(frame.position);
+        camera.lookAt(frame.target);
+        if (elapsed >= shot.durationMs) endShot();
+      } else if (fly.engaged) {
         fly.update(delta);
       } else {
         if (flightFrom && flightTo) {
@@ -664,6 +740,7 @@ export function createScene3D(
     },
 
     dispose() {
+      endShot();
       fly.dispose();
       controls.dispose();
       clearOverlays();

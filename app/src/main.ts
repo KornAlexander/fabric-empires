@@ -70,7 +70,10 @@ import { HIGH_QUALITY, LOW_QUALITY } from './three/world.js';
 import { createQuestionModal } from './ui/questionModal.js';
 import { createGreatLibrary } from './ui/greatLibrary.js';
 import { createDroneHud } from './ui/droneHud.js';
+import { Vector3 } from 'three';
 import { createEndScreen } from './ui/endScreen.js';
+import { createCinematicOverlay } from './ui/cinematicOverlay.js';
+import { approachShot, descendShot, orbitShot } from './three/cinematic.js';
 import { loadGame, localSlot, saveGame } from './persist.js';
 import { createBattleBanner, type BattleSide } from './ui/battleBanner.js';
 
@@ -141,6 +144,30 @@ const droneHud = createDroneHud();
  * particular map can immediately try it again knowing what is coming.
  */
 const endScreen = createEndScreen(() => newGame(el.seedInput.value));
+
+/**
+ * The cinematics.
+ *
+ * ⚠️ **Each fires once per game, and only the first time.** The whole value of
+ * an establishing shot is that it marks something as new; the fourth city is
+ * not news, and a game that stops to admire every one of them would be
+ * unplayable by turn twenty. `seen` is reset when a new empire starts, not
+ * carried in the save, because these mark the beats of a *run*.
+ */
+const cinemaOverlay = createCinematicOverlay();
+cinemaOverlay.onSkip(() => scene.cinema.skip());
+const seenCinematics = new Set<string>();
+
+async function playOnce(shot: ReturnType<typeof orbitShot>): Promise<void> {
+  if (seenCinematics.has(shot.id) || finished) return;
+  seenCinematics.add(shot.id);
+  cinemaOverlay.show(shot.title, shot.subtitle);
+  try {
+    await scene.cinema.play(shot);
+  } finally {
+    cinemaOverlay.hide();
+  }
+}
 
 /*
  * Keep the drone on the ground while an overlay is up.
@@ -416,6 +443,28 @@ async function actOn(target: Hex): Promise<void> {
     const preview = previewAttack(state, unit.id, target, { challengeScore });
     const targetCity = cityAt(state, target);
     const dramatic = !hadFirstBattle || targetCity !== undefined;
+
+    if (!hadFirstBattle) {
+      // Before the blow, not after it. The shot is the establishing beat and
+      // it has nothing to establish once the fight is already resolved.
+      const here = scene.groundAt(unit.hex);
+      const there = scene.groundAt(target);
+      const midpoint = here.clone().add(there).multiplyScalar(0.5);
+      await playOnce(
+        approachShot({
+          id: 'first-blood',
+          title: 'First blood',
+          subtitle: 'What you know is what you bring to the field',
+          focus: midpoint,
+          // Come in across the line between them, so both are in frame.
+          from: new Vector3(there.z - here.z, 0, here.x - there.x),
+          startDistance: 26,
+          endDistance: 7,
+          startHeight: 14,
+          endHeight: 2.6,
+        }),
+      );
+    }
     hadFirstBattle = true;
 
     await playAttack(unit.id, target, challengeScore, preview, dramatic);
@@ -591,7 +640,10 @@ async function playAttack(
   );
   if (battle.defenderDestroyed) log('Enemy unit destroyed.', 'good');
   if (battle.attackerDestroyed) log('Your unit was destroyed.', 'bad');
-  if (battle.cityCaptured) log('City captured.', 'good');
+  if (battle.cityCaptured) {
+    log('City captured.', 'good');
+    void playCityFallsShot(target);
+  }
 
   refreshCorruption();
   refreshCities();
@@ -602,6 +654,33 @@ async function playAttack(
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+/**
+ * A city changing hands, in either direction.
+ *
+ * One shot for both cases on purpose. Whether the walls that just fell were
+ * yours or theirs, it is the same event in the world and the same thing worth
+ * looking at; the subtitle carries the difference.
+ */
+function playCityFallsShot(hex: Hex): Promise<void> {
+  const city = cityAt(state, hex);
+  const mine = city?.factionId === PLAYER_FACTION_ID;
+  return playOnce(
+    descendShot({
+      id: 'city-falls',
+      title: 'The walls change hands',
+      subtitle: mine
+        ? `${city?.name ?? 'A city'} is yours now`
+        : `${city?.name ?? 'A city'} has been taken from you`,
+      centre: scene.groundAt(hex),
+      startHeight: 34,
+      endHeight: 6,
+      radius: 20,
+      sweepRad: 0.8,
+      durationMs: 4400,
+    }),
+  );
 }
 
 function isAdjacent(a: Hex, b: Hex): boolean {
@@ -623,6 +702,20 @@ function doFound(): void {
   if (city) {
     effects.pulse(city.hex, '#8fd694', 3);
     effects.floatingText(city.hex, city.name, '#cfe6ff', 1.2);
+    void playOnce(
+      orbitShot({
+        id: 'first-city',
+        title: 'The first workspace',
+        subtitle: `${city.name} stands where nothing stood`,
+        centre: scene.groundAt(city.hex),
+        radius: 13,
+        fromHeight: 3.4,
+        toHeight: 9,
+        sweepRad: Math.PI * 0.75,
+        startAngleRad: Math.PI * 0.25,
+        durationMs: 5000,
+      }),
+    );
   }
   refreshCorruption();
   refreshCities();
@@ -898,6 +991,7 @@ async function presentEnemyTurn(
 
     if (battle?.cityCaptured) {
       log(`${who} has taken one of your cities.`, 'bad');
+      await playCityFallsShot(target);
     } else if (battle?.defenderDestroyed) {
       log(`${who} destroyed one of your units.`, 'bad');
     } else if (battle?.attackerDestroyed) {
@@ -1163,6 +1257,24 @@ function refreshReadiness(): void {
       `The Proctor has noticed you at ${percent}% readiness. ${SIEGE_LENGTH} questions await.`,
       'good',
     );
+    // Straight down onto the capital, because the exam is not coming for a
+    // unit or a border: it is coming for the whole empire's account of itself.
+    const capital = [...state.cities.values()].find((c) => c.factionId === PLAYER_FACTION_ID);
+    if (capital) {
+      void playOnce(
+        descendShot({
+          id: 'proctor',
+          title: 'The Proctor',
+          subtitle: `${percent} percent of the exam, by weight. It has come to check`,
+          centre: scene.groundAt(capital.hex),
+          startHeight: 60,
+          endHeight: 10,
+          radius: 8,
+          sweepRad: 1.6,
+          durationMs: 5200,
+        }),
+      );
+    }
   }
 }
 
@@ -1306,6 +1418,9 @@ function adopt(next: GameState, message: string): void {
   finished = false;
   proctorAnnounced = false;
   siegeRunning = false;
+  seenCinematics.clear();
+  scene.cinema.skip();
+  cinemaOverlay.hide();
   el.endTurn.disabled = false;
   el.faceProctor.disabled = false;
   endScreen.hide();

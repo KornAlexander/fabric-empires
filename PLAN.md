@@ -149,6 +149,12 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D118 | Failing is not fatal | An unconvinced Proctor says so and the game continues. This is a study tool: the answer to "not ready yet" is another go, not a lost campaign |
 | D119 | Exam answers feed the schedule | It would be perverse for the hardest study session in the game to be the one that teaches the spaced repetition system nothing. A player who fails returns to a schedule that knows which branch let them down |
 | D120 | ⚠️ Deviation: per-question timers, not one 100-minute clock | 5.8 asks for a siege timed over roughly 100 minutes of game time. Each question is timed at 45 seconds instead. A single wall clock ticking for an hour and a half is the real exam's shape and not a game's, and the per-question timer is the one already built, understood and pausable |
+| D121 | **Cinematics are rendered live, never played back** | "A video before the first fight" could have meant shipping video files. This repository has deliberately shipped no assets at all (D59), and a pre-rendered clip would be wrong on its own terms anyway: it would show a battlefield that is not the player's. The camera moves through the real, seed-generated world, so the establishing shot of a city is a shot of *that* city on *that* hill |
+| D122 | A shot is a pure function of normalised time | Which makes it testable without a renderer, and makes a skip nothing more than a jump to t = 1. Eleven tests cover the geometry: the camera never ends up below its subject, it always travels, it clamps outside its own duration, and a degenerate direction produces a frame rather than NaN |
+| D123 | The cinema owns the camera and puts it back | Same hand-back problem the drone had. `OrbitControls.update()` re-applies the orbit pose every call, so a shot must disable it, and leaving the player wherever the last frame ended would strand the map camera at a cinematic angle, often under the terrain. The pose from before the shot is saved and restored |
+| D124 | Once per run, first time only | The whole value of an establishing shot is that it marks something as new. The fourth city is not news, and a game that stopped to admire every one would be unplayable by turn twenty. Reset on a new empire, not carried in the save: these mark the beats of a run |
+| D125 | Skippable from the first frame, and it says so | These fire exactly where a replaying player has already been. ⚠️ The skip key handling has to stop the event reaching the map: **space ends the turn**, and ending a turn because someone skipped a cutscene would be a nasty surprise |
+| D126 | The interface leaves the frame | The first version composed the shot behind the research panel and the unit card, which is the difference between a cinematic and a screenshot of a game with black bars drawn on it |
 
 ### 16.1 What "realistic" does and does not mean in this build
 
@@ -1147,6 +1153,7 @@ Accepted knowingly. Partial mitigations in place:
 - [x] Games that end: domination, science and defeat, with a screen that says so
 - [x] All seven antagonists on the map, one per cluster, so the whole outline can come for you
 - [x] The Exam victory: readiness in the HUD, the Proctor at 80 percent, and a weighted 40-question siege
+- [x] Cinematics at the four first-time beats: first blood, the first workspace, walls changing hands, the Proctor
 - [ ] Live URL on `prdsweden` (primary submitted link)
 - [ ] Static GitHub Pages build as the guaranteed-alive fallback link (D37)
 - [ ] Shareable result image working and pasteable into Discord (D40)
