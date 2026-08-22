@@ -157,6 +157,13 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D126 | The interface leaves the frame | The first version composed the shot behind the research panel and the unit card, which is the difference between a cinematic and a screenshot of a game with black bars drawn on it |
 | D127 | **"Who is coming": the study planner made readable** | The central mechanic was working and invisible. A player could be raided by the Scan Wraiths four times without ever learning that the Scan Wraiths mean B3, or that B3 is the branch they have not revised. The panel puts the two halves of the game in one row: where a faction is, from the engine, and how ready you are for its cluster, from the learning layer |
 | D128 | Sorted by distance, not by name | It is a priority list rather than a roster. The nearest faction is the one whose cluster to revise tonight, and a row turns amber the moment its distance falls inside the current leash |
+| D129 | **Published private first** | `KornAlexander/fabric-empires`, private, `main`, 30 commits. Public before submission. Note the GitHub Pages fallback cannot serve from a private repo on a personal plan, so going public is a prerequisite for that link, not a formality |
+| D130 | **The art programme is reinstated in full** | Reverses the drift towards D59 being the whole answer. Terrain, water and ground cover stay procedural; the ~250 generated assets are *content* art on top of that. The `.gitignore` already had the right shape: generated art is never committed, only reproduced from `tools/art`, so the repository still ships no binaries and has no licences to defend |
+| D131 | Sound is effects **and** a procedural ambient bed | Code-generated WebAudio throughout, so still no asset files. The bed shifts with the threat level, which makes "who is coming" audible as well as readable |
+| D132 | `prdsweden` is the primary link, Pages the fallback | Confirms D37 rather than taking the safer Pages-only route. The capacity question in 17 therefore becomes a blocking item rather than a curiosity |
+| D133 | The name stays | "Fabric Empires" keeps a product name in the title of a personal project. The two-part README disclaimer (D33) carries it, and the trademark scan stays a warning (D47) |
+| D134 | The demo voiceover is the cloned voice | Not `edge-tts`. It is a personal entry and it should sound like one |
+| D135 | **I draft every public post and never publish one** | The LinkedIn rule now covers Discord too. Entry text, LinkedIn post and blog draft all get written and staged; the submission itself is yours to make |
 
 ### 16.1 What "realistic" does and does not mean in this build
 
@@ -1160,7 +1167,7 @@ Accepted knowingly. Partial mitigations in place:
 - [ ] Live URL on `prdsweden` (primary submitted link)
 - [ ] Static GitHub Pages build as the guaranteed-alive fallback link (D37)
 - [ ] Shareable result image working and pasteable into Discord (D40)
-- [ ] Public GitHub repo `fabric-empires`, MIT
+- [x] Public GitHub repo `fabric-empires`, MIT — *created private 22 August as `KornAlexander/fabric-empires`; flip to public in phase 7*
 - [ ] README: English, disclaimer, screenshots, getting started, scripts table, honest limitations
 - [ ] `PREVIEW-FEEDBACK.md`: Rayfin and Fabric Apps rough edges actually hit, with workarounds
 - [ ] `NOTICE.md`: AI art and audio provenance
@@ -1216,6 +1223,46 @@ thing.
 - [ ] Azure OpenAI resource: region and resource group to use in the MCAP subscription
 - [ ] Confirm `prdsweden` can stay resumed 21 Aug to 21 Sept, and what that costs
 - [ ] Discord server joined and the entries channel located
+
+---
+
+## 18. Delivery plan, 22 August to 1 September
+
+Ten days. The game is finished; everything below is delivery, plus the two
+things the plan promised and had not built.
+
+⚠️ **The art is the longest pole and it is now back at full scope (D130).** It
+therefore starts first and runs in the background while everything else
+proceeds, rather than being slotted in where it looks tidy. Nothing else here
+is allowed to block on it.
+
+| Phase | Dates | Work | Blocking on |
+|---|---|---|---|
+| 1 | 22 Aug | **Publish.** Private repo, push, branch normalised | Done |
+| 2 | 22 to 25 Aug | **Art pipeline.** Azure OpenAI resource, prompt manifest, style lock, generation script, first coherent batch | Resource decision (17) |
+| 3 | 23 to 24 Aug | **Sound.** Code-generated effects plus the ambient bed, verified through `OfflineAudioContext` | |
+| 4 | 25 to 27 Aug | **Art integration.** Wire the generated set into the renderer and the interface | Phase 2 |
+| 5 | 26 to 27 Aug | **Docs.** README, `NOTICE.md` (art and audio provenance), `PREVIEW-FEEDBACK.md` | Phases 2 and 3 for provenance |
+| 6 | 27 to 28 Aug | **Share card** (D40) | |
+| 7 | 28 to 29 Aug | **Deploy.** Flip the repo public, Pages fallback, then `prdsweden` as the primary link | Capacity confirmation |
+| 8 | 30 to 31 Aug | **Demo video.** Screen capture, cloned voiceover, roughly 90 seconds | Everything visual |
+| 9 | 31 Aug | **Drafts.** Discord entry, LinkedIn post staged, blog draft. None of them posted (D135) | |
+| 10 | 1 Sep | **You submit** | |
+
+### 18.1 The art fallback, with a date
+
+The full set is ambitious for ten days, so it gets the same treatment as the
+rest of the cut list: a trigger, not a hope.
+
+- **If the Azure OpenAI resource is not usable by end of Sunday 24 August**,
+  fall back to a personal ChatGPT or Copilot Pro subscription and check the
+  output licence terms for whichever is used (D43).
+- **If a coherent style is not locked by end of Wednesday 27 August**, cut to
+  roughly 40 assets covering the units and the city kinds only, and leave
+  everything else procedural (cut list Tier 2, item 7).
+- **Terrain never becomes an asset.** Whatever happens to the art, the ground,
+  the water and the ground cover stay generated at runtime. That is what keeps
+  the repository free of binaries and the map free of tiling.
 
 ---
 
