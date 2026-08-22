@@ -71,6 +71,13 @@ export interface MapOptions {
   readonly riverCount: number;
   /** Islands smaller than this are sunk, to remove one-tile speckle. */
   readonly minIslandSize: number;
+  /**
+   * How many separate landmasses to aim for.
+   *
+   * 1 reproduces the original single continent exactly, mask and all, which is
+   * what the golden digests are pinned against.
+   */
+  readonly islands: number;
 }
 
 export const DEFAULT_MAP_OPTIONS: MapOptions = Object.freeze({
@@ -114,6 +121,21 @@ export const DEFAULT_MAP_OPTIONS: MapOptions = Object.freeze({
   edgeFalloff: 1.9,
   riverCount: 14,
   minIslandSize: 6,
+  /*
+   * Five, measured. Ships and multiple islands were a Tier 0 cut, reinstated
+   * on request, and the sweep in the archipelago work showed no combination of
+   * noise settings would produce more than one landmass on its own.
+   */
+  /*
+   * ⚠️ **One, until ships exist.** Archipelago generation works and is
+   * tested, but shipping it as the default breaks the game: land units cannot
+   * cross water, so factions placed on other islands can never reach the
+   * player. Turning it on cost three AI tests and the defeat test, all of them
+   * correctly reporting that nothing ever arrives.
+   *
+   * The capability lands now; the default flips in the naval phase (23).
+   */
+  islands: 1,
 });
 
 /**
@@ -137,6 +159,58 @@ function noiseCoords(h: Hex): { nx: number; ny: number } {
 function edgeFactor(h: Hex, radius: number, falloff: number): number {
   const d = hexDistance({ q: 0, r: 0 }, h) / radius;
   return Math.max(0, 1 - Math.pow(d, falloff));
+}
+
+/**
+ * Where the islands sit.
+ *
+ * ⚠️ **Turning up the noise frequency does not make an archipelago.** That was
+ * measured across frequency, land fraction and falloff, and every combination
+ * still produced one continent holding 97 to 100 percent of the land. The
+ * reason is that fbm is dominated by its lowest octave, which spans the whole
+ * map, and `edgeFactor` then adds a single radial hill centred on the origin.
+ * Between them, the top slice of elevation is always "the middle of the map".
+ *
+ * So the shape has to come from the mask rather than from the noise: several
+ * centres, each with its own falloff, and the land factor is whichever centre
+ * is nearest. One centre at the origin reproduces the old behaviour exactly,
+ * which is why the golden digests still hold.
+ */
+function islandCentres(seed: string, radius: number, count: number): Hex[] {
+  if (count <= 1) return [{ q: 0, r: 0 }];
+
+  const rng = createRng(seed, 'map:islands');
+  const centres: Hex[] = [];
+  // Inside the rim so every island gets a coast, and apart from each other so
+  // they do not simply merge back into one continent.
+  const spread = radius * 0.72;
+  const separation = radius * 0.42;
+
+  for (let attempt = 0; attempt < 400 && centres.length < count; attempt++) {
+    const angle = rng.float(0, Math.PI * 2);
+    const distance = Math.sqrt(rng.float(0, 1)) * spread;
+    const x = Math.cos(angle) * distance;
+    const y = Math.sin(angle) * distance;
+    const q = Math.round((Math.sqrt(3) / 3) * x - y / 3);
+    const r = Math.round((2 / 3) * y);
+    const candidate = { q, r };
+    if (hexDistance({ q: 0, r: 0 }, candidate) > radius) continue;
+    if (centres.some((c) => hexDistance(c, candidate) < separation)) continue;
+    centres.push(candidate);
+  }
+
+  return centres.length > 0 ? centres : [{ q: 0, r: 0 }];
+}
+
+/** The land mask: distance to the nearest island centre, not to the origin. */
+function landFactor(h: Hex, centres: readonly Hex[], reach: number, falloff: number): number {
+  let best = 0;
+  for (const centre of centres) {
+    const d = hexDistance(centre, h) / reach;
+    const factor = Math.max(0, 1 - Math.pow(d, falloff));
+    if (factor > best) best = factor;
+  }
+  return best;
 }
 
 /** Group passable land tiles into connected components. */
@@ -183,6 +257,24 @@ export function generateMap(
 
   const hexes = hexSpiral({ q: 0, r: 0 }, options.radius);
   const elevationNoise = createNoise2D(createRng(seed, 'map:elevation'));
+
+  /*
+   * One island keeps the whole map as its reach, which is precisely what
+   * `edgeFactor` did. Several islands each get a share of it, or their
+   * falloffs overlap and they grow back into a single continent.
+   */
+  const centres = islandCentres(seed, options.radius, options.islands);
+  /*
+   * Islands must not be able to touch. Centres are kept 
+adius * 0.52 apart,
+   * so a reach under half of that guarantees open water between them however
+   * the noise falls.
+   */
+  const reach = centres.length === 1 ? options.radius : options.radius * 0.19;
+  const mask = (h: Hex): number =>
+    centres.length === 1
+      ? edgeFactor(h, options.radius, options.edgeFalloff)
+      : landFactor(h, centres, reach, options.edgeFalloff);
   const moistureNoise = createNoise2D(createRng(seed, 'map:moisture'));
   const corruptionNoise = createNoise2D(createRng(seed, 'map:corruption'));
 
@@ -191,7 +283,7 @@ export function generateMap(
   const field = hexes.map((h) => {
     const { nx, ny } = noiseCoords(h);
     const raw = fbm(elevationNoise, nx, ny, options.elevation);
-    const shaped = raw * edgeFactor(h, options.radius, options.edgeFalloff);
+    const shaped = raw * mask(h);
     return {
       hex: h,
       key: hexKey(h),

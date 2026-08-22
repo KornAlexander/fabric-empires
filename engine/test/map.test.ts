@@ -44,12 +44,12 @@ describe('determinism', () => {
    * that resize, which is exactly the evidence wanted: the world got bigger
    * and the generator did not move.
    */
-  const GOLDEN_RADIUS = 25;
+  const GOLDEN = { radius: 25, islands: 1, landFraction: 0.45 } as const;
 
   it('matches the golden digests', () => {
-    expect(mapDigest(generateMap('FABRIC', { radius: GOLDEN_RADIUS }))).toBe('43c60ea9');
-    expect(mapDigest(generateMap('ALPHA', { radius: GOLDEN_RADIUS }))).toBe('33bc72b1');
-    expect(mapDigest(generateMap('DP600', { radius: GOLDEN_RADIUS }))).toBe('12c5f509');
+    expect(mapDigest(generateMap('FABRIC', GOLDEN))).toBe('43c60ea9');
+    expect(mapDigest(generateMap('ALPHA', GOLDEN))).toBe('33bc72b1');
+    expect(mapDigest(generateMap('DP600', GOLDEN))).toBe('12c5f509');
   });
 
   it('different seeds produce different maps', () => {

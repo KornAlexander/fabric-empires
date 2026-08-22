@@ -183,6 +183,11 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D152 | ⚠️ The spawn distance must stay ahead of the leash, and a test says so | Scaling the leash but not the spawn distance put camps *inside* the opening leash. Measured on seed DP600: raided turn 4, wiped turn 5, which is exactly the failure the leash exists to prevent. The test now asserts the ordering rather than comparing against a constant that was never the one that mattered |
 | D153 | Erosion droplets scale with grid area | Fixed at 140,000 on three times the area, each cell gets a third of the rain, the valleys stop cutting, and the bigger world comes out blander than the small one. Capped at 240,000 for the cold-start budget |
 | D154 | The golden map digests are pinned at an explicit radius | They called `generateMap(seed)` and so mixed determinism with default size, meaning a resize broke a test about determinism. Held at 25 they are **unchanged across the resize**, which is the actual evidence wanted: the world grew and the generator did not move |
+| D155 | **Archipelagos, reversing a Tier 0 cut** | Naval units were cut before any code was written. Measured first: every seed produced **one** landmass and **0 percent** of land off it, so ships would have been boats with nowhere to go |
+| D156 | The islands come from a multi-centre mask, not from noise | Swept frequency, land fraction and falloff: every combination still left one continent with 97 to 100 percent of the land, because fbm is dominated by its lowest octave and `edgeFactor` is a single hill at the origin. One centre reproduces the old continent exactly, so the goldens still hold |
+| D157 | Land fraction has to fall for islands to survive | Classification is by quantile, so a fixed share of tiles becomes land whatever the mask says and the sea between islands gets promoted instead. About 0.3 fits the land inside the masks |
+| D158 | ⚠️ **Islands stay off by default until ships exist** | Turning them on broke the game and the tests said so exactly: three AI tests and the defeat test failed because land units cannot cross water, so factions on other islands never arrive. The capability lands tested and disabled; the default flips when the AI can cross, not before |
+| D159 | Antagonist camps may use any island | The camp filter required `map.mainland`, which was right while every map was one continent and would have quietly put all seven factions on the player's own island |
 
 ### 16.1 What "realistic" does and does not mean in this build
 
@@ -1263,6 +1268,7 @@ is allowed to block on it.
 | 3b | 23 Aug | **Fog of war** (D149). Per-faction visibility and memory, revealed by unit and city sight | |
 | 3c | 23 to 26 Aug | **Units at 1600** (D148). Pike, shot, horse and cannon, replacing the tracked hulls | |
 | 4 | 24 to 28 Aug | **The siege** (19). Walls, siege state, the assault set piece, the four defender options | Fog of war, for what a besieger can see |
+| 4b | 28 to 30 Aug | **Ships and islands** (23). Embark, cargo, AI crossings, coastal production, then flip `islands` on | |
 | 5 | 26 to 28 Aug | **Art integration.** Wire the generated set into the renderer and the interface | Phase 2 |
 | 6 | 28 to 29 Aug | **Docs.** README, `NOTICE.md` (art and audio provenance), `PREVIEW-FEEDBACK.md` | Phases 2 and 3 |
 | 7 | 29 Aug | **Share card** (D40), and the **loading screen** the enlarged map now requires (22.2) | |
@@ -1479,6 +1485,88 @@ now a required deliverable rather than polish.
 
 Saves. The map is never serialised, only the seed and the overrides, so a
 3.2-times-larger world is still a save of about 1.1 kB.
+
+---
+
+## 23. Islands and ships
+
+⚠️ **This reverses a Tier 0 cut.** "Naval units and OneLake crossings" were cut
+in 15.1 before any code was written. They are back on request, and the way in
+turned out to be nothing like the way it looked.
+
+### 23.1 The map was the blocker, not the ships
+
+Measured first, across five seeds at the current settings:
+
+| | Landmasses | Land off the mainland |
+|---|---|---|
+| Before | **1** (one seed had a 7-tile islet) | **0 %** |
+
+A ship on that map is a boat with nowhere to go. Worse, the levers that look
+like they should fix it do not: a sweep across noise frequency (0.055 to 0.17),
+land fraction (0.45 to 0.28) and edge falloff (1.9, 3.0) produced **one
+continent holding 97 to 100 percent of the land in every single combination**.
+
+Two reasons, and both had to be dealt with:
+
+1. **fbm is dominated by its lowest octave**, which spans the whole map, and
+   `edgeFactor` then adds one radial hill centred on the origin. The top slice
+   of elevation is therefore always "the middle of the map".
+2. **Classification is by quantile.** A fixed share of tiles becomes land
+   whatever the mask says, so lifting a few small areas just promotes the sea
+   between them instead.
+
+So the shape comes from a **multi-centre mask**: several island centres, each
+with its own falloff, land factor taken from the nearest. Reach is held under
+half the centre separation so islands cannot touch, and the land fraction has
+to drop to about 0.3 so the land fits inside the masks rather than spilling
+between them. One centre at the origin reproduces the old continent exactly,
+which is why the golden digests still hold.
+
+Result at `islands: 5, landFraction: 0.3`: four landmasses, a home island of
+roughly 900 tiles, a serious rival island of about 500, two smaller ones, and
+72 percent open water.
+
+### 23.2 ⚠️ Why it is off by default
+
+Turning it on **broke the game**, and the tests said so precisely: three AI
+tests and the defeat test failed because **land units cannot cross water**, so
+factions placed on other islands never arrive. No raids, no pressure, no
+defeat. Exactly the "a bigger world is an emptier one" failure again, wearing
+a different hat.
+
+So the capability lands now, tested and off, and `islands` stays at 1 until
+there is a way to cross. **The default flips in the naval phase, not before.**
+
+### 23.3 What ships need
+
+Already present: `MovementDomain` of `land` or `water`, `canStandOn` floating a
+water unit, and `shortcutSkiff`, a transport with movement 4 unlocked at skill
+16. A skiff can already sail. What is missing is everything that makes that
+matter.
+
+1. **Embark and disembark.** A land unit boarding a ship, and stepping off onto
+   a coast. This is the whole feature; the rest is trimming.
+2. **Cargo.** Ships carrying a small number of land units, and dying with them
+   aboard, which is what makes a crossing a decision.
+3. **The AI must understand water.** `planUnitAction` walks with `findPath`,
+   which will simply fail across a strait, and a faction that cannot path to
+   the player currently just stands still.
+4. **Coastal cities build ships.** Production needs to know a city is on a
+   coast, or an inland town builds a navy.
+5. **Naval combat**, which mostly falls out of the existing rules once ships
+   are units that can attack.
+
+### 23.4 Order, and the trigger
+
+Embark and disembark, then cargo, then AI crossings, then coastal production.
+**The default island count flips only when the AI can actually cross**, because
+that is the step that decides whether an archipelago is a world or a diorama.
+
+⚠️ If the AI cannot cross by end of **Saturday 30 August**, `islands` stays at
+1 for the submission and the archipelago ships as an option the README
+mentions. The capability is already tested, so that costs nothing but the
+headline.
 
 ---
 

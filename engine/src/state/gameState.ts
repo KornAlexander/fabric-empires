@@ -288,8 +288,15 @@ export function chooseAntagonistCamps(
   playerStart: Hex,
   count: number,
 ): Hex[] {
+  /*
+   * ⚠️ Any island, not only the player's.
+   *
+   * This required map.mainland, which was correct while every map was a
+   * single continent. On an archipelago it quietly put all seven factions on
+   * the player's own island and left the rest of the world empty, which is the
+   * opposite of what islands are for.
+   */
   const far = (tile: MapTile): boolean =>
-    map.mainland.has(hexKey(tile.hex)) &&
     isPassableByLand(tile.terrain) &&
     hexDistance(tile.hex, playerStart) >= minAntagonistDistance(map.radius);
 
