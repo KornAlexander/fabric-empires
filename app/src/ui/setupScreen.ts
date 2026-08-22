@@ -22,6 +22,7 @@ import {
   type WorldSizeId,
 } from '@fabric-empires/engine';
 import { CAMPAIGNS } from '@fabric-empires/learn';
+import { t } from '../i18n.js';
 
 export interface SetupResult extends WorldChoice {
   readonly seed: string;
@@ -73,12 +74,12 @@ export function createSetupScreen(): SetupScreen {
 
       const label = document.createElement('span');
       label.className = 'fe-setup-label';
-      label.textContent = item.label;
+      label.textContent = t(item.label);
       button.append(label);
 
       const detail = document.createElement('span');
       detail.className = 'fe-setup-detail';
-      detail.textContent = item.detail;
+      detail.textContent = t(item.detail);
       button.append(detail);
 
       button.addEventListener('click', () => {
@@ -127,43 +128,43 @@ export function createSetupScreen(): SetupScreen {
       const section = (label: string): HTMLElement => {
         const heading = document.createElement('h2');
         heading.className = 'fe-setup-section';
-        heading.textContent = label;
+        heading.textContent = t(label);
         card.append(heading);
         return heading;
       };
 
-      section('The world');
+      section(t('The world'));
       card.append(
-        optionList('Shape', WORLD_SHAPES, shape, (id) => {
+        optionList(t('Shape'), WORLD_SHAPES, shape, (id) => {
           shape = id;
         }),
       );
       card.append(
-        optionList('Land', ROUGHNESS_LEVELS, roughness, (id) => {
+        optionList(t('Land'), ROUGHNESS_LEVELS, roughness, (id) => {
           roughness = id;
         }),
       );
       card.append(
-        optionList('Size', WORLD_SIZES, size, (id) => {
+        optionList(t('Size'), WORLD_SIZES, size, (id) => {
           size = id;
         }),
       );
 
-      section('The exam');
+      section(t('The exam'));
       card.append(
-        optionList('Focus', FOCUS_OPTIONS, focus, (id) => {
+        optionList(t('Focus'), FOCUS_OPTIONS, focus, (id) => {
           focus = id;
         }),
       );      card.append(
         optionList(
-          'Rivals',
+          t('Rivals'),
           RIVAL_COUNTS.map((n) => ({
             id: String(n),
-            label: `${n} rivals`,
+            label: t('{n} rivals', { n }),
             detail:
               n === RIVAL_COUNTS[RIVAL_COUNTS.length - 1]
-                ? 'Every branch of the outline has a faction holding it.'
-                : `${n} of the seven clusters come at you. A shorter war.`,
+                ? t('Every branch of the outline has a faction holding it.')
+                : t('{n} of the seven clusters come at you. A shorter war.', { n }),
           })),
           String(rivals),
           (id) => {
@@ -172,27 +173,27 @@ export function createSetupScreen(): SetupScreen {
         ),
       );
       card.append(
-        optionList('Pace', PACES, pace, (id) => {
+        optionList(t('Pace'), PACES, pace, (id) => {
           pace = id;
         }),
       );
 
       // Players -----------------------------------------------------------
-      section('Who is playing');
+      section(t('Who is playing'));
       card.append(
         optionList(
-          'Seats',
+          t('Seats'),
           [
             {
               id: '1',
-              label: 'One player',
-              detail: 'You answer every question yourself.',
+              label: t('One player'),
+              detail: t('You answer every question yourself.'),
             },
             {
               id: '2',
-              label: 'Two players, together',
+              label: t('Two players, together'),
               detail:
-                'One empire. Every battle asks you both at once, each from your own course.',
+                t('One empire. Every battle asks you both at once, each from your own course.'),
             },
           ],
           String(players),
@@ -207,7 +208,7 @@ export function createSetupScreen(): SetupScreen {
       courseGroup.className = 'fe-setup-seats';
       courseGroup.append(
         optionList(
-          'Player 1 answers with 1 2 3 4',
+          t('Player 1 answers with 1 2 3 4'),
           CAMPAIGNS.filter((c) => c.role === 'world').map((c) => ({
             id: c.id,
             label: c.course,
@@ -223,7 +224,7 @@ export function createSetupScreen(): SetupScreen {
       // offered every course including the question-only ones.
       courseGroup.append(
         optionList(
-          'Player 2 answers with A B C D',
+          t('Player 2 answers with A B C D'),
           CAMPAIGNS.map((c) => ({ id: c.id, label: c.course, detail: c.blurb })),
           courseP2,
           (id) => {
@@ -242,7 +243,7 @@ export function createSetupScreen(): SetupScreen {
       const seedGroup = document.createElement('div');
       seedGroup.className = 'fe-setup-group';
       const seedHeading = document.createElement('h3');
-      seedHeading.textContent = 'The seed';
+      seedHeading.textContent = t('The seed');
       seedGroup.append(seedHeading);
 
       const seedRow = document.createElement('div');
@@ -255,7 +256,7 @@ export function createSetupScreen(): SetupScreen {
 
       const seedNote = document.createElement('span');
       seedNote.className = 'fe-setup-detail';
-      seedNote.textContent = 'Same seed and same choices, same world. Send one to a friend.';
+      seedNote.textContent = t('Same seed and same choices, same world. Send one to a friend.');
       seedRow.append(seedNote);
       seedGroup.append(seedRow);
       card.append(seedGroup);
@@ -264,7 +265,7 @@ export function createSetupScreen(): SetupScreen {
       const play = document.createElement('button');
       play.className = 'fe-setup-play';
       play.type = 'button';
-      play.textContent = 'Begin';
+      play.textContent = t('Begin');
       const commit = () => {
         if (!showing) return;
         showing = false;

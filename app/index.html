@@ -353,8 +353,8 @@
       <span id="turn-badge">Turn 1</span>
       <div class="res"><b id="res-compute">0</b><span>Compute</span></div>
       <div class="res"><b id="res-cu">0</b><span>CU</span></div>
-      <div class="res"><b id="res-trust">0</b><span>Trust</span></div>
-      <button id="open-library" title="The Great Library: what you actually know (l)">Library</button>
+      <div class="res"><b id="res-trust">0</b><span data-i18n="Trust">Trust</span></div>
+      <button id="open-library" title="The Great Library: what you actually know (l)" data-i18n="Library">Library</button>
       <!--
         Exam readiness, weighted by the published branch percentages.
 
@@ -363,19 +363,27 @@
         threshold nobody can aim at.
       -->
       <span id="readiness" title="Share of the exam, by published weight, at familiar or better">0% exam</span>
-      <button id="face-proctor" hidden title="Sit the exam: 40 questions in the published proportions">Face the Proctor</button>
-      <button id="end-turn" class="primary">End turn</button>
+      <button id="face-proctor" hidden title="Sit the exam: 40 questions in the published proportions" data-i18n="Face the Proctor">Face the Proctor</button>
+      <button id="end-turn" class="primary" data-i18n="End turn">End turn</button>
+      <!--
+        The language switch.
+
+        In the resource bar because it has to be found without hunting, and
+        because a player who opened the game in the wrong language cannot read
+        the menu they would otherwise have to look in.
+      -->
+      <button id="lang-toggle" title="Deutsch / English">DE</button>
     </div>
 
     <div class="panel" id="controls">
       <input id="seed-input" value="FABRIC" spellcheck="false" />
-      <button id="seed-go" title="Choose a world and start again">New game</button>
+      <button id="seed-go" data-i18n-title="Choose a world and start again" title="Choose a world and start again" data-i18n="New game">New game</button>
     </div>
 
     <div class="panel" id="help">
-      click a unit to select &middot; click to move or attack<br />
-      drag to pan &middot; wheel to zoom &middot; space ends turn<br />
-      <span class="muted">` opens the console &middot; type help</span>
+      <span data-i18n="click a unit to select, click to move or attack">click a unit to select &middot; click to move or attack</span><br />
+      <span data-i18n="drag to pan, wheel to zoom, space ends turn">drag to pan &middot; wheel to zoom &middot; space ends turn</span><br />
+      <span class="muted" data-i18n="` opens the console, type help">` opens the console &middot; type help</span>
     </div>
 
     <!--
@@ -387,31 +395,31 @@
       mechanic worked and nothing on screen said so.
     -->
     <div class="panel" id="threats">
-      <h2>Who is coming</h2>
+      <h2 data-i18n="Who is coming">Who is coming</h2>
       <div id="threats-list"></div>
     </div>
 
     <div class="panel" id="tile">
-      <div id="tile-name">Hover a tile</div>
+      <div id="tile-name" data-i18n="Hover a tile">Hover a tile</div>
       <div class="muted" id="tile-detail">&nbsp;</div>
     </div>
 
     <div class="panel" id="selection">
-      <h2 id="sel-title">Nothing selected</h2>
-      <div class="muted" id="sel-detail">Click one of your units.</div>
+      <h2 id="sel-title" data-i18n="Nothing selected">Nothing selected</h2>
+      <div class="muted" id="sel-detail" data-i18n="Click one of your units.">Click one of your units.</div>
       <div class="actions">
-        <button id="act-found" disabled title="Found a city here (b)">Found city</button>
-        <button id="act-raid" disabled title="Plunder the neighbouring village (p). R flies the camera, so this is not on r">Raid</button>
-        <button id="act-fortify" disabled title="Fortify (h). W A S D fly the camera, so this is not on f">Fortify</button>
-        <button id="act-skip" disabled title="Skip this unit (x). W A S D fly the camera, so this is not on s">Skip</button>
-        <button id="act-council" disabled title="Hold a council review (c)">Council</button>
+        <button id="act-found" disabled title="Found a city here (b)" data-i18n="Found city">Found city</button>
+        <button id="act-raid" disabled title="Plunder the neighbouring village (p). R flies the camera, so this is not on r" data-i18n="Raid">Raid</button>
+        <button id="act-fortify" disabled title="Fortify (h). W A S D fly the camera, so this is not on f" data-i18n="Fortify">Fortify</button>
+        <button id="act-skip" disabled title="Skip this unit (x). W A S D fly the camera, so this is not on s" data-i18n="Skip">Skip</button>
+        <button id="act-council" disabled title="Hold a council review (c)" data-i18n="Council">Council</button>
       </div>
     </div>
 
     <div class="panel" id="research">
-      <h2 id="res-title">Researching nothing</h2>
+      <h2 id="res-title" data-i18n="Researching nothing">Researching nothing</h2>
       <div class="bar"><div id="res-bar"></div></div>
-      <div class="muted" id="res-status">Choose what to study.</div>
+      <div class="muted" id="res-status" data-i18n="Choose what to study.">Choose what to study.</div>
       <div class="options" id="res-options"></div>
     </div>
 
@@ -424,11 +432,11 @@
       away from the thing they were commanding to check.
     -->
     <div class="panel" id="cities" hidden>
-      <h2 id="cities-title">Cities</h2>
+      <h2 id="cities-title" data-i18n="Cities">Cities</h2>
       <div id="cities-list"></div>
     </div>
 
-    <div class="panel" id="log"><div class="entry muted">Your empire begins.</div></div>
+    <div class="panel" id="log"><div class="entry muted" data-i18n="Your empire begins.">Your empire begins.</div></div>
 
     <script type="module" src="/src/main.ts"></script>
   </body>

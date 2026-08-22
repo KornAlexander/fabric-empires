@@ -106,6 +106,7 @@ import { CHEATS, findCheat } from './cheats.js';
 import { approachShot, descendShot, orbitShot } from './three/cinematic.js';
 import { introShots } from './intro.js';
 import { createAnthem } from './audio.js';
+import { applyStaticTranslations, lang, onLangChange, plural, t, toggleLang } from './i18n.js';
 import { loadGame, localSlot, saveGame } from './persist.js';
 import { createBattleBanner, type BattleSide } from './ui/battleBanner.js';
 
@@ -230,9 +231,9 @@ async function askBattle(
 
   const together = (a.score + b.score) / 2;
   if (b.score > 0 && a.score <= 0) {
-    log('Player 2 held the line where you did not.', 'good');
+    log(t('Player 2 held the line where you did not.'), 'good');
   } else if (b.score > 0) {
-    log('Both of you knew it. The walls hold.', 'good');
+    log(t('Both of you knew it. The walls hold.'), 'good');
   }
   return together;
 }
@@ -397,7 +398,20 @@ const topicStrength = (topicId: string): number => bandStrength(mastery.get(topi
 /** One line saying what a new rank is actually worth, so it is not just a word. */
 function whyItRose(rank: CityRankInfo): string {
   const percent = Math.round((rank.yieldBonus - 1) * 100);
-  return percent > 0 ? `Yields +${percent}%.` : 'The first step.';
+  return percent > 0 ? t('Yields +{percent}%.', { percent }) : t('The first step.');
+}
+
+/**
+ * A settlement rank in the current language.
+ *
+ * ⚠️ Reads `labelDe` off the engine's rank table rather than going through the
+ * catalogue. The two names of a rank were deliberately put on one row so they
+ * could not drift apart (D263), and copying the German into a second place
+ * would undo exactly that.
+ */
+function rankName(id: CityRank): string {
+  const info = rankInfo(id);
+  return lang() === 'de' ? info.labelDe : info.label;
 }
 
 const cinemaOverlay = createCinematicOverlay();
@@ -553,7 +567,45 @@ const el = {
   readiness: document.querySelector<HTMLElement>('#readiness')!,
   faceProctor: document.querySelector<HTMLButtonElement>('#face-proctor')!,
   threatsList: document.querySelector<HTMLElement>('#threats-list')!,
+  langToggle: document.querySelector<HTMLButtonElement>('#lang-toggle')!,
 };
+
+/*
+ * The language switch.
+ *
+ * ⚠️ **The button shows the language it will switch TO, not the current one.**
+ * A button labelled with the language you are already reading looks like a
+ * status badge, and people do not press status badges. "DE" while playing in
+ * English is an offer.
+ *
+ * Everything downstream redraws from `state`, so a change only has to repaint
+ * the static shell and mark the frame dirty; the panels rebuild themselves.
+ */
+function paintLangToggle(): void {
+  el.langToggle.textContent = lang() === 'en' ? 'DE' : 'EN';
+  el.langToggle.title = lang() === 'en' ? 'Auf Deutsch spielen' : 'Play in English';
+}
+
+el.langToggle.addEventListener('click', () => {
+  toggleLang();
+});
+
+onLangChange(() => {
+  applyStaticTranslations();
+  paintLangToggle();
+  // Every panel rebuilds its contents from state, so switching language is
+  // just "draw everything again" rather than a hunt for stray strings.
+  refreshHud();
+  refreshSelection();
+  refreshResearch();
+  refreshCities();
+  refreshThreats();
+  refreshReadiness();
+  dirty = true;
+});
+
+applyStaticTranslations();
+paintLangToggle();
 
 let state: GameState = createGameState('FABRIC', { topics: provider.topics() });
 /** Where the empire is kept between visits. See `persist.ts`. */
@@ -590,8 +642,8 @@ function refreshSelection(): void {
   const unit = selectedUnitId ? state.units.get(selectedUnitId) : undefined;
   if (!unit || unit.factionId !== state.activeFactionId) {
     selectedUnitId = undefined;
-    el.selTitle.textContent = 'Nothing selected';
-    el.selDetail.textContent = 'Click one of your units.';
+    el.selTitle.textContent = t('Nothing selected');
+    el.selDetail.textContent = t('Click one of your units.');
     el.actFound.disabled = true;
     el.actRaid.disabled = true;
     el.actFortify.disabled = true;
@@ -609,12 +661,15 @@ function refreshSelection(): void {
   }
   attackTargets = targets;
 
+  // ⚠️ The unit's name is NOT translated: Pipeline Runner and Direct Lake
+  // Titan are jokes built on Fabric terminology, and a German Fabric user says
+  // them in English. The words around them are ordinary and are translated.
   el.selTitle.textContent = type.label;
   el.selDetail.textContent =
-    `${unit.hp}/${type.maxHp} HP  ` +
-    `${unit.movesLeft}/${type.movement} moves  ` +
-    `strength ${type.strength}` +
-    (unit.fortified ? '  (fortified)' : '');
+    `${unit.hp}/${type.maxHp} ${t('HP')}  ` +
+    `${unit.movesLeft}/${type.movement} ${t('moves')}  ` +
+    `${t('strength')} ${type.strength}` +
+    (unit.fortified ? `  (${t('fortified')})` : '');
 
   el.actFound.disabled = !canFoundCity(state, unit);
   el.actRaid.disabled = raidTarget(unit.id) === undefined;
@@ -994,9 +1049,9 @@ async function playAttack(
   }
 
   if (challengeScore > 0) {
-    log('Your answer strengthened the attack.', 'good');
+    log(t('Your answer strengthened the attack.'), 'good');
   } else if (challengeScore < 0) {
-    log('Your answer weakened the attack.', 'bad');
+    log(t('Your answer weakened the attack.'), 'bad');
   }
   const odds = preview
     ? ` (${Math.round(preview.attacker.effective)} vs ${Math.round(preview.defender.effective)})`
@@ -1005,8 +1060,8 @@ async function playAttack(
     `Attack${odds}: dealt ${battle.damageToDefender}, took ${battle.damageToAttacker}`,
     battle.damageToDefender >= battle.damageToAttacker ? 'good' : 'bad',
   );
-  if (battle.defenderDestroyed) log('Enemy unit destroyed.', 'good');
-  if (battle.attackerDestroyed) log('Your unit was destroyed.', 'bad');
+  if (battle.defenderDestroyed) log(t('Enemy unit destroyed.'), 'good');
+  if (battle.attackerDestroyed) log(t('Your unit was destroyed.'), 'bad');
   if (battle.cityCaptured) {
     const from = battle.cityFormerFactionId
       ? state.factions.get(battle.cityFormerFactionId)?.label
@@ -1036,7 +1091,7 @@ async function playAttack(
         .map(([id, amount]) => `${amount} ${id}`);
       if (parts.length > 0) log(`Carried off ${parts.join(', ')}.`, 'good');
     }
-    log('Nothing was learned there.', 'bad');
+    log(t('Nothing was learned there.'), 'bad');
     void playCityFallsShot(target);
   }
 
@@ -1155,8 +1210,13 @@ function pendingReviews(): ReturnType<typeof reviewOpportunities> {
 function refreshCouncil(): void {
   const available = pendingReviews();
   el.actCouncil.disabled = available.length === 0;
+  // ⚠️ Rewritten on every state change, so the `data-i18n` tag on the markup
+  // is overwritten within a frame of the language switching. Anything set from
+  // code has to be translated in code.
   el.actCouncil.textContent =
-    available.length > 1 ? `Council (${available.length})` : 'Council';
+    available.length > 1
+      ? t('Council ({n})', { n: available.length })
+      : t('Council');
 }
 
 /**
@@ -1310,9 +1370,9 @@ async function doEndTurn(): Promise<void> {
   if (report.treasuryGained.cu) gains.push(`${report.treasuryGained.cu >= 0 ? '+' : ''}${report.treasuryGained.cu} CU`);
   if (report.treasuryGained.trust) gains.push(`+${report.treasuryGained.trust} Trust`);
 
-  log(`Turn ${report.turn} ended. ${gains.join('  ') || 'No income yet.'}`);
+  log(t('Turn {n} ended. {gains}', { n: report.turn, gains: gains.join('  ') || t('No income yet.') }));
   for (const cityId of report.grownCities) {
-    log(`${state.cities.get(cityId)?.name ?? 'A city'} grew.`, 'good');
+    log(t('{name} grew.', { name: state.cities.get(cityId)?.name ?? t('A city') }), 'good');
   }
 
   /*
@@ -1328,12 +1388,19 @@ async function doEndTurn(): Promise<void> {
   if (risen.promoted.length > 0) {
     state = risen.state;
     for (const p of risen.promoted) {
-      log(`${p.cityName} is now a ${p.to.label}. ${whyItRose(p.to)}`, 'good');
+      log(
+        t('{name} is now a {rank}. {why}', {
+          name: p.cityName,
+          rank: rankName(p.to.id),
+          why: whyItRose(p.to),
+        }),
+        'good',
+      );
     }
     dirty = true;
   }
 
-  if (report.bankrupt) log('Upkeep could not be paid in full.', 'bad');
+  if (report.bankrupt) log(t('Upkeep could not be paid in full.'), 'bad');
 
   if (report.researchSpent > 0) {
     log(`${report.researchSpent} Compute into research.`);
@@ -1635,9 +1702,13 @@ function refreshResearch(): void {
     el.resBar.style.width = `${pct}%`;
     el.resStatus.textContent = `${node.cluster}  ${state.research.progress}/${cost} Compute`;
   } else {
-    el.resTitle.textContent = 'Researching nothing';
+    el.resTitle.textContent = t('Researching nothing');
     el.resBar.style.width = '0%';
-    el.resStatus.textContent = `${state.research.known.length}/${state.topics.nodes.length} known  (${Math.round(researchProgress(state) * 100)}%)`;
+    el.resStatus.textContent = t('{known}/{total} known ({percent}%)', {
+      known: state.research.known.length,
+      total: state.topics.nodes.length,
+      percent: Math.round(researchProgress(state) * 100),
+    });
   }
 
   el.resOptions.replaceChildren();
@@ -1749,7 +1820,9 @@ function refreshCities(): void {
     const name = document.createElement('b');
     name.textContent = city.name;
     const meta = document.createElement('span');
-    meta.textContent = `${rankInfo(city.rank).label} · pop ${city.population}${city.unrest > 0 ? ` · unrest ${city.unrest}` : ''}`;
+    meta.textContent =
+      `${rankName(city.rank)} · ${t('pop {n}', { n: city.population })}` +
+      (city.unrest > 0 ? ` · ${t('unrest {n}', { n: city.unrest })}` : '');
     head.append(name, meta);
     row.append(head);
 
@@ -1768,18 +1841,25 @@ function refreshCities(): void {
       wants.className = need.blockedByKnowledge ? 'city-need knowledge' : 'city-need';
       const parts: string[] = [];
       if (need.citizensShort > 0) {
-        parts.push(`${need.citizensShort} more ${need.citizensShort === 1 ? 'citizen' : 'citizens'}`);
+        parts.push(
+          plural(need.citizensShort, '{n} more citizen', '{n} more citizens'),
+        );
       }
       if (need.topicsShort > 0) {
-        const band = need.rank.strengthRequired >= 0.95 ? 'strong' : 'familiar';
+        const band = t(need.rank.strengthRequired >= 0.95 ? 'strong' : 'familiar');
         parts.push(
-          `${need.topicsShort} more ${need.topicsShort === 1 ? 'topic' : 'topics'} at ${band}`,
+          plural(need.topicsShort, '{n} more topic at {band}', '{n} more topics at {band}', {
+            band,
+          }),
         );
       }
       wants.textContent =
         parts.length > 0
-          ? `${need.rank.label} needs ${parts.join(' and ')}`
-          : `Rising to ${need.rank.label}`;
+          ? t('{rank} needs {what}', {
+              rank: rankName(need.rank.id),
+              what: parts.join(t(' and ')),
+            })
+          : t('Rising to {rank}', { rank: rankName(need.rank.id) });
       row.append(wants);
     }
 
@@ -1886,7 +1966,7 @@ function libraryModel() {
 function refreshReadiness(): void {
   const model = libraryModel();
   const percent = Math.round(model.examRetained * 100);
-  el.readiness.textContent = `${percent}% exam`;
+  el.readiness.textContent = t('{percent}% exam', { percent });
 
   const ready = proctorReady(model);
   el.faceProctor.hidden = !ready || finished;
@@ -2095,7 +2175,10 @@ function refreshThreats(): void {
     if (cluster) {
       const ready = document.createElement('span');
       ready.className = `ready ${share >= 0.6 ? 'solid' : share < 0.3 ? 'weak' : ''}`;
-      ready.textContent = `${cluster.retained}/${cluster.total} known`;
+      ready.textContent = t('{known}/{total} known', {
+        known: cluster.retained,
+        total: cluster.total,
+      });
       right.append(ready);
     }
 
@@ -2106,7 +2189,7 @@ function refreshThreats(): void {
 
 function refreshHud(): void {
   const resources = state.factions.get(PLAYER_FACTION_ID)!.resources;
-  el.turn.textContent = `Turn ${state.turn}`;
+  el.turn.textContent = t('Turn {n}', { n: state.turn });
   el.compute.textContent = String(resources.compute);
   el.cu.textContent = String(resources.cu);
   el.trust.textContent = String(resources.trust);
@@ -2139,7 +2222,15 @@ function newGame(rawSeed: string): void {
       topics: provider.topics(),
       antagonistIds: roster,
     }),
-    `New empire on seed ${seed}. ${shape?.label ?? ''}, ${size?.label.toLowerCase() ?? ''}, ${roster.length} rivals.`,
+    t('New empire on seed {seed}. {shape}, {size}, {rivals} rivals.', {
+      seed,
+      shape: t(shape?.label ?? ''),
+      // ⚠️ Not lower-cased. English happily reads "one great continent,
+      // standard", and German capitalises its nouns, so the same call that
+      // tidies one language misspells the other.
+      size: t(size?.label ?? ''),
+      rivals: roster.length,
+    }),
   );
   // Write immediately rather than waiting for the first turn to end, so a
   // player who starts a game and closes the tab comes back to that game and
@@ -2190,7 +2281,10 @@ async function playOpening(): Promise<void> {
   try {
     for (const shot of shots) {
       if (finished || openingSkipped) break;
-      cinemaOverlay.show(shot.title, shot.subtitle);
+      // ⚠️ The Latin titles are NOT translated. They are the words of the anthem
+      // and the same in every language, which is the whole reason the film uses
+      // Latin (D255). Only the English glosses beneath them change.
+      cinemaOverlay.show(shot.title, t(shot.subtitle));
       // The fog falls on the last beat, under the title, rather than after the
       // sequence has ended. Letting it happen off screen wastes the one moment
       // the player can see what was taken away from them.
@@ -2285,7 +2379,7 @@ function boot(): void {
   // No game to resume, so ask what kind of world this one should be.
   void askAndStart();
   if (loaded.reason === 'unreadable') {
-    log('A saved game was found but could not be read, so this is a new one.', 'bad');
+    log(t('A saved game was found but could not be read, so this is a new one.'), 'bad');
   }
 }
 

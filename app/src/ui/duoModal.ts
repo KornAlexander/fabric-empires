@@ -24,6 +24,7 @@ import type {
   QuestionResult,
   QuestionUi,
 } from '@fabric-empires/learn';
+import { t } from '../i18n.js';
 
 export type Seat = 1 | 2;
 
@@ -211,7 +212,9 @@ export function createDuoModal(): DuoModal {
 
         const verdict = document.createElement('div');
         verdict.className = result.correct ? 'fe-duo-verdict good' : 'fe-duo-verdict bad';
-        verdict.textContent = result.correct ? 'Richtig' : `Richtig wäre: ${right.join(', ')}`;
+        verdict.textContent = result.correct
+          ? t('Correct')
+          : t('The answer was: {answer}', { answer: right.join(', ') });
         pane.root.append(verdict);
 
         // Long enough to read the correction, short enough that the other

@@ -269,6 +269,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D261–D268 | Settlements that develop, Siedlung to Großstadt | Recorded in full in section 33.4 |
 | D269–D272 | The clock was grading reading speed, not knowledge | Recorded in full in section 34.4 |
 | D273–D277 | Ritter: the elite melee units ride | Recorded in full in section 35.3 |
+| D278–D283 | Two languages, one switch | Recorded in full in section 36.4 |
 
 ### 28. Cheat codes
 
@@ -2767,6 +2768,92 @@ instead of the units. Now a single press abandons the whole opening.
   place, so losing any single one does not make the stand anonymous.
 - Photographed at three distances. Foot, horse and barded horse are
   distinguishable at the zoom the game is played at.
+
+---
+
+### 36. Two languages, one switch
+
+Asked for: everything bilingual German and English, with an easy switch. Built
+22 Aug. This is D214, which had deliberately deferred the i18n pass until after
+1 September because it "touches every file the DP-600 submission depends on".
+That deferral is overridden; what follows is how it was done without the risk
+the deferral was protecting against.
+
+#### 36.1 ⚠️ Translations are keyed by the English string itself
+
+`t('End turn')`, not `t('hud.endTurn')`. The English text is both the key and
+the fallback, so a string with no German behind it renders as itself.
+
+That is a risk decision rather than a tidiness one. A conventional key
+namespace means naming 250 strings, touching every call site twice, and showing
+a player a raw `hud.endTurn` the first time somebody mistypes one. Here the
+worst failure is a sentence that stays English, which is what it did before, so
+**the game is shippable at every point during the translation** rather than
+only at the end. Ten days before a deadline that is the difference between
+doing this and not doing this.
+
+The cost is real and worth writing down: **editing an English string silently
+orphans its German.** A test finds entries that were never written and nothing
+can find one that used to match.
+
+#### 36.2 What is deliberately NOT translated
+
+| | Why |
+|---|---|
+| **The 123 DP-600 questions** | The exam is sat in English and its terminology *is* the subject. Somebody who revises "Direktsee" has learned a word that will not be on the paper. The answers are hashed and the explanations encrypted, so it would also mean rebuilding the content pipeline |
+| **The exam outline headings** | "B1 Get data", "C2 Optimize enterprise-scale semantic models" are the published skills outline. They are the thing being learned |
+| **Fabric product terms** | Compute, CU, Lakehouse, Warehouse, Workspace, Direct Lake. Names, not words. A German Fabric user says them in English |
+| **Unit names** | Pipeline Runner, Query Slinger, Notebook Cannon, Direct Lake Titan are jokes built on that terminology |
+| **Faction names** | The Silo Horde, The Flat Table Cult. Proper nouns |
+| **The Latin titles** | They are the words of the anthem and the same in every language, which is the whole reason the film is in Latin (D255) |
+
+The Klasse 1 bank stays German for the mirror reason: a six-year-old is
+learning German, and an exam candidate is learning English terms.
+
+#### 36.3 The switch
+
+A **DE / EN** button in the resource bar. It shows the language it will switch
+**to**, not the one you are reading, because a button labelled with the
+language already on screen looks like a status badge and nobody presses status
+badges.
+
+The choice is remembered, and a browser set to German gets a German game
+without being asked. Switching repaints the static shell and asks every panel
+to redraw from state, so nothing has to be hunted down individually.
+
+#### 36.4 Decisions
+
+| ID | Decision | Why |
+|---|---|---|
+| D278 | ⚠️ **Key by the English string; English is always the fallback** | Section 36.1. Makes a partial translation a shippable state rather than a broken one, which is what allowed a 250 string pass this close to the deadline |
+| D279 | The engine keeps English labels; the app translates on the way to the screen | Avoids adding a second field to six engine interfaces, and means the engine has no opinion about languages at all. Settlement ranks are the one exception, because `label` and `labelDe` were deliberately put on one row so they could not drift (D263), and copying that German into a catalogue would undo exactly that |
+| D280 | ⚠️ **Exam content stays in its exam language** | Section 36.2. Translating the questions would teach vocabulary the paper does not use, which is the opposite of what a study aid is for |
+| D281 | The button shows the language it switches to | An "EN" button while reading English is a label. A "DE" button while reading English is an offer |
+| D282 | The log is not retranslated when the language changes | Entries are a record of what happened, and what happened happened in the language it was said in. Retranslating history would also mean storing every line's placeholders instead of its text |
+| D283 | ⚠️ **Anything written from code must be translated in code** | The council button carries a `data-i18n` tag and is also rewritten on every state change, so the tag was overwritten within a frame of the switch. Static markup and dynamic text need different treatment and the failure looks identical |
+
+#### 36.5 Verified
+
+- 791 tests, 11 new. The coverage test scans the source for every literal
+  handed to `t()` and fails if any of them has no German, so a gap is a red
+  test rather than a sentence nobody noticed. Others assert that an unknown
+  string falls back rather than breaking, that placeholders survive
+  translation, that no German entry is just the English again (with an explicit
+  allow-list for "Land" and "Standard", which really are the same word), that
+  the exam vocabulary is untouched, and that the German uses real umlauts and
+  no em dashes.
+- Driven in the browser: the shell's visible text was read in both languages
+  and diffed. Everything that did not change is on the intentional list above.
+
+#### 36.6 Open
+
+- Roughly 250 strings are covered, and the ones reachable only from rarer
+  screens (the Great Library, the end screen, the cheat console, the siege)
+  are wrapped but only lightly reviewed for tone.
+- German is longer than English, typically by 10 to 30 percent. Nothing has
+  been checked for overflow in narrow panels at the smallest window size.
+- A stale English edit orphans its German silently. Worth a check that compares
+  the catalogue against the source on every build, which does not exist yet.
 
 ---
 

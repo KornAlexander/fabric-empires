@@ -247,7 +247,7 @@ export const PACES: readonly Pace[] = Object.freeze([
   {
     id: 'standard',
     label: 'Standard',
-    detail: 'Twenty seconds in battle, forty-five under the Proctor.',
+    detail: 'Fourteen seconds to think in battle, plus time to read.',
     timeScale: 1,
   },
   {
