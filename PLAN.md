@@ -264,6 +264,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D233 | ⚠️ Two measurements that agreed and were both wrong | A per-hex clearance check bucketed the lid and the ground with the same rounding `peakAt` uses, so it could only agree with itself: it reported zero buried lids on a visibly unfogged map. And a "ground" probe selecting a mesh by `vertices > 100000` matched the **fog** (110,700), so a bounding-box comparison was the fog against itself. A measurement that cannot fail is not evidence |
 | D234 | ⚠️ `turn() >= 1` is not a signal that a game has started | `state` is initialised with a placeholder game at module load, so `turn()` returns 1 while the setup screen is still open, with seed FABRIC and a world nobody chose. Every browser test that waited on it was measuring the placeholder. Wait on `seed()` matching the seed that was typed |
 | D235–D242 | Two players on one screen | Recorded in full in section 30.3 |
+| D243–D253 | The period pass: units as wargame stands, a fort with an inside | Recorded in full in section 31.5 |
 
 ### 28. Cheat codes
 
@@ -1721,7 +1722,7 @@ is allowed to block on it.
 | 3 | 23 to 24 Aug | **Sound.** Code-generated effects plus the ambient bed, verified through `OfflineAudioContext` | |
 | 3b | 23 Aug | **Fog of war** (D149). Per-faction visibility and memory, revealed by unit and city sight | **Done 22 Aug**, save v6 |
 | 3b+ | unplanned | **Two players, one screen** (section 30). A second seat answering `a b c d` from its own course, scores averaged | **Done 22 Aug** |
-| 3c | 23 to 26 Aug | **Units at 1600** (D148). Pike, shot, horse and cannon, replacing the tracked hulls | |
+| 3c | 23 to 26 Aug | **Units at 1600** (D148). Pike, shot, horse and cannon, replacing the tracked hulls | **Done 22 Aug**, section 31 |
 | 4 | 24 to 28 Aug | **The siege** (19). Walls, siege state, the assault set piece, the four defender options | Fog of war, for what a besieger can see |
 | 4b | 28 to 30 Aug | **Ships and islands** (23). Embark, cargo, AI crossings, coastal production, then flip `islands` on | |
 | 4c | 28 to 29 Aug | **Depth from Anno** (24). Progressive pacing tied to readiness, then reduced city tiers | Tiers need the city panel |
@@ -2230,6 +2231,148 @@ not evidence that the event stopped. Suite total 721.
 - The second seat never sees a Great Library or a readiness figure of its own,
   by D238. If the Year 1 course is ever to become a study tool in its own
   right it needs a second, separate tracker, not a share of this one.
+
+---
+
+### 31. The period pass: figures, and a fort with an inside
+
+Second realism iteration, 22 Aug. The first one bought light and land: physical
+materials, a scattering sky, eroded terrain, ground cover. What it left behind
+was everything standing **on** that ground, and the gap had become the loudest
+thing in the frame: tracked steel vehicles with glowing hull strips, parked
+next to a bastioned fort of 1600.
+
+#### 31.1 What was measured first
+
+Nothing here was designed from a screenshot alone. Pixels on screen, 1600x900:
+
+| Zoom | px per hex | px per world unit |
+|---|---|---|
+| as the game opens | 19.9 | 11.5 |
+| 6 wheel notches in | 41.7 | 24.1 |
+| 12 notches in | 87.2 | 50.3 |
+| closest the camera goes | 182 | 105 |
+
+And three facts that killed three planned features before they were written:
+
+- **37 meshes in the whole scene, 3.8 ms a frame.** A geometry-merging kit was
+  going to be the enabler for all of this. Draw calls are not a problem, so it
+  would have been a week spent on a number that was already fine.
+- **Picking raycasts the ground mesh only.** `userData.kind` is written on
+  every entity and read nowhere. Merging could never have broken selection,
+  which was the main reason to be afraid of it.
+- **Combat poses the whole unit group**, `rotation.set` and `scale.setScalar`
+  on the top-level object, never a limb. So a unit's internals are free.
+
+#### 31.2 ⚠️ The scale contract
+
+The standing instruction for 3D scenes is that nothing may be exaggerated. It
+was written for digital twins and it cannot be applied literally here, so
+rather than quietly working around it, here is what it means for a map.
+
+A fortified town fills a hex. A real one is 300 to 400 m across, which would
+make one world unit about 400 m, which would make the existing trees 200 m
+tall. At the zoom the game opens at, a 1.75 m man drawn to scale is **0.05 of
+a pixel**. Literal scale is not on the table at any zoom this camera reaches.
+
+So the scene is split into two layers, and the split is stated rather than
+assumed:
+
+| Layer | What it is | Rule |
+|---|---|---|
+| **Map symbol** | The tray under a stand, and the faction ring on it | Sized for the camera. Never claims to be an object. May carry a little emission |
+| **The world** | Men, houses, carts, walls, guns, boats, trees | One scale, real proportions, measured against each other and never against the camera |
+
+The second layer is anchored on one number. A village house is about 7 m to
+its ridge and stands 0.35 tall, so a metre is 0.05 and **`MAN = 0.092`**. Pikes
+are 5.5 m from that, a gabion is 1.1 m, a cart wheel is 1.24 m, a hoy's mast is
+5.3 m. Nothing in the world layer is sized any other way.
+
+This is not called realistic scale and the phrase "digital twin" does not
+belong anywhere near this scene. It is a period-readable miniature.
+
+#### 31.3 What changed
+
+| | Before | After |
+|---|---|---|
+| Unit | One tracked steel hull, three loadouts, painted faction blue, emissive strip at intensity 2.4, whole object scaled 0.85 to 1.52 by strength | A wargame stand per role: pike block, musket line, gun and crew, gabion post, light horse, pioneers, surveyor and cart, drummer and powder cart, a hoy |
+| Strength | Made the unit bigger | Puts more men on the stand |
+| Faction colour | Painted hull plus a glowing strip | Sashes, the colours on a standard, and a painted ring on the tray |
+| Fort | Solid rampart, no interior, three near-white materials | A ring wall with a turfed walk, a sunken courtyard, houses along a street, a gate, a road, a cart and a well |
+| Boulders | Neutral grey, near white in sun | Warm, dark, biased away from the pale end |
+
+Materials `steel`, `darkSteel`, `concrete`, `glass`, `paint` and `emissive`
+were **deleted** rather than left unused. An unused material is an invitation,
+and those six are exactly how this scene became science fiction the first time.
+
+#### 31.4 ⚠️ The bug that had been hiding in plain sight
+
+The town read as a beige pancake, and the assumption for a long time was that
+this was a colour problem. It was not. **The rampart was a solid cylinder**, so
+its top face was a disc of radius 0.74 that covered the courtyard, the street
+and every house plot: the fort had no inside. Bastions were invisible for the
+same reason, having nothing to be a silhouette against. No amount of value
+separation was ever going to fix it, because what was missing was the hole.
+
+A wall is a ring. Once it was one, and the walk on top was turfed dark against
+the pale stone below, the fort read as a fort at every zoom.
+
+#### 31.5 Decisions
+
+| ID | Decision | Why |
+|---|---|---|
+| D243 | ⚠️ **A unit is a wargame stand: a map-symbol tray, and figures that are not** | The honest way out of a contradiction the scene cannot escape. A man drawn to scale is a twentieth of a pixel at opening zoom; the old answer was to draw him twenty times too big. A painted counter never claimed to be an object, so it can carry the recognition while the miniatures on it keep their real proportions against the buildings |
+| D244 | ⚠️ **Strength adds bodies, never height** | A tercio was not made of larger men. The old code scaled the whole unit by 0.85 to 1.52, which is precisely the exaggeration the standing rule forbids, and it was invisible because there was nothing beside it to compare against. Enforced by a test that builds all twelve and measures them |
+| D245 | The emissive strip is replaced, not deleted | It was ugly and un-1600 and it was also the only reason a unit could be found in shadow, forest or fog. Removing it for a nicer screenshot would have traded a working affordance for a picture. The tray ring does the same job at intensity 0.22 instead of 2.4 |
+| D246 | ⚠️ **The faction colour has to be an annulus, not a rim** | First attempt put a slightly wider disc under the tray so a sliver showed at the edge. Measured, that sliver is three pixels at close zoom and nothing at all at opening zoom, and the stand read as a dark hole with specks on it. A broad flat ring is what a player sees from above |
+| D247 | ⚠️ **A flat plate laid on a hex sinks into it** | The ring drew as a broken arc because the ground inside one hex is subdivided, displaced and eroded. Same failure as the fog lid (D229). The base is now a shallow plinth, mostly underground, so its top face is always flat and always visible |
+| D248 | Every stand carries colours, not only the fighting ones | Only combat roles had a standard at first, so the two units a game actually opens with, the Architect and the Profiler, were the two with nothing above knee height. On a photograph of the opening position they were invisible |
+| D249 | ⚠️ **The rampart is a ring, and was a solid cylinder** | Section 31.4. The single geometric fact behind months of the town looking like a pancake |
+| D250 | Houses stand along a street, not on random bearings | A settlement is the opposite of scattered: buildings share a frontage because they share a road, and plots are regular because they were measured. The jitter is now noise on an order rather than the order itself |
+| D251 | Two props by the gate, and no more | A cart and a well are objects whose real size everybody knows, so they fix the scale of everything around them. Villagers, fences, haystacks and market stalls were cut: past about two, props stop being a scale reference and start being clutter, and the fort stops reading as a fort |
+| D252 | No chimney smoke, no strip fields | Both were in the plan and both were dropped on the duck's advice. Transparent particles against a fogged, bloomed scene sort badly; fields around every city turn the map into a quilt that fights the biome colours and the ownership overlays. Neither is worth the risk this close to a deadline |
+| D253 | Roads get their own material, darker than it feels like they should be | Drawn in the same `earth` as the courtyard, the road read as a bright sand-coloured apron spilling out of the town, more prominent than the fort. Bare earth in sun really is lighter than grass, so the fix is not to make it grey, it is to keep it dark enough to read as a line rather than a surface |
+
+#### 31.6 What was cut, and by whose argument
+
+The Rubber Duck's charge was that Approach A was six features wearing one coat,
+and that this is a DP-600 study tool with nine days left. Cut on that basis:
+the geometry-merging kit (measured unnecessary), third-party glTF asset packs
+(licensing and style-matching against a deadline), generated art (still blocked
+on an Azure region decision, and billboards look pasted on in a miniature
+world), ground micro-detail (already measured to darken the scene, section
+16.1), chimney smoke, strip fields, a second tree species, and individually
+modelled bodies for all twelve unit types. Roles, not types, do the work: nine
+roles cover twelve units and they already exist in the engine.
+
+It also predicted the failure this pass actually hit. "Primitive humans at map
+zoom will be visual noise" was right, and the answer was not to inflate them.
+
+#### 31.7 Verified
+
+- **Findability at every zoom, with no hover and no selection.** Faction-coloured
+  pixels counted in a 92 px window around each unit's projected position:
+  41 and 48 at opening zoom, 51 and 70, 152 and 238, 685 and 1028 at the
+  closest. Floor is 12, which is about the smallest patch of colour that can be
+  picked out of a busy frame without hunting. Script: `temp/check-findability.py`.
+- 728 tests, 14 new, including six that build all twelve stands and measure
+  them: nothing scaled bodily, more mesh for more strength at the same height,
+  every stand shorter than a house ridge, every foot stand within 5 cm of every
+  other, faction colour present on all of them, and no emitter above 0.6.
+- Frame time unchanged at 3.8 ms.
+
+#### 31.8 Open
+
+- Enemy villages were never photographed close up, because fog of war hides
+  them and there is no reveal hook. They use the same `buildCity`, so they get
+  the same fort, but that is inference rather than a picture.
+- The bastions read better than they did and still read as pale wedges more
+  than as arrowheads from directly above.
+- Ruins still use the old vocabulary and have not been looked at since the
+  fort changed underneath them.
+- Hex plateau facets are still visible on the terrain. Left alone deliberately:
+  it is the board the game is played on, and section 16.1 already records what
+  happened the last two times the ground surface was attacked.
 
 ---
 

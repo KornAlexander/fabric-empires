@@ -135,8 +135,14 @@ export function buildScatter(map: GameMap, terrain: Terrain): Scatter {
   // numbers: an instance colour multiplies a white base material directly in
   // linear space, so a plausible-looking 0.7 to 1.2 is roughly five times an
   // ordinary rock albedo and every boulder on the map glows.
-  const paleStone = new Color('#948f85');
-  const darkStone = new Color('#5f5c55');
+  //
+  // ⚠️ Warm and dark, and the pale end is barely used. Neutral grey boulders
+  // in full sun read as polystyrene: real stone in a landscape is stained by
+  // the soil it sits in and by lichen, so it carries the ground's hue rather
+  // than standing out against it. Being too light is what made them look like
+  // props dropped on the map instead of rock coming out of it.
+  const paleStone = new Color('#8a8073');
+  const darkStone = new Color('#4b453c');
 
   const position = new Vector3();
   const quaternion = new Quaternion();
@@ -188,7 +194,7 @@ export function buildScatter(map: GameMap, terrain: Terrain): Scatter {
           const base = tile.terrain === 'legacySwamp' ? sourNeedle : darkNeedle;
           tints.push(base.clone().lerp(lightNeedle, b * 0.85));
         } else {
-          tints.push(darkStone.clone().lerp(paleStone, b));
+          tints.push(darkStone.clone().lerp(paleStone, b * 0.7));
         }
       }
     };

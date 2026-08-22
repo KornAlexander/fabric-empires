@@ -18,10 +18,12 @@ import {
   CylinderGeometry,
   Color,
   ConeGeometry,
+  DoubleSide,
   Group,
   Mesh,
   MeshStandardMaterial,
   Object3D,
+  RingGeometry,
   SphereGeometry,
   type BufferGeometry,
 } from 'three';
@@ -40,86 +42,18 @@ function material(
   return made;
 }
 
-const steel = () =>
-  material(
-    'steel',
-    () =>
-      new MeshStandardMaterial({
-        color: new Color('#8d9299'),
-        metalness: 0.92,
-        roughness: 0.36,
-        envMapIntensity: 1,
-      }),
-  );
-
-const darkSteel = () =>
-  material(
-    'darkSteel',
-    () =>
-      new MeshStandardMaterial({
-        color: new Color('#3b4046'),
-        metalness: 0.85,
-        roughness: 0.48,
-      }),
-  );
-
-const concrete = () =>
-  material(
-    'concrete',
-    () =>
-      new MeshStandardMaterial({
-        color: new Color('#9a958c'),
-        metalness: 0,
-        roughness: 0.94,
-      }),
-  );
-
-const glass = () =>
-  material(
-    'glass',
-    () =>
-      new MeshStandardMaterial({
-        color: new Color('#1c2b36'),
-        metalness: 0.1,
-        roughness: 0.08,
-        emissive: new Color('#ffd9a0'),
-        emissiveIntensity: 0.35,
-      }),
-  );
-
-function paint(colour: string): MeshStandardMaterial {
-  return material(
-    `paint:${colour}`,
-    () =>
-      new MeshStandardMaterial({
-        color: new Color(colour),
-        metalness: 0.25,
-        roughness: 0.55,
-      }),
-  );
-}
-
-function emissive(colour: string): MeshStandardMaterial {
-  return material(
-    `emissive:${colour}`,
-    () =>
-      new MeshStandardMaterial({
-        color: new Color(colour),
-        emissive: new Color(colour),
-        emissiveIntensity: 2.4,
-        metalness: 0,
-        roughness: 0.5,
-      }),
-  );
-}
-
 /*
  * The 1600 palette.
  *
- * Nothing here is metallic and nothing glows. That is the whole point: the old
- * city read as science fiction because it was concrete, glass and emission,
- * and a fortified town of this period is earth, rubble stone, lime plaster,
- * oak and fired clay.
+ * ⚠️ **Nothing here is chrome and nothing here glows.** The steel, concrete,
+ * glass and emissive materials this file used to carry were deleted rather
+ * than left unused, because an unused material is an invitation: the old city
+ * read as science fiction precisely because those four were within reach. A
+ * fortified town of this period is earth, rubble stone, lime plaster, oak and
+ * fired clay, and an army is wool, buff leather and blackened iron.
+ *
+ * The one exception is the faction band under a stand, and it is documented
+ * where it is defined.
  */
 const stone = () =>
   material(
@@ -154,7 +88,59 @@ const tile = () =>
   material(
     'tile',
     () =>
-      new MeshStandardMaterial({ color: new Color('#8c4a33'), metalness: 0, roughness: 0.82 }),
+      new MeshStandardMaterial({ color: new Color('#7d4a38'), metalness: 0, roughness: 0.9 }),
+  );
+
+/**
+ * Turfed earth: the glacis outside the wall and the gun platforms on top of
+ * the bastions.
+ *
+ * Dark on purpose. It is the value that separates the fort from the pale
+ * stone of the rampart, and without that separation the whole thing reads as
+ * one flat disc.
+ */
+const sward = () =>
+  material(
+    'sward',
+    () =>
+      new MeshStandardMaterial({ color: new Color('#4f5232'), metalness: 0, roughness: 1 }),
+  );
+
+/**
+ * A trodden dirt track.
+ *
+ * ⚠️ Its own material, and darker than it looks like it should be. The road
+ * was first drawn in the same `earth` as the courtyard, and in direct sun that
+ * pale brown read as a bright sand-coloured apron spilling out of the town,
+ * far more prominent than the fort it was supposed to be serving. Bare earth
+ * in sunlight really is lighter than grass, so the answer is not to make it
+ * grey, it is to keep it dark enough that the eye reads it as a line rather
+ * than as a surface.
+ */
+const trackway = () =>
+  material(
+    'trackway',
+    () =>
+      new MeshStandardMaterial({ color: new Color('#514434')  , metalness: 0, roughness: 1 }),
+  );
+
+/**
+ * The wall face, drawn on both sides.
+ *
+ * A rampart is a ring, so the camera sees the inside of the far wall through
+ * the middle of it. With single-sided faces that far wall is simply absent and
+ * the fort has a bite taken out of it.
+ */
+const rubble = () =>
+  material(
+    'rubble',
+    () =>
+      new MeshStandardMaterial({
+        color: new Color('#8d8578'),
+        metalness: 0,
+        roughness: 0.94,
+        side: DoubleSide,
+      }),
   );
 
 const slate = () =>
@@ -164,6 +150,104 @@ const slate = () =>
       new MeshStandardMaterial({ color: new Color('#4a4f57'), metalness: 0, roughness: 0.7 }),
   );
 
+/** Blackened iron: a morion, a breastplate, a gun barrel. Dull, not chrome. */
+const iron = () =>
+  material(
+    'iron',
+    () =>
+      new MeshStandardMaterial({ color: new Color('#4c4a48'), metalness: 0.65, roughness: 0.62 }),
+  );
+
+/** Ash and oak in the pale: pike shafts, cart beds, wheel spokes. */
+const ash = () =>
+  material(
+    'ash',
+    () =>
+      new MeshStandardMaterial({ color: new Color('#9b7d54'), metalness: 0, roughness: 0.85 }),
+  );
+
+/** A buff leather coat, which is what most of an army is wearing. */
+const buff = () =>
+  material(
+    'buff',
+    () =>
+      new MeshStandardMaterial({ color: new Color('#b8a077'), metalness: 0, roughness: 0.94 }),
+  );
+
+const skin = () =>
+  material(
+    'skin',
+    () =>
+      new MeshStandardMaterial({ color: new Color('#b98f6d'), metalness: 0, roughness: 1 }),
+  );
+
+const horsehide = () =>
+  material(
+    'horsehide',
+    () =>
+      new MeshStandardMaterial({ color: new Color('#5a4130'), metalness: 0, roughness: 0.95 }),
+  );
+
+/** Wicker filled with earth. The most 1600 object on a battlefield. */
+const wicker = () =>
+  material(
+    'wicker',
+    () =>
+      new MeshStandardMaterial({ color: new Color('#7d6a44'), metalness: 0, roughness: 1 }),
+  );
+
+const turf = () =>
+  material(
+    'turf',
+    () =>
+      new MeshStandardMaterial({ color: new Color('#6d6552'), metalness: 0, roughness: 1 }),
+  );
+
+/**
+ * Dyed cloth in the faction's colour: sashes, coat facings, and the colours
+ * the ensign carries.
+ *
+ * Rough and unlit-looking on purpose. Cloth is the period-correct place for a
+ * faction to put its identity, and it is the only place it goes now.
+ */
+function cloth(colour: string): MeshStandardMaterial {
+  return material(
+    `cloth:${colour}`,
+    () =>
+      new MeshStandardMaterial({
+        color: new Color(colour),
+        metalness: 0,
+        roughness: 0.95,
+      }),
+  );
+}
+
+/**
+ * The faction band around a stand's tray.
+ *
+ * ⚠️ **This is the one thing on a unit that is allowed to cheat, and it is
+ * deliberate.** It replaces the emissive strip, which was the single most
+ * science-fiction object on the map and also the only reason a unit could be
+ * found in shadow, in forest or under fog. A glowing hull is a lie about the
+ * seventeenth century; a painted counter under a wargame stand is not
+ * pretending to be a physical object at all, so it can carry a little emission
+ * without claiming anything false. Kept low enough that bloom never blows it
+ * out: the old strip was at 2.4.
+ */
+function trayBand(colour: string): MeshStandardMaterial {
+  return material(
+    `trayBand:${colour}`,
+    () =>
+      new MeshStandardMaterial({
+        color: new Color(colour),
+        emissive: new Color(colour),
+        emissiveIntensity: 0.22,
+        metalness: 0,
+        roughness: 0.85,
+      }),
+  );
+}
+
 function part(geometry: BufferGeometry, mat: MeshStandardMaterial): Mesh {
   const mesh = new Mesh(geometry, mat);
   mesh.castShadow = true;
@@ -171,76 +255,448 @@ function part(geometry: BufferGeometry, mat: MeshStandardMaterial): Mesh {
   return mesh;
 }
 
+/* ------------------------------------------------------------------------ *
+ * The figure vocabulary, around 1600
+ * ------------------------------------------------------------------------ */
+
 /**
- * Unit chassis.
+ * ⚠️ **A man is this tall, and nothing makes him taller.**
  *
- * The twelve unit types share one vocabulary of parts so they read as one
- * army rather than twelve unrelated props, and differ by the loadout on top,
- * which is the part the player actually needs to tell apart at a glance.
+ * Set against the settlement, not against the camera. A village house stands
+ * about 0.35 with its roof, and a house of this period is roughly seven
+ * metres to the ridge, so a metre is about 0.05 and a man is 0.09. Everything
+ * below is measured from that one number, which is what stops a soldier
+ * quietly growing until he is taller than the houses he is marching past.
+ *
+ * A stronger unit therefore gets MORE FIGURES, never bigger ones. That is
+ * also what strength meant: a tercio was not made of larger men.
+ */
+const MAN = 0.092;
+/** Metres, in the settlement scale that `MAN` is derived from. */
+const M = MAN / 1.75;
+
+/**
+ * One soldier: coat, head, hat, and whatever he is carrying.
+ *
+ * No arms and no legs, on purpose. At the zoom this game is played at the
+ * limbs are never more than a smear, and the eye is expert enough on anatomy
+ * that a bad arm reads worse than no arm. What identifies a figure at
+ * distance is the hat and the line of the weapon, so those are what exist.
+ */
+function figure(colour: string, opts: { helmet?: boolean; sash?: boolean } = {}): Group {
+  const g = new Group();
+
+  // The coat: wider at the hem, which is the period line and also stops the
+  // figure reading as a peg.
+  const coat = part(new CylinderGeometry(MAN * 0.17, MAN * 0.26, MAN * 0.62, 6), buff());
+  coat.position.y = MAN * 0.31;
+  g.add(coat);
+
+  if (opts.sash !== false) {
+    const sash = part(new CylinderGeometry(MAN * 0.2, MAN * 0.21, MAN * 0.1, 6), cloth(colour));
+    sash.position.y = MAN * 0.46;
+    g.add(sash);
+  }
+
+  const head = part(new SphereGeometry(MAN * 0.1, 8, 6), skin());
+  head.position.y = MAN * 0.72;
+  g.add(head);
+
+  if (opts.helmet) {
+    // A morion: a brimmed steel cap with a comb along the crown.
+    const brim = part(new CylinderGeometry(MAN * 0.19, MAN * 0.19, MAN * 0.03, 8), iron());
+    brim.position.y = MAN * 0.78;
+    g.add(brim);
+    const crown = part(new SphereGeometry(MAN * 0.12, 8, 5), iron());
+    crown.position.y = MAN * 0.81;
+    crown.scale.y = 0.8;
+    g.add(crown);
+  } else {
+    // A broad felt hat, which is the other half of what an army looked like.
+    const brim = part(new CylinderGeometry(MAN * 0.22, MAN * 0.22, MAN * 0.025, 8), timber());
+    brim.position.y = MAN * 0.79;
+    g.add(brim);
+    const crown = part(new CylinderGeometry(MAN * 0.1, MAN * 0.12, MAN * 0.1, 8), timber());
+    crown.position.y = MAN * 0.85;
+    g.add(crown);
+  }
+
+  return g;
+}
+
+/** A pike: five and a half metres of ash with a small steel head. */
+function pike(): Group {
+  const g = new Group();
+  const length = 5.5 * M;
+  const shaft = part(new CylinderGeometry(M * 0.03, M * 0.04, length, 5), ash());
+  shaft.position.y = length / 2;
+  g.add(shaft);
+  const head = part(new ConeGeometry(M * 0.07, M * 0.35, 4), iron());
+  head.position.y = length + M * 0.17;
+  g.add(head);
+  return g;
+}
+
+/** A matchlock musket, carried level on its forked rest. */
+function musket(): Group {
+  const g = new Group();
+  const barrel = part(new CylinderGeometry(M * 0.035, M * 0.035, 1.4 * M, 5), iron());
+  barrel.rotation.z = Math.PI / 2;
+  barrel.position.set(0, MAN * 0.52, 0);
+  g.add(barrel);
+  const stock = part(new BoxGeometry(0.7 * M, 0.12 * M, 0.1 * M), timber());
+  stock.position.set(-0.35 * M, MAN * 0.5, 0);
+  g.add(stock);
+  // The rest. A musket of 1600 is too heavy to aim without one, and the
+  // forked stick is the thing that says "musketeer" rather than "man".
+  const rest = part(new CylinderGeometry(M * 0.03, M * 0.03, 1.3 * M, 4), ash());
+  rest.position.set(0.5 * M, MAN * 0.37, 0);
+  rest.rotation.z = 0.16;
+  g.add(rest);
+  return g;
+}
+
+/** The colours. What a unit is actually recognised by on the map. */
+function standard(colour: string): Group {
+  const g = new Group();
+  const height = 3.4 * M;
+  const pole = part(new CylinderGeometry(M * 0.035, M * 0.045, height, 5), ash());
+  pole.position.y = height / 2;
+  g.add(pole);
+  const flag = part(new BoxGeometry(1.5 * M, 1.05 * M, M * 0.05), cloth(colour));
+  flag.position.set(0.75 * M, height - 0.62 * M, 0);
+  g.add(flag);
+  return g;
+}
+
+/** A horse, seen from above and from twenty metres. */
+function horse(): Group {
+  const g = new Group();
+  const body = part(new CapsuleGeometry(0.34 * M, 1.1 * M, 4, 8), horsehide());
+  body.rotation.z = Math.PI / 2;
+  body.position.y = 1.25 * M;
+  g.add(body);
+  const neck = part(new CylinderGeometry(0.16 * M, 0.24 * M, 0.8 * M, 6), horsehide());
+  neck.position.set(0.85 * M, 1.6 * M, 0);
+  neck.rotation.z = -0.5;
+  g.add(neck);
+  const head = part(new BoxGeometry(0.5 * M, 0.22 * M, 0.22 * M), horsehide());
+  head.position.set(1.2 * M, 1.85 * M, 0);
+  g.add(head);
+  for (const x of [0.55, -0.55]) {
+    for (const z of [0.24, -0.24]) {
+      const leg = part(new CylinderGeometry(0.07 * M, 0.06 * M, 1.25 * M, 4), horsehide());
+      leg.position.set(x * M, 0.62 * M, z * M);
+      g.add(leg);
+    }
+  }
+  return g;
+}
+
+/** A gabion: a wicker cylinder packed with earth, the sandbag of its day. */
+function gabion(): Group {
+  const g = new Group();
+  const basket = part(new CylinderGeometry(0.45 * M, 0.48 * M, 1.1 * M, 8), wicker());
+  basket.position.y = 0.55 * M;
+  g.add(basket);
+  const fill = part(new CylinderGeometry(0.42 * M, 0.42 * M, 0.16 * M, 8), earth());
+  fill.position.y = 1.14 * M;
+  g.add(fill);
+  return g;
+}
+
+/** A two-wheeled cart. Scale reference and the reason a settler reads as one. */
+function cart(): Group {
+  const g = new Group();
+  const bed = part(new BoxGeometry(1.9 * M, 0.45 * M, 1.1 * M), ash());
+  bed.position.y = 0.95 * M;
+  g.add(bed);
+  for (const z of [0.62, -0.62]) {
+    const wheel = part(new CylinderGeometry(0.62 * M, 0.62 * M, 0.1 * M, 10), timber());
+    wheel.rotation.x = Math.PI / 2;
+    wheel.position.set(0, 0.62 * M, z * M);
+    g.add(wheel);
+  }
+  const shaft = part(new CylinderGeometry(0.05 * M, 0.05 * M, 1.5 * M, 4), ash());
+  shaft.rotation.z = Math.PI / 2;
+  shaft.position.set(1.6 * M, 0.85 * M, 0);
+  g.add(shaft);
+  return g;
+}
+
+/** A cannon on a field carriage. */
+function fieldPiece(): Group {
+  const g = new Group();
+  const barrel = part(new CylinderGeometry(0.16 * M, 0.22 * M, 2.6 * M, 10), iron());
+  barrel.rotation.z = Math.PI / 2;
+  barrel.rotation.y = 0;
+  barrel.position.set(0, 1.0 * M, 0);
+  barrel.rotation.x = 0;
+  g.add(barrel);
+  // Trail and cheeks: the wooden carriage the barrel is strapped into.
+  const trail = part(new BoxGeometry(2.6 * M, 0.22 * M, 0.85 * M), timber());
+  trail.position.set(-0.7 * M, 0.72 * M, 0);
+  trail.rotation.z = 0.12;
+  g.add(trail);
+  for (const z of [0.62, -0.62]) {
+    const wheel = part(new CylinderGeometry(0.85 * M, 0.85 * M, 0.12 * M, 12), ash());
+    wheel.rotation.x = Math.PI / 2;
+    wheel.position.set(0.35 * M, 0.85 * M, z * M);
+    g.add(wheel);
+  }
+  return g;
+}
+
+/** A small single-masted hoy, for the one unit that travels by water. */
+function hoy(colour: string): Group {
+  const g = new Group();
+  const hull = part(new CapsuleGeometry(1.05 * M, 3.4 * M, 4, 10), timber());
+  hull.rotation.z = Math.PI / 2;
+  hull.position.y = 0.75 * M;
+  hull.scale.y = 0.55;
+  g.add(hull);
+  const deck = part(new BoxGeometry(4.2 * M, 0.14 * M, 1.5 * M), ash());
+  deck.position.y = 1.15 * M;
+  g.add(deck);
+  const mast = part(new CylinderGeometry(0.07 * M, 0.09 * M, 4.4 * M, 6), ash());
+  mast.position.y = 3.3 * M;
+  g.add(mast);
+  const sail = part(new BoxGeometry(0.08 * M, 2.6 * M, 2.4 * M), plaster());
+  sail.position.set(0, 3.6 * M, 0);
+  g.add(sail);
+  const pennant = part(new BoxGeometry(0.9 * M, 0.4 * M, 0.04 * M), cloth(colour));
+  pennant.position.set(0.45 * M, 5.3 * M, 0);
+  g.add(pennant);
+  return g;
+}
+
+/**
+ * A unit: a wargame stand.
+ *
+ * ⚠️ **The tray is a map symbol and the figures on it are not.** That split is
+ * how this scene stays honest about a contradiction it cannot escape. A
+ * fortified town fills a hex, so a hex is a few hundred metres, so a man drawn
+ * to scale would be a twentieth of a pixel at the zoom the game opens at. The
+ * old answer was to draw the man twenty times too big. The answer here is the
+ * one a tabletop has used for a century: a printed counter, which never
+ * claimed to be an object, carries the recognition, and the miniatures
+ * standing on it keep their real proportions against the buildings.
+ *
+ * So `MAN` is fixed, and a stronger unit is a bigger CROWD.
  */
 export function buildUnit(unit: Unit, factionColour: string): Group {
   const type = unitType(unit.typeId);
   const group = new Group();
 
-  // Tracked base, shared by everything that moves.
-  const base = part(new BoxGeometry(0.52, 0.13, 0.72), darkSteel());
-  base.position.y = 0.075;
-  group.add(base);
+  // Deterministic scatter, so a stand looks formed up rather than stamped and
+  // looks the same every time the same game is loaded.
+  const seed = unit.id.split('').reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7);
+  const rand = (n: number): number => {
+    const x = Math.sin(seed * 0.017 + n * 127.1) * 43758.5453;
+    return x - Math.floor(x);
+  };
 
-  for (const side of [-1, 1]) {
-    const track = part(new CylinderGeometry(0.1, 0.1, 0.7, 12), darkSteel());
-    track.rotation.x = Math.PI / 2;
-    track.position.set(side * 0.28, 0.1, 0);
-    group.add(track);
+  const TRAY = 0.46;
+  /** Height of the plinth's top face above the hex's nominal ground. */
+  const DECK = 0.028;
+
+  /*
+   * The stand's base, as a shallow plinth rather than a plate.
+   *
+   * ⚠️ **A flat disc laid on a hex sinks into it.** The ground inside one hex
+   * is not level: it is subdivided, displaced and eroded, so a flat ring at a
+   * fixed height had its far side buried and drew as a broken arc. Exactly the
+   * failure the fog lid hit (D229). The fix is the same shape a wargame base
+   * already is: a block that stands slightly proud and is mostly underground,
+   * so the top face is always flat, always visible, and the terrain it is
+   * standing in is hidden rather than fought.
+   */
+  const tray = part(new CylinderGeometry(TRAY, TRAY * 1.03, 0.2, 6), turf());
+  tray.position.y = DECK - 0.1;
+  tray.rotation.y = Math.PI / 6;
+  group.add(tray);
+
+  /*
+   * ⚠️ **The colour has to be an annulus, not a rim.**
+   *
+   * The first attempt put a slightly wider disc under the tray so a sliver
+   * showed round the edge. Measured against the camera that sliver is three
+   * pixels at close zoom and nothing at all at the zoom the game opens at, so
+   * the stand read as a dark hole in the ground with specks on it. A broad
+   * flat ring on the deck is what a player actually sees from above, and it is
+   * the same device every strategy game has used for thirty years to say whose
+   * piece this is.
+   */
+  const ring = part(new RingGeometry(TRAY * 0.76, TRAY * 0.99, 6, 1), trayBand(factionColour));
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = DECK + 0.002;
+  ring.castShadow = false;
+  group.add(ring);
+
+  const men = new Group();
+  men.position.y = DECK;
+  group.add(men);
+
+  /** Place something on the tray, in ranks, facing forward. */
+  const place = (
+    object: Object3D,
+    x: number,
+    z: number,
+    yaw = 0,
+  ): Object3D => {
+    object.position.set(x, 0, z);
+    object.rotation.y = yaw;
+    men.add(object);
+    return object;
+  };
+
+  /*
+   * How many men. Strength buys bodies, and only bodies.
+   *
+   * A pike block of 3 and one of 8 are recognisably the same thing at
+   * different weights, which is what a strength number should look like.
+   */
+  const bodies = Math.max(2, Math.min(9, Math.round(2 + type.strength / 8)));
+
+  /** Two ranks, dressed, with a little deterministic slop. */
+  const ranks = (n: number, build: (i: number) => Group, spread = 0.24): void => {
+    const perRank = Math.ceil(n / 2);
+    for (let i = 0; i < n; i++) {
+      const rank = i < perRank ? 0 : 1;
+      const inRank = i < perRank ? i : i - perRank;
+      const count = rank === 0 ? perRank : n - perRank;
+      const x = (inRank - (count - 1) / 2) * spread + (rand(i) - 0.5) * 0.03;
+      const z = rank * 0.2 - 0.1 + (rand(i + 30) - 0.5) * 0.03;
+      place(build(i), x, z, (rand(i + 60) - 0.5) * 0.3);
+    }
+  };
+
+  switch (type.role) {
+    case 'melee': {
+      // A pike block. The hedge of shafts all leaning the same way is the
+      // most recognisable silhouette of the century, and it survives being
+      // small better than anything else here does.
+      ranks(bodies, (i) => {
+        const g = figure(factionColour, { helmet: i % 3 !== 0 });
+        const p = pike();
+        p.rotation.x = -1.05 + (rand(i + 90) - 0.5) * 0.12;
+        p.position.set(MAN * 0.16, MAN * 0.3, 0);
+        g.add(p);
+        return g;
+      });
+      break;
+    }
+
+    case 'ranged': {
+      // Shot, in a line rather than a block: musketeers fought in wide
+      // shallow ranks so that every barrel had somewhere to point.
+      ranks(Math.max(3, bodies - 1), () => {
+        const g = figure(factionColour, { helmet: false });
+        g.add(musket());
+        return g;
+      }, 0.19);
+      break;
+    }
+
+    case 'siege': {
+      place(fieldPiece(), 0, 0.02, 0.25);
+      place(figure(factionColour, { helmet: false }), -0.2, -0.16, 0.8);
+      place(figure(factionColour, { helmet: false }), 0.21, -0.17, -0.7);
+      place(gabion(), -0.26, 0.2);
+      place(gabion(), 0.27, 0.22);
+      break;
+    }
+
+    case 'defensive': {
+      // A post, not a formation: gabions in front and helmeted men behind.
+      for (const [i, x] of [-0.26, 0, 0.26].entries()) {
+        place(gabion(), x, 0.26 + (rand(i) - 0.5) * 0.04);
+      }
+      ranks(Math.max(2, bodies - 2), (i) => {
+        const g = figure(factionColour, { helmet: true });
+        const halberd = pike();
+        halberd.scale.y = 0.62;
+        halberd.rotation.x = -0.12 + (rand(i + 12) - 0.5) * 0.1;
+        halberd.position.set(MAN * 0.17, MAN * 0.3, 0);
+        g.add(halberd);
+        return g;
+      }, 0.2);
+      break;
+    }
+
+    case 'scout': {
+      // Light horse. Two riders read as cavalry; a squadron does not fit.
+      for (const [i, x] of [-0.15, 0.17].entries()) {
+        const mount = horse();
+        const rider = figure(factionColour, { helmet: false });
+        rider.position.y = 1.45 * M;
+        rider.scale.setScalar(0.92);
+        mount.add(rider);
+        place(mount, x, (rand(i) - 0.5) * 0.12, -0.12 + (rand(i + 5) - 0.5) * 0.4);
+      }
+      break;
+    }
+
+    case 'transport': {
+      place(hoy(factionColour), 0, 0, 0.3);
+      break;
+    }
+
+    case 'settler': {
+      // A surveyor with his staff, and the cart that carries the town with him.
+      const surveyor = figure(factionColour, { helmet: false });
+      const staff = part(new CylinderGeometry(M * 0.03, M * 0.03, 2.2 * M, 4), ash());
+      staff.position.set(MAN * 0.2, MAN * 0.55, 0);
+      surveyor.add(staff);
+      place(surveyor, -0.16, -0.1, 0.4);
+      place(cart(), 0.12, 0.08, -0.5);
+      break;
+    }
+
+    case 'worker': {
+      // Pioneers: the men who dig, which in 1600 is most of what wins a siege.
+      for (const [i, x] of [-0.18, 0.14].entries()) {
+        const g = figure(factionColour, { helmet: i === 0 });
+        const spade = part(new CylinderGeometry(M * 0.03, M * 0.03, 1.5 * M, 4), ash());
+        spade.rotation.z = 0.6;
+        spade.position.set(MAN * 0.22, MAN * 0.42, 0);
+        g.add(spade);
+        const blade = part(new BoxGeometry(0.35 * M, 0.42 * M, 0.05 * M), iron());
+        blade.position.set(MAN * 0.62, MAN * 0.02, 0);
+        g.add(blade);
+        place(g, x, (rand(i) - 0.5) * 0.14, rand(i + 3) * 2);
+      }
+      place(gabion(), 0.24, 0.22);
+      break;
+    }
+
+    case 'support': {
+      // Drummer and powder cart: the noise and the supply.
+      const drummer = figure(factionColour, { helmet: false });
+      const drum = part(new CylinderGeometry(0.42 * M, 0.42 * M, 0.5 * M, 10), ash());
+      drum.rotation.x = Math.PI / 2;
+      drum.position.set(MAN * 0.22, MAN * 0.38, MAN * 0.1);
+      drummer.add(drum);
+      place(drummer, -0.2, -0.12, 0.2);
+      place(cart(), 0.14, 0.1, -0.4);
+      break;
+    }
   }
 
-  const hull = part(new BoxGeometry(0.46, 0.2, 0.56), paint(factionColour));
-  hull.position.y = 0.24;
-  group.add(hull);
-
-  // A thin emissive strip, which is what makes a unit findable in shadow.
-  const strip = part(new BoxGeometry(0.48, 0.03, 0.1), emissive(factionColour));
-  strip.position.set(0, 0.35, 0.2);
-  group.add(strip);
-
-  const loadout = new Group();
-  loadout.position.y = 0.36;
-
-  if (type.range > 1) {
-    // Ranged: a long barrel on a turret ring.
-    const ring = part(new CylinderGeometry(0.17, 0.19, 0.09, 14), steel());
-    ring.position.y = 0.05;
-    loadout.add(ring);
-    const barrel = part(new CylinderGeometry(0.045, 0.055, 0.62, 10), steel());
-    barrel.rotation.x = Math.PI / 2;
-    barrel.position.set(0, 0.1, 0.3);
-    loadout.add(barrel);
-  } else if (type.strength === 0) {
-    // Civilian: a survey mast and an instrument pod.
-    const mast = part(new CylinderGeometry(0.022, 0.03, 0.5, 8), steel());
-    mast.position.y = 0.26;
-    loadout.add(mast);
-    const pod = part(new SphereGeometry(0.09, 14, 10), glass());
-    pod.position.y = 0.52;
-    loadout.add(pod);
-  } else {
-    // Melee: a hunched armoured cowl.
-    const cowl = part(new CapsuleGeometry(0.15, 0.16, 6, 14), steel());
-    cowl.rotation.z = Math.PI / 2;
-    cowl.position.y = 0.12;
-    loadout.add(cowl);
-    const blade = part(new ConeGeometry(0.1, 0.34, 10), steel());
-    blade.rotation.x = Math.PI / 2;
-    blade.position.set(0, 0.12, 0.3);
-    loadout.add(blade);
+  /*
+   * The colours, on every stand that has feet.
+   *
+   * ⚠️ **This is the findability affordance, and it has to be universal.**
+   * Only the fighting roles carried a standard at first, which meant the two
+   * units a game actually opens with, the Architect and the Profiler, were
+   * the two with nothing above knee height. On a photograph of the opening
+   * position they were invisible. A flag is period-correct, it is the tallest
+   * thing on the stand, and it is the faction's colour against the sky rather
+   * than against the ground, which is what makes it hold up in shadow.
+   */
+  if (type.domain !== 'water') {
+    place(standard(factionColour), -0.04, -0.3);
   }
-
-  group.add(loadout);
-
-  // Bigger units are bigger. The colossus and the titan are supposed to be
-  // frightening on the field, and scale is the cheapest way to say so.
-  const scale = 0.85 + Math.min(type.strength, 60) / 90;
-  group.scale.setScalar(scale);
 
   group.userData.kind = 'unit';
   group.userData.id = unit.id;
@@ -287,30 +743,71 @@ export function buildCity(city: City, factionColour: string): Group {
   const RAMPART_HEIGHT = 0.2;
 
   /*
-   * The glacis: a broad, shallow earth slope leading up to the rampart.
+   * ⚠️ **Value separation, which is what this town was actually missing.**
    *
-   * Historically the point was that attackers crossing it were exposed and
-   * had no cover; visually it is what stops the fort looking like a model
-   * dropped on the ground.
+   * The glacis, the rampart and the courtyard were all built from the same two
+   * near-white materials, so from the map camera they merged into one pale
+   * disc: a beige pancake with roofs on it. Nothing was wrong with the shapes.
+   * The bastions were there and simply could not be seen, because a silhouette
+   * needs a value difference at its edges and there was none.
+   *
+   * So each ring is now a different lightness as well as a different shape:
+   * grassed earth on the glacis (dark), rubble stone on the rampart (light),
+   * trodden dirt in the courtyard (mid). That ordering is not arbitrary
+   * either. It is what a real one looked like, because the earth slope was
+   * turfed to stop it washing away and the wall face was revetted in stone.
    */
-  const glacis = part(new CylinderGeometry(0.94, 1.02, 0.07, 6), earth());
+  const glacis = part(new CylinderGeometry(0.94, 1.02, 0.07, 6), sward());
   glacis.position.y = 0.035;
   glacis.rotation.y = Math.PI / 6;
   group.add(glacis);
 
   // The rampart itself: low, thick, and battered (wider at the base).
-  const rampart = part(
-    new CylinderGeometry(RAMPART_RADIUS, RAMPART_RADIUS + 0.1, RAMPART_HEIGHT, 6),
-    stone(),
+  //
+  // ⚠️ **It has to be a ring, and it was a solid cylinder.** That single fact
+  // is why this town read as a beige pancake for so long. A solid cylinder's
+  // top is a full disc, so the wall's own lid covered the courtyard, the
+  // street and every house plot inside it: there was no inside. Colour was
+  // never going to fix it, because what was missing was the hole.
+  //
+  // Faces are drawn double-sided so the inner revetment is visible when the
+  // camera looks down into the place, which is the angle this game is played
+  // at almost all of the time.
+  const WALL_TOP = 0.07 + RAMPART_HEIGHT;
+  const outer = part(
+    new CylinderGeometry(RAMPART_RADIUS, RAMPART_RADIUS + 0.1, RAMPART_HEIGHT, 6, 1, true),
+    rubble(),
   );
-  rampart.position.y = 0.07 + RAMPART_HEIGHT / 2;
-  rampart.rotation.y = Math.PI / 6;
-  group.add(rampart);
+  outer.position.y = 0.07 + RAMPART_HEIGHT / 2;
+  outer.rotation.y = Math.PI / 6;
+  group.add(outer);
 
-  // The courtyard, slightly lower than the wall head, so the rampart reads as
-  // a wall rather than as a plinth.
-  const courtyard = part(new CylinderGeometry(RAMPART_RADIUS - 0.08, RAMPART_RADIUS - 0.08, 0.14, 6), earth());
-  courtyard.position.y = 0.07 + 0.07;
+  const inner = part(
+    new CylinderGeometry(RAMPART_RADIUS - 0.12, RAMPART_RADIUS - 0.12, RAMPART_HEIGHT, 6, 1, true),
+    rubble(),
+  );
+  inner.position.y = 0.07 + RAMPART_HEIGHT / 2;
+  inner.rotation.y = Math.PI / 6;
+  group.add(inner);
+
+  // The rampart walk on top, turfed. Dark against the pale wall below it,
+  // which is what finally gives the fort an edge to be recognised by.
+  const walk = part(
+    new RingGeometry(RAMPART_RADIUS - 0.12, RAMPART_RADIUS, 6, 1),
+    sward(),
+  );
+  walk.rotation.x = -Math.PI / 2;
+  walk.position.y = WALL_TOP;
+  group.add(walk);
+
+  // The courtyard, well below the wall head, so the rampart reads as a wall
+  // enclosing somewhere rather than as a plinth holding something up.
+  const COURTYARD_TOP = 0.14;
+  const courtyard = part(
+    new CylinderGeometry(RAMPART_RADIUS - 0.11, RAMPART_RADIUS - 0.11, 0.14, 6),
+    earth(),
+  );
+  courtyard.position.y = COURTYARD_TOP - 0.07;
   courtyard.rotation.y = Math.PI / 6;
   group.add(courtyard);
 
@@ -318,35 +815,63 @@ export function buildCity(city: City, factionColour: string): Group {
    * Bastions on alternating corners: arrowhead platforms projecting from the
    * wall so their flanks can sweep the face between them. Three, not six,
    * because six on a hex reads as a cog rather than a fort.
+   *
+   * Each gets a turfed terreplein on top. That is both correct, since the gun
+   * platform was earth so shot would bury itself instead of throwing stone
+   * splinters, and the thing that finally makes the bastion legible from
+   * above: a dark cap on a light plinth has an edge, and an edge is a shape.
    */
   for (let i = 0; i < 3; i++) {
     const angle = (i / 3) * Math.PI * 2 + Math.PI / 6;
-    const bastion = part(new CylinderGeometry(0.2, 0.26, RAMPART_HEIGHT + 0.03, 3), stone());
-    bastion.position.set(
-      Math.cos(angle) * (RAMPART_RADIUS + 0.02),
-      0.07 + (RAMPART_HEIGHT + 0.03) / 2,
-      Math.sin(angle) * (RAMPART_RADIUS + 0.02),
-    );
+    const height = RAMPART_HEIGHT + 0.03;
+    const x = Math.cos(angle) * (RAMPART_RADIUS + 0.02);
+    const z = Math.sin(angle) * (RAMPART_RADIUS + 0.02);
+    const bastion = part(new CylinderGeometry(0.2, 0.26, height, 3), stone());
+    bastion.position.set(x, 0.07 + height / 2, z);
     // Point the arrowhead outwards, which is the whole idea of a bastion.
     bastion.rotation.y = -angle + Math.PI / 2;
     group.add(bastion);
+
+    const terreplein = part(new CylinderGeometry(0.202, 0.202, 0.028, 3), sward());
+    terreplein.position.set(x, 0.07 + height + 0.012, z);
+    terreplein.rotation.y = -angle + Math.PI / 2;
+    group.add(terreplein);
   }
 
   /*
-   * Houses: a huddle of steep-roofed blocks inside the walls. Steep because
-   * these are northern European tiled and thatched roofs, and because a steep
-   * roof still reads as a roof from a map camera looking down at it.
+   * Houses, along a street.
+   *
+   * ⚠️ **Randomly placed and randomly rotated is what made this look like
+   * scattered blocks rather than a town.** Every house was on its own bearing
+   * at its own radius, and a settlement is the opposite of that: buildings
+   * share a frontage because they share a road, and the gaps between them are
+   * regular because they were measured out as plots.
+   *
+   * So the town is a street running from the gate to the market, houses in two
+   * facing rows, gable ends to the road. Each is jittered a little because
+   * these were not surveyed, but the jitter is now noise on an order rather
+   * than the order itself.
    */
   const houses = Math.min(11, 3 + city.population * 2);
+  /** The street runs on this bearing, and the gate is at the end of it. */
+  const STREET = Math.PI * 0.18;
+  const along = { x: Math.cos(STREET), z: Math.sin(STREET) };
+  const across = { x: -Math.sin(STREET), z: Math.cos(STREET) };
+
   for (let i = 0; i < houses; i++) {
-    const angle = rand(i) * Math.PI * 2;
-    const ring = 0.16 + rand(i + 40) * 0.4;
-    const w = 0.13 + rand(i + 80) * 0.07;
+    const side = i % 2 === 0 ? 1 : -1;
+    const rank = Math.floor(i / 2);
+    // Down the street from the market place, plus a little slop.
+    const t = -0.34 + rank * 0.2 + (rand(i) - 0.5) * 0.05;
+    const off = side * (0.15 + rand(i + 40) * 0.05);
+
+    const w = 0.12 + rand(i + 80) * 0.05;
     const d = 0.13 + rand(i + 120) * 0.06;
-    const h = 0.14 + rand(i + 160) * 0.1;
-    const x = Math.cos(angle) * ring;
-    const z = Math.sin(angle) * ring;
-    const lean = rand(i + 200) * Math.PI;
+    const h = 0.13 + rand(i + 160) * 0.09;
+    const x = along.x * t + across.x * off;
+    const z = along.z * t + across.z * off;
+    // Square to the street, give or take a few degrees of settling.
+    const lean = STREET + (rand(i + 200) - 0.5) * 0.22;
 
     const walls = part(new BoxGeometry(w, h, d), rand(i + 240) > 0.55 ? plaster() : timber());
     walls.position.set(x, 0.14 + h / 2, z);
@@ -358,6 +883,83 @@ export function buildCity(city: City, factionColour: string): Group {
     roof.rotation.y = lean + Math.PI / 4;
     group.add(roof);
   }
+
+  /*
+   * The street surface, and the gate it runs out through.
+   *
+   * One directional cue is worth more than a dozen more props: a town with a
+   * road leaving it is connected to the country around it, and a town without
+   * one is a model sitting on a table.
+   */
+  const street = part(new BoxGeometry(0.98, 0.012, 0.15), trackway());
+  street.position.set(along.x * 0.08, 0.147, along.z * 0.08);
+  street.rotation.y = -STREET;
+  street.castShadow = false;
+  group.add(street);
+
+  // A gap in the rampart on the street's bearing, with the road running down
+  // the glacis and off the hex.
+  const gateX = along.x * (RAMPART_RADIUS + 0.06);
+  const gateZ = along.z * (RAMPART_RADIUS + 0.06);
+  const gateway = part(new BoxGeometry(0.19, 0.1, 0.26), trackway());
+  gateway.position.set(gateX, 0.13, gateZ);
+  gateway.rotation.y = -STREET;
+  group.add(gateway);
+
+  for (const side of [-1, 1]) {
+    const post = part(new CylinderGeometry(0.035, 0.042, 0.3, 6), stone());
+    post.position.set(
+      gateX + across.x * side * 0.1,
+      0.07 + 0.15,
+      gateZ + across.z * side * 0.1,
+    );
+    group.add(post);
+  }
+
+  const approach = part(new BoxGeometry(0.34, 0.01, 0.12), trackway());
+  approach.position.set(along.x * 1.02, 0.05, along.z * 1.02);
+  approach.rotation.y = -STREET;
+  approach.castShadow = false;
+  group.add(approach);
+
+  /*
+   * Two props by the gate, and no more.
+   *
+   * ⚠️ **These are the scale reference, which is the job no amount of extra
+   * building does.** A town made only of houses could be any size, because
+   * every part of it is measured against every other part and they all agree.
+   * A cart and a well are objects whose real size everybody knows, so they
+   * fix the whole thing: once the cart is a cart, the houses are houses.
+   *
+   * The temptation is to keep going, with villagers, fences, haystacks,
+   * washing lines and market stalls. That way the settlement becomes clutter
+   * and the fort stops reading as a fort, so it stops here.
+   */
+  const wagon = cart();
+  wagon.position.set(
+    along.x * (RAMPART_RADIUS + 0.22) + across.x * 0.11,
+    0.06,
+    along.z * (RAMPART_RADIUS + 0.22) + across.z * 0.11,
+  );
+  wagon.rotation.y = -STREET + 0.35;
+  group.add(wagon);
+
+  // A well head on the market place, at the top of the street.
+  const wellX = along.x * -0.44;
+  const wellZ = along.z * -0.44;
+  const wellWall = part(new CylinderGeometry(0.05, 0.055, 0.055, 10), stone());
+  wellWall.position.set(wellX, 0.168, wellZ);
+  group.add(wellWall);
+  for (const side of [-1, 1]) {
+    const upright = part(new CylinderGeometry(0.008, 0.009, 0.11, 4), ash());
+    upright.position.set(wellX + across.x * side * 0.045, 0.22, wellZ + across.z * side * 0.045);
+    group.add(upright);
+  }
+  const winch = part(new CylinderGeometry(0.01, 0.01, 0.1, 6), ash());
+  winch.rotation.z = Math.PI / 2;
+  winch.rotation.y = -STREET;
+  winch.position.set(wellX, 0.272, wellZ);
+  group.add(winch);
 
   /*
    * The church tower, which is what a 1600 town is recognised by from a
@@ -391,7 +993,7 @@ export function buildCity(city: City, factionColour: string): Group {
   pole.position.set(0.16, 0.14 + keepHeight + 0.3, -0.08);
   group.add(pole);
 
-  const banner = part(new BoxGeometry(0.13, 0.08, 0.006), paint(factionColour));
+  const banner = part(new BoxGeometry(0.13, 0.08, 0.006), cloth(factionColour));
   banner.position.set(0.16 + 0.065, 0.14 + keepHeight + 0.36, -0.08);
   group.add(banner);
 

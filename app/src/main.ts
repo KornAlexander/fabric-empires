@@ -2522,6 +2522,13 @@ declare global {
        * screenshot alone cost several wrong guesses in a row.
        */
       gfx: () => unknown;
+      /**
+       * Put the camera on a hex at a given distance, immediately.
+       *
+       * For photographing one village or one unit close up. Judging a model
+       * from the map camera is judging a thing four hundred pixels away.
+       */
+      look: (hex: Hex, distance?: number) => void;
       quality: (level: 'high' | 'low') => void;
       spawnEnemyAdjacent: (unitId: string) => Hex | undefined;
       clickHex: (hex: Hex) => void;
@@ -2790,6 +2797,7 @@ window.__fabricEmpires = {
   },
 
   gfx: () => scene.world,
+  look: (hex: Hex, distance = 8) => scene.focusWorld(scene.groundAt(hex), distance),
   quality: (level: 'high' | 'low') => {
     scene.setQuality(level === 'low' ? LOW_QUALITY : HIGH_QUALITY);
     fitCanvas();
