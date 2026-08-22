@@ -48,11 +48,18 @@ import {
   DAY_MS,
   DP600_QUESTIONS,
   Dp600ChallengeProvider,
+  SIEGE_LENGTH,
+  SIEGE_QUESTION_MS,
   buildLibraryModel,
+  buildSiege,
   checkAnswer,
   createMasteryTracker,
   createQuestionPresenter,
   localStorageStore,
+  proctorReady,
+  revealCorrectAnswer,
+  scoreFor,
+  scoreSiege,
   summarise,
 } from '@fabric-empires/learn';
 import { createEffects } from './render/effects.js';
@@ -175,6 +182,22 @@ let hadFirstBattle = false;
 let hordeAdvancing = false;
 /** Set when the game has an outcome, so no further turns can be played. */
 let finished = false;
+/** Set once the Proctor has been announced, so it is said only once. */
+let proctorAnnounced = false;
+/** Set while the exam is being sat, so it cannot be started twice. */
+let siegeRunning = false;
+
+/**
+ * The topic a question's skill belongs to.
+ *
+ * Questions carry a 1-based skill number from the outline; the engine's topic
+ * graph is the same 41 nodes in the same order. Keeping the lookup in one
+ * place means the exam feeds the same schedule as everything else rather than
+ * inventing topic ids of its own.
+ */
+function topicIdForSkill(skillId: number): string | undefined {
+  return state.topics.nodes[skillId - 1]?.id;
+}
 
 const canvas = document.querySelector<HTMLCanvasElement>('#map')!;
 const fxCanvas = document.querySelector<HTMLCanvasElement>('#fx')!;
@@ -223,6 +246,8 @@ const el = {
   resOptions: document.querySelector<HTMLElement>('#res-options')!,
   cities: document.querySelector<HTMLElement>('#cities')!,
   citiesList: document.querySelector<HTMLElement>('#cities-list')!,
+  readiness: document.querySelector<HTMLElement>('#readiness')!,
+  faceProctor: document.querySelector<HTMLButtonElement>('#face-proctor')!,
 };
 
 let state: GameState = createGameState('FABRIC', { topics: provider.topics() });
@@ -570,6 +595,7 @@ async function playAttack(
 
   refreshCorruption();
   refreshCities();
+  refreshReadiness();
   refreshSelection();
   dirty = true;
 }
@@ -600,6 +626,7 @@ function doFound(): void {
   }
   refreshCorruption();
   refreshCities();
+  refreshReadiness();
   select(undefined);
 }
 
@@ -781,6 +808,7 @@ async function doEndTurn(): Promise<void> {
   refreshResearch();
   refreshCorruption();
   refreshCities();
+  refreshReadiness();
   dirty = true;
 
   const presentedEnemyTurn = presentEnemyTurn(report.enemyEvents, defenderChallengeScore);
@@ -1066,11 +1094,13 @@ function refreshCities(): void {
       if (!result.ok) {
         log(result.reason, 'bad');
         refreshCities();
+  refreshReadiness();
         return;
       }
       state = result.state;
       log(chosen ? `${city.name} begins ${unitType(chosen as UnitTypeId).label}.` : `${city.name} downs tools.`);
       refreshCities();
+  refreshReadiness();
       dirty = true;
     });
 
@@ -1094,6 +1124,134 @@ function article(label: string): string {
   const initialism = /^[A-Z]{2,}\b/.test(label);
   const spoken = initialism ? 'AEFHILMNORSX' : 'AEIOU';
   return spoken.includes(first) ? 'an' : 'a';
+}
+
+/**
+ * The current library model, which is also where exam readiness comes from.
+ *
+ * Built on demand rather than cached: it reads mastery, research and the bank,
+ * all of which move, and a stale readiness number would be worse than a slow
+ * one. It is a few hundred array operations.
+ */
+function libraryModel() {
+  const now = Date.now();
+  return buildLibraryModel({
+    records: new Map(state.topics.nodes.map((n) => [n.id, mastery.get(n.id)])),
+    researched: new Set(state.research.known),
+    questions: DP600_QUESTIONS,
+    due: new Set(provider.dueTopics(now)),
+  });
+}
+
+/**
+ * Exam readiness, and the Proctor's interest in it.
+ *
+ * ⚠️ Readiness is weighted by the published branch percentages, so it moves
+ * much more slowly than a skill count and is meant to. Twenty of forty-one
+ * skills is not half the exam.
+ */
+function refreshReadiness(): void {
+  const model = libraryModel();
+  const percent = Math.round(model.examRetained * 100);
+  el.readiness.textContent = `${percent}% exam`;
+
+  const ready = proctorReady(model);
+  el.faceProctor.hidden = !ready || finished;
+  if (ready && !proctorAnnounced) {
+    proctorAnnounced = true;
+    log(
+      `The Proctor has noticed you at ${percent}% readiness. ${SIEGE_LENGTH} questions await.`,
+      'good',
+    );
+  }
+}
+
+/**
+ * Sit the exam.
+ *
+ * ⚠️ **Every answer still feeds the review schedule.** The siege is the
+ * hardest study session in the game and it would be perverse for it to be the
+ * one that teaches the spaced repetition system nothing. A player who fails
+ * comes back to a schedule that knows exactly which branch let them down.
+ *
+ * The paper is drawn from the seed, so two players comparing a run sit the
+ * same exam.
+ */
+async function faceTheProctor(): Promise<void> {
+  if (finished || siegeRunning) return;
+  siegeRunning = true;
+  el.faceProctor.disabled = true;
+
+  const paper = buildSiege(DP600_QUESTIONS, state.seed);
+  const correctIds = new Set<string>();
+  log(`The Proctor sets ${paper.length} questions.`, 'bad');
+
+  try {
+    for (const entry of paper) {
+      const request = {
+        kind: 'boss' as const,
+        topicId: `exam-${entry.position}`,
+        tier: 3 as const,
+        timeLimitMs: SIEGE_QUESTION_MS,
+      };
+      const given = await modal.ask({ question: entry.question, request });
+      const answer = given.answer;
+      const correct =
+        !given.abandoned &&
+        answer !== undefined &&
+        (Array.isArray(answer) ? answer.length > 0 : String(answer).length > 0) &&
+        (await checkAnswer(entry.question.id, answer, entry.question.answerHash));
+
+      if (correct) correctIds.add(entry.question.id);
+
+      // The schedule learns from the exam too.
+      mastery.record(
+        topicIdForSkill(entry.question.skillId) ?? entry.question.id,
+        scoreFor(correct, given.elapsedMs, request.timeLimitMs, given.abandoned),
+        given.abandoned,
+      );
+
+      await modal.reveal({
+        question: entry.question,
+        correct,
+        given: answer,
+        correctAnswer: await revealCorrectAnswer(entry.question),
+        explanation: undefined,
+        score: correct ? 1 : -1,
+        elapsedMs: given.elapsedMs,
+      });
+    }
+  } finally {
+    siegeRunning = false;
+    el.faceProctor.disabled = false;
+  }
+
+  const result = scoreSiege(paper, correctIds);
+  const percent = Math.round(result.share * 100);
+
+  if (!result.passed) {
+    log(
+      `The Proctor is unconvinced: ${result.correct} of ${result.asked} (${percent}%). Study and try again.`,
+      'bad',
+    );
+    refreshReadiness();
+    return;
+  }
+
+  finished = true;
+  el.endTurn.disabled = true;
+  el.faceProctor.hidden = true;
+  endScreen.show(
+    {
+      kind: 'exam',
+      summary: `${result.correct} of ${result.asked} correct, ${percent} percent. The Proctor has no further questions.`,
+    },
+    {
+      turn: state.turn,
+      skills: `${state.research.known.length}/${state.topics.nodes.length}`,
+      cities: [...state.cities.values()].filter((c) => c.factionId === PLAYER_FACTION_ID).length,
+    },
+  );
 }
 
 function refreshHud(): void {
@@ -1146,7 +1304,10 @@ function adopt(next: GameState, message: string): void {
   hadFirstBattle = false;
   hordeAdvancing = false;
   finished = false;
+  proctorAnnounced = false;
+  siegeRunning = false;
   el.endTurn.disabled = false;
+  el.faceProctor.disabled = false;
   endScreen.hide();
   banner.hide();
   // A duel interrupted by a new game would otherwise leave its pose behind,
@@ -1168,6 +1329,7 @@ function adopt(next: GameState, message: string): void {
   refreshResearch();
   refreshCorruption();
   refreshCities();
+  refreshReadiness();
   dirty = true;
 }
 
@@ -1282,6 +1444,7 @@ window.addEventListener('keydown', (e) => {
 window.addEventListener('resize', fitCanvas);
 el.endTurn.addEventListener('click', doEndTurn);
 el.openLibrary.addEventListener('click', () => library.toggle());
+el.faceProctor.addEventListener('click', () => void faceTheProctor());
 el.actFound.addEventListener('click', doFound);
 el.actFortify.addEventListener('click', doFortify);
 el.actSkip.addEventListener('click', doSkip);
@@ -1458,6 +1621,10 @@ declare global {
       cityBindings: () => Record<string, readonly string[]>;
       expireReviews: () => number;
       masterySummary: () => Record<string, number>;
+      readiness: () => number;
+      proctorReady: () => boolean;
+      faceProctor: () => Promise<void>;
+      studyAll: (times: number) => void;
       answerOpen: (correct?: boolean) => Promise<string | undefined>;
       openQuestion: () => Promise<
         { id: string; isOpen: boolean; options: number; accepted: number[] } | undefined
@@ -1514,6 +1681,22 @@ window.__fabricEmpires = {
     };
   },
   faceNorth: () => scene.drone.faceNorth(),
+  readiness: () => libraryModel().examRetained,
+  proctorReady: () => proctorReady(libraryModel()),
+  faceProctor: () => faceTheProctor(),
+  /**
+   * Answer every topic correctly, repeatedly.
+   *
+   * Reaching the Proctor honestly means researching and revising most of the
+   * outline, which is many turns. This is the only way an automated check can
+   * reach the endgame at all.
+   */
+  studyAll: (times: number) => {
+    for (let i = 0; i < times; i++) {
+      for (const node of state.topics.nodes) mastery.record(node.id, 1, false);
+    }
+    refreshReadiness();
+  },
   factionUnits: (factionId: string) =>
     unitsOf(state, factionId).map((u) => ({
       id: u.id,

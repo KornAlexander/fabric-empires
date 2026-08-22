@@ -142,6 +142,13 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D111 | Camps must be six hexes apart | The greedy pick takes the nearest wastes tiles, which are usually neighbours, so without a separation rule all seven spawn as one doom-stack on one side of the map and six of them still never arrive |
 | D112 | Two units each, not three | Seven factions of three is twenty-one raiders against a starting pair. Two each keeps each front survivable alone while the total makes standing still fatal, which is the balance this was meant to correct |
 | D113 | Corruption follows any antagonist | `refreshCorruption` compared against one hard-coded faction id and would have silently ignored the other six the moment they took a city |
+| D114 | **The Exam victory, and it lives in the learning layer** | The third victory from 5.8, and the only one the engine must never own: it is a statement about weighted readiness against a published outline, which the rules layer is not allowed to know exists (D35). The app asks `learn`, and tells the engine nothing but that the game is over. `EndOutcome` is a superset of the engine's `Outcome` for exactly this reason |
+| D115 | **The paper is weighted, not split evenly** | Branch B is 45 to 50 percent of the real exam and 18 of the 41 skills. An even three-way split would be a different exam wearing this one's name, and would tell the player they were ready for something they are not. Asserted to within two questions of the published proportion, plus an explicit check that B really is the largest |
+| D116 | 40 questions, 70 percent to pass | The real paper is 40 to 60; forty is the bottom of that range and already a long sitting inside a strategy game. 700 of 1000 is the published pass mark, and it is a scaled score rather than a share of questions, so the approximation is labelled wherever it is shown |
+| D117 | The Proctor calls at 80 percent, above the pass mark | Being invited a little before passing is certain is the point: the siege has to be a real test, not a lap of honour handed out once the outcome is settled. A test asserts the threshold sits above the pass mark and below 1 |
+| D118 | Failing is not fatal | An unconvinced Proctor says so and the game continues. This is a study tool: the answer to "not ready yet" is another go, not a lost campaign |
+| D119 | Exam answers feed the schedule | It would be perverse for the hardest study session in the game to be the one that teaches the spaced repetition system nothing. A player who fails returns to a schedule that knows which branch let them down |
+| D120 | ⚠️ Deviation: per-question timers, not one 100-minute clock | 5.8 asks for a siege timed over roughly 100 minutes of game time. Each question is timed at 45 seconds instead. A single wall clock ticking for an hour and a half is the real exam's shape and not a game's, and the per-question timer is the one already built, understood and pausable |
 
 ### 16.1 What "realistic" does and does not mean in this build
 
@@ -1139,6 +1146,7 @@ Accepted knowingly. Partial mitigations in place:
 - [x] Cities that build, gated by the tech tree, so research finally hands out an army
 - [x] Games that end: domination, science and defeat, with a screen that says so
 - [x] All seven antagonists on the map, one per cluster, so the whole outline can come for you
+- [x] The Exam victory: readiness in the HUD, the Proctor at 80 percent, and a weighted 40-question siege
 - [ ] Live URL on `prdsweden` (primary submitted link)
 - [ ] Static GitHub Pages build as the guaranteed-alive fallback link (D37)
 - [ ] Shareable result image working and pasteable into Discord (D40)

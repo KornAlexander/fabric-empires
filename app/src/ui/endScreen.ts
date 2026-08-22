@@ -1,6 +1,16 @@
 import type { Outcome } from '@fabric-empires/engine';
 
 /**
+ * How a game ended.
+ *
+ * A superset of the engine's outcome, because the Exam victory is not an
+ * engine concept and must not become one: it is a statement about weighted
+ * readiness against a published certification outline, which the rules layer
+ * is not allowed to know exists (D35).
+ */
+export type EndOutcome = Outcome | { readonly kind: 'exam'; readonly summary: string };
+
+/**
  * The end of a game.
  *
  * Until now a finished game just kept going: the player could press End Turn
@@ -58,15 +68,16 @@ export interface EndScreenStats {
 }
 
 export interface EndScreen {
-  show(outcome: Outcome, stats: EndScreenStats): void;
+  show(outcome: EndOutcome, stats: EndScreenStats): void;
   hide(): void;
   readonly isOpen: boolean;
 }
 
-const TITLES: Record<Outcome['kind'], string> = {
+const TITLES: Record<EndOutcome['kind'], string> = {
   defeat: 'Your empire has fallen',
   domination: 'Domination',
   science: 'Every skill mastered',
+  exam: 'The Proctor is satisfied',
 };
 
 export function createEndScreen(onNewGame: () => void): EndScreen {

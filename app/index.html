@@ -111,6 +111,16 @@
       #cities select { flex: 1; font: inherit; font-size: 12px; padding: 3px 4px; background: #131a25; color: var(--text); border: 1px solid var(--border); border-radius: 4px; }
       #cities .status { color: var(--muted); font-size: 11px; }
       #cities .status.blocked { color: #ff9b91; }
+
+      #readiness { color: var(--muted); font-variant-numeric: tabular-nums; }
+      #face-proctor {
+        background: #6b4ea8; border-color: #8a6fd0; color: #f2ecff; font-weight: 600;
+        animation: proctor 2.2s ease-in-out infinite;
+      }
+      @keyframes proctor {
+        0%, 100% { box-shadow: 0 0 0 rgba(138, 111, 208, 0); }
+        50% { box-shadow: 0 0 14px rgba(138, 111, 208, 0.75); }
+      }
     </style>
   </head>
   <body>
@@ -123,6 +133,15 @@
       <div class="res"><b id="res-cu">0</b><span>CU</span></div>
       <div class="res"><b id="res-trust">0</b><span>Trust</span></div>
       <button id="open-library" title="The Great Library: what you actually know (l)">Library</button>
+      <!--
+        Exam readiness, weighted by the published branch percentages.
+
+        In the resource bar rather than buried in the Library, because it is
+        the number the Proctor watches and a threshold nobody can see is a
+        threshold nobody can aim at.
+      -->
+      <span id="readiness" title="Share of the exam, by published weight, at familiar or better">0% exam</span>
+      <button id="face-proctor" hidden title="Sit the exam: 40 questions in the published proportions">Face the Proctor</button>
       <button id="end-turn" class="primary">End turn</button>
     </div>
 

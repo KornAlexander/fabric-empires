@@ -40,6 +40,7 @@ const STYLE = `
   padding: 2px 8px; border-radius: 999px; background: #2f5d8c; color: #dceaf7;
 }
 .fe-kind.battle { background: #8c3a2f; color: #f7dcd8; }
+.fe-kind.boss { background: #4a2f7a; color: #ede4ff; letter-spacing: 0.1em; }
 .fe-skill { color: #96a0b5; font-size: 12px; flex: 1; }
 .fe-timer { font-variant-numeric: tabular-nums; font-weight: 600; }
 .fe-timer.low { color: #ff8b80; }
@@ -134,8 +135,10 @@ export function createQuestionModal(): QuestionModal {
     modal.replaceChildren();
 
     const head = el('div', 'fe-head');
-    const kind = el('span', `fe-kind ${request.kind === 'battle' ? 'battle' : ''}`);
-    kind.textContent = request.kind;
+    // `boss` is the Proctor, which is why the kind is styled rather than
+    // printed plain: the exam should not look like an ordinary skirmish.
+    const kind = el('span', `fe-kind ${request.kind === 'battle' || request.kind === 'boss' ? request.kind : ''}`);
+    kind.textContent = request.kind === 'boss' ? 'The Proctor' : request.kind;
     const skill = el('span', 'fe-skill');
     skill.textContent = question.sourceSkillBullet;
     const timerLabel = el('span', 'fe-timer');
