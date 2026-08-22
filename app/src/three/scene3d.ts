@@ -44,7 +44,7 @@ import {
 import { createWater, type WaterSurface } from './water.js';
 import { buildScatter, type Scatter } from './scatter.js';
 import { createCombatFx, type CombatFx } from './combatFx.js';
-import { buildCity, buildUnit, disposeEntityMaterials } from './entities.js';
+import { buildCity, buildRuin, buildUnit, disposeEntityMaterials } from './entities.js';
 import { createFlyControls, type FlyTelemetry } from './flyControls.js';
 import type { CinematicShot } from './cinematic.js';
 import { createCorruption } from './corruption.js';
@@ -288,6 +288,7 @@ export function createScene3D(
 
   const unitObjects = new Map<string, Group>();
   const cityObjects = new Map<string, Group>();
+  const ruinObjects = new Map<string, Group>();
   const overlayObjects: Object3D[] = [];
 
   // Camera flight -------------------------------------------------------
@@ -537,6 +538,17 @@ export function createScene3D(
         if (state.cities.has(id)) continue;
         entityGroup.remove(object);
         cityObjects.delete(id);
+      }
+
+      // Ruins ------------------------------------------------------------
+      // Never rebuilt: a ruin does not change once it exists, so the only
+      // work here is adding the ones that are new since the last sync.
+      for (const ruin of state.ruins.values()) {
+        if (ruinObjects.has(ruin.id)) continue;
+        const object = buildRuin(ruin);
+        entityGroup.add(object);
+        ruinObjects.set(ruin.id, object);
+        placeOnGround(object, ruin.hex);
       }
 
       // Overlays ---------------------------------------------------------

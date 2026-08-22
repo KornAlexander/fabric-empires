@@ -15,7 +15,7 @@ import { unitType, type Faction } from '../entities/index.js';
 import { addResources, empireIncome, growthThreshold } from '../rules/yields.js';
 import { fundResearch, researchReady } from '../rules/research.js';
 import { reviewOpportunities, reviewPhase, type ReviewOpportunity } from '../rules/review.js';
-import { runFactionTurn, type AiEvent } from '../rules/ai.js';
+import { runFactionTurn, garrisonPhase, type AiEvent } from '../rules/ai.js';
 import { productionPhase, type ProductionEvent } from '../rules/production.js';
 import { checkOutcome, type Outcome } from '../rules/victory.js';
 import type { GameState } from '../state/index.js';
@@ -235,7 +235,11 @@ export function endTurn(state: GameState, options: TurnOptions = {}): TurnResult
   let world = refreshed;
   const enemyEvents: AiEvent[] = [];
   for (const id of [...world.factions.keys()].filter((f) => f !== factionId)) {
-    const played = runFactionTurn(refreshPhase(world, id), id, {
+    // Villages raise troops first, so a unit mustered this turn is on the map
+    // when the faction plans, but with no moves left to use.
+    const raised = garrisonPhase(refreshPhase(world, id), id);
+    enemyEvents.push(...raised.events);
+    const played = runFactionTurn(raised.state, id, {
       defenderChallengeScore: options.defenderChallengeScore ?? 0,
     });
     world = played.state;

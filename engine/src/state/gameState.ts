@@ -24,8 +24,11 @@ import {
 import {
   emptyResources,
   unitType,
+  cityKind,
   type City,
+  type CityKind,
   type Faction,
+  type Ruin,
   type Unit,
   type UnitTypeId,
 } from '../entities/index.js';
@@ -49,6 +52,8 @@ export interface GameState {
   readonly factions: ReadonlyMap<string, Faction>;
   readonly units: ReadonlyMap<string, Unit>;
   readonly cities: ReadonlyMap<string, City>;
+  /** Where cities were razed. Inert, but remembered. */
+  readonly ruins: ReadonlyMap<string, Ruin>;
   /**
    * The tech tree, supplied by the challenge provider.
    *
@@ -90,16 +95,27 @@ export interface AntagonistDefinition {
   /** Opaque to the engine; the learning layer maps it to skills. */
   readonly topicCluster: string;
   readonly colour: string;
+  /**
+   * The village this faction holds from turn one.
+   *
+   * ⚠️ Every antagonist owns one. Before this they were two units standing on
+   * open ground, which meant they could raid the player forever but the player
+   * could never take anything from them: there was no object of the war. It
+   * also meant Domination was decided purely by killing units, and the capture
+   * path already written in `combat.ts` was unreachable code.
+   */
+  readonly seat: string;
+  readonly seatKind: CityKind;
 }
 
 export const ANTAGONISTS: readonly AntagonistDefinition[] = Object.freeze([
-  { id: ANTAGONIST_FACTION_ID, label: 'The Silo Horde', topicCluster: 'B1', colour: '#b5533f' },
-  { id: 'open-gate', label: 'The Open Gate', topicCluster: 'A1', colour: '#c2793a' },
-  { id: 'untracked', label: 'The Untracked', topicCluster: 'A2', colour: '#8a6fb0' },
-  { id: 'denormalizers', label: 'The Denormalizers', topicCluster: 'B2', colour: '#a8474f' },
-  { id: 'scan-wraiths', label: 'The Scan Wraiths', topicCluster: 'B3', colour: '#4f7f7a' },
-  { id: 'flat-table-cult', label: 'The Flat Table Cult', topicCluster: 'C1', colour: '#9c5f8a' },
-  { id: 'import-zealots', label: 'The Import Zealots', topicCluster: 'C2', colour: '#7b8a3f' },
+  { id: ANTAGONIST_FACTION_ID, label: 'The Silo Horde', topicCluster: 'B1', colour: '#b5533f', seat: 'Silo Hold', seatKind: 'lakehouse' },
+  { id: 'open-gate', label: 'The Open Gate', topicCluster: 'A1', colour: '#c2793a', seat: 'Unbarred Yard', seatKind: 'workspace' },
+  { id: 'untracked', label: 'The Untracked', topicCluster: 'A2', colour: '#8a6fb0', seat: 'Tallyless', seatKind: 'eventhouse' },
+  { id: 'denormalizers', label: 'The Denormalizers', topicCluster: 'B2', colour: '#a8474f', seat: 'Wide Row', seatKind: 'warehouse' },
+  { id: 'scan-wraiths', label: 'The Scan Wraiths', topicCluster: 'B3', colour: '#4f7f7a', seat: 'Full Sweep', seatKind: 'warehouse' },
+  { id: 'flat-table-cult', label: 'The Flat Table Cult', topicCluster: 'C1', colour: '#9c5f8a', seat: 'One Great Table', seatKind: 'semanticModel' },
+  { id: 'import-zealots', label: 'The Import Zealots', topicCluster: 'C2', colour: '#7b8a3f', seat: 'Copy Landing', seatKind: 'semanticModel' },
 ]);
 
 export interface NewGameOptions {
@@ -133,8 +149,15 @@ export function cityAt(state: GameState, hex: Hex): City | undefined {
   return undefined;
 }
 
-export function unitsOf(state: GameState, factionId: string): Unit[] {
-  return [...state.units.values()].filter((u) => u.factionId === factionId);
+export function ruinAt(state: GameState, hex: Hex): Ruin | undefined {
+  const key = hexKey(hex);
+  for (const ruin of state.ruins.values()) {
+    if (hexKey(ruin.hex) === key) return ruin;
+  }
+  return undefined;
+}
+
+export function unitsOf(state: GameState, factionId: string): Unit[] {  return [...state.units.values()].filter((u) => u.factionId === factionId);
 }
 
 export function citiesOf(state: GameState, factionId: string): City[] {
@@ -366,6 +389,7 @@ export function createGameState(
   if (escortHex) place('profiler', escortHex, PLAYER_FACTION_ID);
 
   const factions = new Map<string, Faction>([[player.id, player]]);
+  const cities = new Map<string, City>();
 
   if (options.spawnAntagonists !== false) {
     /*
@@ -392,6 +416,33 @@ export function createGameState(
         topicCluster: definition.topicCluster,
       });
 
+      /*
+       * The village sits on the camp anchor, and the raiders start on it.
+       *
+       * Population 2 rather than 1: `cityCombatSide` defends at
+       * `20 + population * 6`, so 2 is 32, which a lone starting unit cannot
+       * chew through but a purpose-built siege unit can. A village that fell
+       * to the first thing that wandered past would not be worth marching to.
+       */
+      const seatId = `city-${nextId++}`;
+      cities.set(seatId, {
+        id: seatId,
+        factionId: definition.id,
+        hex: anchor,
+        name: definition.seat,
+        kind: definition.seatKind,
+        hp: cityKind(definition.seatKind).baseHp,
+        population: 2,
+        growthStore: 0,
+        boundSkills: [],
+        unrest: 0,
+        ignoredReviews: 0,
+        reviewBonusUntilTurn: 0,
+        lastReviewTurn: -1,
+        productionProgress: 0,
+        lastRaidedTurn: -1,
+      });
+
       for (const typeId of roster) {
         const hex = taken.has(hexKey(anchor))
           ? freeAdjacent(map, anchor, taken)
@@ -410,7 +461,8 @@ export function createGameState(
     mapOverrides,
     factions,
     units,
-    cities: new Map(),
+    cities,
+    ruins: new Map(),
     topics: options.topics ?? GENERIC_TOPIC_GRAPH,
     research: EMPTY_RESEARCH,
     activeFactionId: PLAYER_FACTION_ID,

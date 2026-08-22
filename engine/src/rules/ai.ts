@@ -1,10 +1,11 @@
 import { hexDistance, hexKey, type Hex } from '../hex/index.js';
-import { isCivilian, unitType } from '../entities/index.js';
+import { isCivilian, unitType, type UnitTypeId } from '../entities/index.js';
 import type { GameState } from '../state/index.js';
 import { cityAt, unitAt } from '../state/index.js';
 import { moveUnit } from './actions.js';
 import { canAttack, resolveAttack, type CombatLog } from './combat.js';
 import { findPath, reachable } from './movement.js';
+import { musterTile } from './production.js';
 
 /**
  * The antagonist's turn.
@@ -255,6 +256,97 @@ export function planFactionTurn(state: GameState, factionId: string): AiIntent[]
  * Units are re-planned after each action, so one can close the distance and
  * strike in the same turn if it has the movement for it.
  */
+/**
+ * Turns a village spends raising one unit.
+ *
+ * ⚠️ **Deliberately slow.** The antagonists are not plugged into the economy:
+ * they have no treasury the player can see, so an income-driven garrison would
+ * look arbitrary. A fixed cadence is legible instead, and it is the single knob
+ * that decides whether villages are a standing threat or scenery. Measured
+ * against the section 16.7 experiment before it was allowed to stay.
+ */
+export const GARRISON_INTERVAL_TURNS = 6;
+
+/**
+ * Units a faction may field from its villages.
+ *
+ * Counts the whole faction, not the city, so seven factions cannot each grow an
+ * unbounded army while the player is busy elsewhere. Starting strength is two,
+ * so this is room for two more.
+ */
+export const MAX_GARRISON_PER_FACTION = 4;
+
+/** What a village raises. Melee, because a village defends and marches. */
+const GARRISON_UNIT: UnitTypeId = 'pipelineRunner';
+
+/**
+ * Villages raise troops.
+ *
+ * Uses `productionProgress` as the counter rather than adding state, because it
+ * is already on every city, already saved, and already means exactly this.
+ * A faction at its cap holds at the threshold instead of resetting, so losing a
+ * unit is followed by a replacement rather than another six turns of nothing.
+ */
+export function garrisonPhase(state: GameState, factionId: string): AiTurnResult {
+  const faction = state.factions.get(factionId);
+  if (!faction || faction.isPlayer) return { state, events: [] };
+
+  const cities = new Map(state.cities);
+  const units = new Map(state.units);
+  const events: AiEvent[] = [];
+  let nextEntityId = state.nextEntityId;
+  let standing = [...state.units.values()].filter((u) => u.factionId === factionId).length;
+  let changed = false;
+
+  for (const id of [...state.cities.keys()].sort()) {
+    const city = state.cities.get(id)!;
+    if (city.factionId !== factionId) continue;
+
+    const progress = city.productionProgress + 1;
+    if (progress < GARRISON_INTERVAL_TURNS) {
+      cities.set(id, { ...city, productionProgress: progress });
+      changed = true;
+      continue;
+    }
+    if (standing >= MAX_GARRISON_PER_FACTION) {
+      // Hold at the threshold: ready, but with nowhere to put anyone.
+      cities.set(id, { ...city, productionProgress: GARRISON_INTERVAL_TURNS });
+      changed = true;
+      continue;
+    }
+
+    const spot = musterTile({ ...state, cities }, { ...city, producing: GARRISON_UNIT });
+    if (!spot) {
+      cities.set(id, { ...city, productionProgress: GARRISON_INTERVAL_TURNS });
+      changed = true;
+      continue;
+    }
+
+    const unitId = `unit-${nextEntityId++}`;
+    const type = unitType(GARRISON_UNIT);
+    units.set(unitId, {
+      id: unitId,
+      typeId: GARRISON_UNIT,
+      factionId,
+      hex: spot,
+      hp: type.maxHp,
+      movesLeft: 0, // raised this turn, marches the next one
+      fortified: false,
+    });
+    cities.set(id, { ...city, productionProgress: 0 });
+    standing += 1;
+    changed = true;
+    events.push({
+      factionId,
+      unitId,
+      intent: { kind: 'move', unitId, to: spot, towards: spot },
+    });
+  }
+
+  if (!changed) return { state, events };
+  return { state: { ...state, cities, units, nextEntityId }, events };
+}
+
 export function runFactionTurn(
   state: GameState,
   factionId: string,

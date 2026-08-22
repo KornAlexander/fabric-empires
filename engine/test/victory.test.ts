@@ -30,6 +30,22 @@ const allTopicsKnown = (state: GameState): GameState => ({
   research: { ...state.research, known: state.topics.nodes.map((n) => n.id) },
 });
 
+/**
+ * Wipe a faction's settlements.
+ *
+ * ⚠ Needed because every antagonist now holds a village. Killing their units
+ * no longer removes them from the map, which is the entire point: Domination
+ * used to be won by hunting fourteen wandering raiders, and is now won by
+ * taking or burning seven places.
+ */
+const withoutCitiesOf = (state: GameState, factionId: string): GameState => {
+  const cities = new Map(state.cities);
+  for (const [id, city] of cities) {
+    if (city.factionId === factionId) cities.delete(id);
+  }
+  return { ...state, cities };
+};
+
 describe('while the game is being played', () => {
   it('reports nothing on a fresh map', () => {
     expect(checkOutcome(createGameState('FABRIC'), PLAYER_FACTION_ID)).toBeUndefined();
@@ -55,7 +71,9 @@ describe('defeat', () => {
     if (!founded.ok) return;
 
     const stripped = withoutUnitsOf(founded.state, PLAYER_FACTION_ID);
-    expect(stripped.cities.size).toBe(1);
+    expect(
+      [...stripped.cities.values()].filter((c) => c.factionId === PLAYER_FACTION_ID),
+    ).toHaveLength(1);
     expect(checkOutcome(stripped, PLAYER_FACTION_ID)).toBeUndefined();
   });
 
@@ -78,9 +96,20 @@ describe('domination', () => {
     // Every rival, not just the nearest one. There are seven.
     let state = createGameState('FABRIC');
     for (const id of state.factions.keys()) {
-      if (id !== PLAYER_FACTION_ID) state = withoutUnitsOf(state, id);
+      if (id !== PLAYER_FACTION_ID) {
+        state = withoutCitiesOf(withoutUnitsOf(state, id), id);
+      }
     }
     expect(checkOutcome(state, PLAYER_FACTION_ID)?.kind).toBe('domination');
+  });
+
+  it('is not declared while a rival still holds a village', () => {
+    // Killing every raider is not enough any more. The village is the empire.
+    let state = createGameState('FABRIC');
+    for (const id of state.factions.keys()) {
+      if (id !== PLAYER_FACTION_ID) state = withoutUnitsOf(state, id);
+    }
+    expect(checkOutcome(state, PLAYER_FACTION_ID)).toBeUndefined();
   });
 
   it('is not declared while one rival still stands', () => {
@@ -89,7 +118,9 @@ describe('domination', () => {
     let state = createGameState('FABRIC');
     const rivals = [...state.factions.keys()].filter((id) => id !== PLAYER_FACTION_ID);
     expect(rivals.length).toBeGreaterThan(1);
-    for (const id of rivals.slice(0, -1)) state = withoutUnitsOf(state, id);
+    for (const id of rivals.slice(0, -1)) {
+      state = withoutCitiesOf(withoutUnitsOf(state, id), id);
+    }
     expect(checkOutcome(state, PLAYER_FACTION_ID)).toBeUndefined();
   });
 

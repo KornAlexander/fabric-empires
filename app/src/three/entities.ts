@@ -25,7 +25,7 @@ import {
   SphereGeometry,
   type BufferGeometry,
 } from 'three';
-import { cityKind, unitType, type City, type Unit } from '@fabric-empires/engine';
+import { cityKind, unitType, type City, type Ruin, type Unit } from '@fabric-empires/engine';
 
 const materialCache = new Map<string, MeshStandardMaterial>();
 
@@ -402,6 +402,73 @@ export function buildCity(city: City, factionColour: string): Group {
 
   group.userData.kind = 'city';
   group.userData.id = city.id;
+  return group;
+}
+
+/**
+ * What is left after a razing.
+ *
+ * The same bastioned outline as a village, but broken: a ring of stumps where
+ * the rampart stood, a few fallen blocks, and one gable still up. No banner and
+ * no faction colour, because a ruin belongs to nobody. It is deliberately low
+ * and grey so that from a distance a razed hex reads as empty ground with
+ * something wrong about it, rather than as a settlement you could still take.
+ */
+export function buildRuin(ruin: Ruin): Group {
+  const group = new Group();
+
+  const seed = ruin.hex.q * 73856093 + ruin.hex.r * 19349663;
+  const rand = (n: number): number => {
+    const x = Math.sin(seed + n * 127.1) * 43758.5453;
+    return x - Math.floor(x);
+  };
+
+  // The scorched footprint the rampart used to sit on.
+  const scar = part(new CylinderGeometry(0.8, 0.86, 0.05, 6), earth());
+  scar.position.y = 0.025;
+  scar.castShadow = false;
+  group.add(scar);
+
+  // Broken rampart: six stumps at the old corners, most of them knocked down.
+  for (let i = 0; i < 6; i++) {
+    if (rand(i) < 0.28) continue; // that stretch is gone entirely
+    const height = 0.05 + rand(i + 40) * 0.11;
+    const stump = part(new BoxGeometry(0.26, height, 0.1), stone());
+    const angle = (Math.PI / 3) * i + Math.PI / 6;
+    stump.position.set(
+      Math.cos(angle) * 0.68,
+      height / 2 + 0.04,
+      Math.sin(angle) * 0.68,
+    );
+    stump.rotation.y = -angle;
+    // Leaning, because nothing here is plumb any more.
+    stump.rotation.z = (rand(i + 90) - 0.5) * 0.24;
+    group.add(stump);
+  }
+
+  // Fallen blocks scattered inside the old walls.
+  for (let i = 0; i < 5; i++) {
+    const size = 0.05 + rand(i + 130) * 0.06;
+    const block = part(new BoxGeometry(size, size * 0.7, size), stone());
+    const angle = rand(i + 170) * Math.PI * 2;
+    const radius = rand(i + 210) * 0.5;
+    block.position.set(
+      Math.cos(angle) * radius,
+      size * 0.35 + 0.04,
+      Math.sin(angle) * radius,
+    );
+    block.rotation.y = rand(i + 250) * Math.PI;
+    group.add(block);
+  }
+
+  // One gable still standing, so the eye reads "this was a place".
+  const gable = part(new BoxGeometry(0.12, 0.26, 0.04), plaster());
+  gable.position.set(0.1, 0.17, -0.12);
+  gable.rotation.z = 0.07;
+  group.add(gable);
+
+  group.userData.kind = 'ruin';
+  group.userData.id = ruin.id;
   return group;
 }
 

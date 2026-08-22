@@ -30,8 +30,15 @@ function withCapital(): GameState {
   return founded.state;
 }
 
+/**
+ * The player's only city.
+ *
+ * ⚠️ Not simply the first city on the state any more: every antagonist now
+ * holds a village from turn one, and those are inserted before the player has
+ * founded anything. Reviews are the player's, so this has to say so.
+ */
 function onlyCity(state: GameState): City {
-  return [...state.cities.values()][0]!;
+  return [...state.cities.values()].find((c) => c.factionId === PLAYER_FACTION_ID)!;
 }
 
 function bindMany(state: GameState, topics: readonly string[]): GameState {

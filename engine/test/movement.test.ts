@@ -635,6 +635,7 @@ describe('founding cities', () => {
       reviewBonusUntilTurn: 0,
       lastReviewTurn: -1,
       productionProgress: 0,
+      lastRaidedTurn: -1,
     });
     expect(canFoundCity({ ...state, cities }, architect)).toBe(false);
   });

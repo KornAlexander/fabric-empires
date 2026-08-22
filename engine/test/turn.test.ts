@@ -35,9 +35,17 @@ function architectOf(state: GameState): Unit {
   return unitsOf(state, PLAYER_FACTION_ID).find((u) => u.typeId === 'architect')!;
 }
 
-/** A state with the capital founded, which is where the economy starts. */
+/**
+ * A state with the capital founded, which is where the economy starts.
+ *
+ * ⚠️ **Sandbox, with no antagonists.** Every antagonist now holds a village
+ * from turn one, so on a normal map `state.cities` contains eight settlements
+ * and "the only city" is meaningless. These tests are about the player's
+ * economy, and the cleanest way to say that is to leave the opposition out
+ * rather than filter it back out at every assertion.
+ */
 function withCapital(seed = 'FABRIC'): GameState {
-  const state = createGameState(seed);
+  const state = createGameState(seed, { spawnAntagonists: false });
   const result = foundCity(state, architectOf(state).id);
   if (!result.ok) throw new Error(`Could not found capital: ${result.reason}`);
   return result.state;
@@ -45,7 +53,7 @@ function withCapital(seed = 'FABRIC'): GameState {
 
 describe('founding a city', () => {
   it('consumes the architect and creates a workspace', () => {
-    const state = createGameState('FABRIC');
+    const state = createGameState('FABRIC', { spawnAntagonists: false });
     const architect = architectOf(state);
     const result = foundCity(state, architect.id);
 
@@ -104,7 +112,9 @@ describe('territory', () => {
   });
 
   it('is empty before any city exists', () => {
-    expect(cityTerritory(createGameState('FABRIC')).size).toBe(0);
+    expect(
+      cityTerritory(createGameState('FABRIC', { spawnAntagonists: false })).size,
+    ).toBe(0);
   });
 });
 

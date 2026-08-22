@@ -197,6 +197,75 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D166 | ⚠️ Three Anno ideas are deliberately refused | Trade routes would be a logistics interface serving a game about revision. A tax slider would compete with the review loop, which already is the satisfaction mechanic. And a neutral trader selling progress is the wrong message in a study tool: if one ever exists it sells time, never answers |
 | D167 | ⚠️ The hex grid follows the surface instead of cutting a chord across it | The map looked "cut apart with gaps". It was not geometry: the ground is one welded indexed mesh, 309,418 vertices and 596,256 triangles with no holes. The grid drew **one straight segment per hex edge** while the surface between those corners is subdivided four ways, displaced by detail noise and then eroded. A straight line under a curved surface sinks below it mid-edge and surfaces near the corners, carving a dark groove around every tile. Each edge is now sampled at the terrain's own subdivision points, where `finishedHeight` already holds the final smoothed and eroded height, so the line lies **on** the mesh: 18,906 segments became 75,624, and the lift dropped from 0.035 to 0.02 because it only has to clear depth precision, not a bulge |
 | D168 | The seams got worse when the map grew, and that is why they surfaced now | Relief per hex is unchanged, but radius 25 to 45 put far more displaced surface between the camera and the horizon, so the chord error was visible across thousands of tiles at once instead of a few dozen. A rendering shortcut that is invisible at one scale is not therefore correct |
+| D169 | Every antagonist holds a village from turn one | They were seven pairs of units standing on open ground. They could raid the player forever and the player could never take anything from them, so the war had no object. It also meant the capture path in `combat.ts` was **unreachable code**: fully written, fully tested against hand-built states, and impossible to reach in a real game |
+| D170 | ⚠️ Capturing is the only one of the three that teaches you anything | Each faction quizzes on its own DP-600 cluster, so taking its village grants a foothold in that cluster. This is the whole feature. Loot is spent; a cluster is learned. A player who razes everything finishes rich, undefeated and narrow, which is exactly how a real candidate fails this exam |
+| D171 | Razing is deliberately the tempting option | It pays 55% of a village's worth against a raid's 12%, it is fast, and it is final. A choice where the right answer is obvious is not a choice. The cost is invisible at the moment you pay it, which is the point |
+| D172 | Raid and raze are separate verbs | Raze is a decision made at the instant the walls fall, so it rides on `attack` as `cityOutcome`. Raid is its own action: adjacent, melee only, no need to break anything, on a four-turn cooldown. Without the cooldown a unit parked beside a village is an income stream and standing still becomes optimal, which is the one behaviour this game exists to punish |
+| D173 | A razed village leaves a ruin, not bare ground | Inert: no yield, no defence, no production. It exists so the late map remembers the war and so a razed hex does not read as somewhere you could still march on. Kept as its own record rather than a tile flag, because tiles are map data fixed at generation and a ruin is something that happened |
+| D174 | The spoils rule respects prerequisites, and only ever fires for the player | Granting a node whose `requires` are unmet would put the tech tree in a state the research rules can never produce, and every readiness number downstream would then describe a tree that cannot exist. And `state.research` is the player's alone, so a faction-blind version would have handed the player a topic every time an antagonist took one of their cities |
+| D175 | ⚠️ Villages raise troops on a fixed cadence, not out of an economy | One unit per village per six turns, capped at four per faction. The antagonists have no treasury the player can inspect, so income-driven musters would look arbitrary. A cadence is legible and it is a single knob. Uses `productionProgress`, which is already on every city, already saved, and already means exactly this |
+| D176 | Measured before it was allowed to stay: the curve holds | Passive player, garrisons on, six seeds: **defeated on 6 of 6, median turn 19** (range 18 to 31), first raid turn 12 to 27, and every faction pinned at the 4-unit cap by the end. Section 16.7 needs a passive player to lose and they still do. Giving seven factions unit production was the most dangerous change made to this game, and the only honest way to know was to run it |
+| D177 | Domination now means taking their settlements, not hunting their units | `stillStanding` already counted cities, so seeding villages silently changed the win condition from killing fourteen wandering raiders to reducing seven places. That is a better game and it was worth making explicit, so `victory.test.ts` now asserts that clearing every rival unit while a village stands is **not** a victory |
+| D178 | Raid is on `p`, not `r` | `r` is one of `flyControls`' `MOVEMENT_KEYS`, so binding raid to it would have engaged the drone and flown the camera on every raid. The same trap that already moved fortify off `f` and skip off `s` |
+
+### 25. Their villages: attack, capture, raze or raid
+
+Seven factions, seven villages, three things you may do to one. The engine already
+knew how to capture a city; what it lacked was a city worth capturing.
+
+#### 25.1 The three verbs
+
+| Verb | Requires | Takes | Leaves | Teaches |
+|---|---|---|---|---|
+| **Raid** | Adjacent, melee, off cooldown | 12% of the village's worth | The village standing, +1 unrest, ‑12 HP, 4-turn cooldown | Nothing |
+| **Capture** | Walls at zero, melee blow | The settlement itself | A city you now have to hold | **A foothold in their cluster** |
+| **Raze** | Walls at zero, melee blow | 55% of the village's worth | A ruin | Nothing |
+
+⚠️ **The asymmetry is the design.** Razing pays roughly four and a half times a
+raid and ends the threat permanently. Capturing pays nothing immediately. The
+only thing capture gives you is the loser's syllabus, and that is worth more than
+any amount of Compute to a player who intends to pass the exam. The game does not
+say so at the moment of choosing beyond one line of text: finding out is the
+lesson.
+
+#### 25.2 Why this is the breadth mechanic
+
+D163 wanted island affinity to force breadth. This does it more directly. Each
+faction owns one DP-600 cluster (`A1`, `A2`, `B1`, `B2`, `B3`, `C1`, `C2`), which
+means **the map is the syllabus laid out geographically**, and a player who only
+ever fights their nearest neighbour is revising one seventh of the exam.
+
+The two id sets are joined by nothing but matching strings, on both sides, with no
+validation. A renamed cluster or an eighth faction would not throw, would not fail
+a type check, and would not fail any pre-existing test: conquest would simply stop
+teaching anything and it would look like a balance problem. `learn/test/antagonists.test.ts`
+exists solely to make that failure loud.
+
+#### 25.3 What the garrison cadence does to the curve
+
+| Seed | Defeat turn | First raid | Enemy units at end | Enemy villages |
+|---|---|---|---|---|
+| FABRIC | 19 | 17 | 28 | 7 |
+| DP600 | 19 | 15 | 28 | 7 |
+| HORDE | 18 | 12 | 26 | 7 |
+| LAKEHOUSE | 31 | 27 | 28 | 7 |
+| ONELAKE | 21 | 20 | 26 | 7 |
+| DIRECTLAKE | 19 | 16 | 28 | 7 |
+
+Passive player, six seeds, defeated on all six, median turn 19. The cap binds
+exactly as intended: 7 factions × 4 units = 28. The experiment in section 16.7
+still means what it meant.
+
+#### 25.4 Still open
+
+- Villages do not expand. Each faction founds nothing beyond its seat, so the map
+  does not grow more dangerous in area, only in density. AI settlers are the
+  obvious next step and were cut to protect the deadline.
+- Ruins can be settled on, because `canFoundCity` only checks distance to cities,
+  but nothing rewards doing so. A resettlement bonus is the natural follow-up.
+- Walls are not modelled yet: `cityCombatSide` still defends at
+  `20 + population × 6`. Phase 4, the siege, is what turns these villages into
+  something you have to reduce rather than something you have to reach.
 
 ### 16.1 What "realistic" does and does not mean in this build
 

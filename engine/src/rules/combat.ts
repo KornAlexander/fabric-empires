@@ -12,6 +12,8 @@ import { terrain } from '../map/index.js';
 import { createRng, type Rng } from '../rng/index.js';
 import { isCivilian, cityKind, unitType, type City, type Unit } from '../entities/index.js';
 import { cityAt, tileAt, unitAt, type GameState } from '../state/index.js';
+import { grantFoothold, razeCityAt } from './sack.js';
+import type { ResourceId } from '../map/index.js';
 
 /**
  * Strength swing between a perfect answer and a wrong one.
@@ -68,6 +70,19 @@ export interface CombatLog {
   readonly defenderDestroyed: boolean;
   readonly attackerDestroyed: boolean;
   readonly cityCaptured: boolean;
+  /** The walls came down and the attacker chose to burn it instead. */
+  readonly cityRazed: boolean;
+  /** Who held the city, so the log can name what was taken from whom. */
+  readonly cityFormerFactionId?: string;
+  /** Plunder carried off by a razing. */
+  readonly loot?: Partial<Record<ResourceId, number>>;
+  /**
+   * Topic opened by capturing a city from a faction that quizzes on it.
+   *
+   * ⚠️ This is the reason to capture rather than raze, and the only one that
+   * matters: loot is spent, a cluster is learned.
+   */
+  readonly clusterOpened?: string;
   readonly challengeScore: number;
 }
 
@@ -231,6 +246,13 @@ export interface AttackOptions {
   readonly defenderChallengeScore?: number;
   readonly techBonus?: number;
   readonly rng?: Rng;
+  /**
+   * What to do with the city if this blow brings it down.
+   *
+   * Defaults to capture, which is what the game did before there was a choice,
+   * so every existing caller and save keeps its old behaviour.
+   */
+  readonly cityOutcome?: 'capture' | 'raze';
 }
 
 /**
@@ -351,6 +373,9 @@ export function resolveAttack(
   let defenderId: string;
   let defenderDestroyed = false;
   let cityCaptured = false;
+  let cityRazed = false;
+  let razedCityId: string | undefined;
+  let cityFormerFactionId: string | undefined;
 
   if (preview.targetKind === 'unit') {
     const defender = unitAt(state, target)!;
@@ -370,13 +395,19 @@ export function resolveAttack(
       // Only a melee unit can walk in and take the city. Bombardment alone
       // never captures anything, which is what keeps siege units support
       // rather than a win button.
-      cityCaptured = true;
-      cities.set(city.id, {
-        ...city,
-        factionId: attacker.factionId,
-        hp: Math.round(city.hp * 0.25),
-        population: Math.max(1, city.population - 1),
-      });
+      cityFormerFactionId = city.factionId;
+      if (options.cityOutcome === 'raze') {
+        cityRazed = true;
+        razedCityId = city.id;
+      } else {
+        cityCaptured = true;
+        cities.set(city.id, {
+          ...city,
+          factionId: attacker.factionId,
+          hp: Math.round(city.hp * 0.25),
+          population: Math.max(1, city.population - 1),
+        });
+      }
     } else {
       cities.set(city.id, { ...city, hp: Math.max(1, cityHp) });
     }
@@ -386,8 +417,11 @@ export function resolveAttack(
     units.delete(attacker.id);
   } else {
     const movesLeft = 0; // attacking always ends the unit's turn
+    // A razed hex is walked into as well: there is nothing left holding it.
     const nextHex =
-      cityCaptured || (defenderDestroyed && !preview.ranged) ? target : attacker.hex;
+      cityCaptured || cityRazed || (defenderDestroyed && !preview.ranged)
+        ? target
+        : attacker.hex;
     units.set(attacker.id, {
       ...attacker,
       hp: attackerHp,
@@ -397,10 +431,37 @@ export function resolveAttack(
     });
   }
 
+  let next: GameState = { ...state, units, cities };
+  let loot: Record<ResourceId, number> | undefined;
+  let clusterOpened: string | undefined;
+
+  if (cityRazed && razedCityId) {
+    const burned = razeCityAt(next, razedCityId, attacker.factionId);
+    next = burned.state;
+    loot = burned.loot;
+  }
+
+  /*
+   * Spoils of capture: the loser's syllabus.
+   *
+   * ⚠️ Only for the player, because `state.research` is the player's and
+   * nobody else's. An antagonist taking a city must not quietly hand the
+   * player a topic, which is what a faction-blind version of this did.
+   */
+  if (cityCaptured && cityFormerFactionId) {
+    const captor = state.factions.get(attacker.factionId);
+    const loser = state.factions.get(cityFormerFactionId);
+    if (captor?.isPlayer && loser) {
+      const granted = grantFoothold(next, loser.topicCluster);
+      next = granted.state;
+      if (granted.topicId !== undefined) clusterOpened = granted.topicId;
+    }
+  }
+
   return {
     ok: true,
     result: {
-      state: { ...state, units, cities },
+      state: next,
       log: {
         attackerId,
         defenderId,
@@ -410,6 +471,10 @@ export function resolveAttack(
         defenderDestroyed,
         attackerDestroyed,
         cityCaptured,
+        cityRazed,
+        ...(cityFormerFactionId !== undefined ? { cityFormerFactionId } : {}),
+        ...(loot !== undefined ? { loot } : {}),
+        ...(clusterOpened !== undefined ? { clusterOpened } : {}),
         challengeScore: options.challengeScore ?? 0,
       },
     },

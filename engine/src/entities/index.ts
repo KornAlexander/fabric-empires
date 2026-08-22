@@ -115,6 +115,32 @@ export interface City {
   readonly producing?: UnitTypeId;
   /** Compute already sunk into the current build. Kept when orders change. */
   readonly productionProgress: number;
+  /**
+   * Turn this city was last raided, so a raid is not a repeatable free tap.
+   *
+   * -1 means never. Raiding is meant to be a decision with a cooldown, not a
+   * resource faucet a player can stand next to and drain.
+   */
+  readonly lastRaidedTurn: number;
+}
+
+/**
+ * What is left where a city was razed.
+ *
+ * Kept as its own record rather than a flag on the tile, because the tile is
+ * map data that never changes after generation, and a ruin is a thing that
+ * happened during a game. Ruins are inert: they do not yield, defend or
+ * produce. They exist so a razed village leaves a mark, and so the late map
+ * does not quietly become empty ground with no memory of the war.
+ */
+export interface Ruin {
+  readonly id: string;
+  readonly hex: Hex;
+  /** The name the city had, so the log can say what was lost. */
+  readonly name: string;
+  /** Who owned it when it fell. */
+  readonly formerFactionId: string;
+  readonly razedOnTurn: number;
 }
 
 export function cityKind(kind: CityKind): CityKindInfo {

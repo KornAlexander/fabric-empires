@@ -11,12 +11,12 @@
  */
 
 import { generateMap, type MapOptions } from '../map/index.js';
-import type { City, Faction, Unit } from '../entities/index.js';
+import type { City, Faction, Ruin, Unit } from '../entities/index.js';
 import { GENERIC_TOPIC_GRAPH, type TopicGraph } from '../challenge/index.js';
 import { EMPTY_RESEARCH, type ResearchState } from '../rules/research.js';
 import type { Difficulty, GameState } from '../state/index.js';
 
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 export interface SaveFile {
   readonly version: number;
@@ -27,6 +27,7 @@ export interface SaveFile {
   readonly factions: readonly Faction[];
   readonly units: readonly Unit[];
   readonly cities: readonly City[];
+  readonly ruins: readonly Ruin[];
   /**
    * Research progress travels with the save; the topic GRAPH does not.
    * The graph belongs to the challenge provider, so a load takes it from
@@ -47,6 +48,7 @@ export function toSaveFile(state: GameState): SaveFile {
     factions: [...state.factions.values()],
     units: [...state.units.values()],
     cities: [...state.cities.values()],
+    ruins: [...state.ruins.values()],
     research: state.research,
     activeFactionId: state.activeFactionId,
     nextEntityId: state.nextEntityId,
@@ -106,6 +108,28 @@ const MIGRATIONS: Readonly<Record<number, (save: SaveFile) => SaveFile>> =
         productionProgress: 0,
       })),
     }),
+
+    /**
+     * 3 -> 4: enemy villages, and the three things you may do to one.
+     *
+     * Ruins did not exist, so an old save has none. `lastRaidedTurn` is -1,
+     * meaning never raided, which lets a loaded game raid immediately rather
+     * than sitting on a phantom cooldown counted from turn zero.
+     *
+     * ⚠️ Old saves keep their empty antagonist camps. Villages are seeded at
+     * `createGameState`, and back-filling them here would drop seven cities
+     * into a game the player has already been fighting, on hexes their units
+     * may well be standing on.
+     */
+    3: (save) => ({
+      ...save,
+      version: 4,
+      ruins: [],
+      cities: save.cities.map((city) => ({
+        ...city,
+        lastRaidedTurn: -1,
+      })),
+    }),
   });
 
 export function migrate(save: SaveFile): SaveFile {
@@ -147,6 +171,7 @@ export function fromSaveFile(
     factions: new Map(migrated.factions.map((f) => [f.id, f])),
     units: new Map(migrated.units.map((u) => [u.id, u])),
     cities: new Map(migrated.cities.map((c) => [c.id, c])),
+    ruins: new Map((migrated.ruins ?? []).map((r) => [r.id, r])),
     topics,
     research: migrated.research ?? EMPTY_RESEARCH,
     activeFactionId: migrated.activeFactionId,

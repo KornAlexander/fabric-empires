@@ -238,10 +238,12 @@ describe('saves', () => {
     const old = {
       ...save,
       version: 2,
+      ruins: undefined,
       cities: save.cities.map((c: Record<string, unknown>) => {
-        const { productionProgress, producing, ...rest } = c;
+        const { productionProgress, producing, lastRaidedTurn, ...rest } = c;
         void productionProgress;
         void producing;
+        void lastRaidedTurn;
         return rest;
       }),
     };
@@ -249,6 +251,9 @@ describe('saves', () => {
     const loaded = deserialise(JSON.stringify(old), state.topics);
     expect(capital(loaded).productionProgress).toBe(0);
     expect(capital(loaded).producing).toBeUndefined();
-    expect(SAVE_VERSION).toBe(3);
+    // 2 -> 3 added production, 3 -> 4 added ruins and the raid cooldown.
+    expect(capital(loaded).lastRaidedTurn).toBe(-1);
+    expect(loaded.ruins.size).toBe(0);
+    expect(SAVE_VERSION).toBe(4);
   });
 });

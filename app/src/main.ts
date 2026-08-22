@@ -7,6 +7,9 @@ import {
   PLAYER_FACTION_ID,
   canAttack,
   canFoundCity,
+  canRaid,
+  raidCity,
+  ruinAt,
   cityAt,
   cityTerritory,
   completeResearch,
@@ -76,6 +79,7 @@ import { createDroneHud } from './ui/droneHud.js';
 import { Vector3 } from 'three';
 import { createEndScreen } from './ui/endScreen.js';
 import { createCinematicOverlay } from './ui/cinematicOverlay.js';
+import { createChoiceModal } from './ui/choice.js';
 import { approachShot, descendShot, orbitShot } from './three/cinematic.js';
 import { loadGame, localSlot, saveGame } from './persist.js';
 import { createBattleBanner, type BattleSide } from './ui/battleBanner.js';
@@ -118,6 +122,7 @@ const RESEARCH_TIME_MS = 30_000;
  */
 const effects = createEffects();
 const banner = createBattleBanner();
+const choice = createChoiceModal();
 
 /**
  * The Great Library.
@@ -266,6 +271,7 @@ const el = {
   selTitle: document.querySelector<HTMLElement>('#sel-title')!,
   selDetail: document.querySelector<HTMLElement>('#sel-detail')!,
   actFound: document.querySelector<HTMLButtonElement>('#act-found')!,
+  actRaid: document.querySelector<HTMLButtonElement>('#act-raid')!,
   actFortify: document.querySelector<HTMLButtonElement>('#act-fortify')!,
   actSkip: document.querySelector<HTMLButtonElement>('#act-skip')!,
   actCouncil: document.querySelector<HTMLButtonElement>('#act-council')!,
@@ -319,6 +325,7 @@ function refreshSelection(): void {
     el.selTitle.textContent = 'Nothing selected';
     el.selDetail.textContent = 'Click one of your units.';
     el.actFound.disabled = true;
+    el.actRaid.disabled = true;
     el.actFortify.disabled = true;
     el.actSkip.disabled = true;
     refreshCouncil();
@@ -342,6 +349,7 @@ function refreshSelection(): void {
     (unit.fortified ? '  (fortified)' : '');
 
   el.actFound.disabled = !canFoundCity(state, unit);
+  el.actRaid.disabled = raidTarget(unit.id) === undefined;
   el.actFortify.disabled = type.strength === 0 || unit.fortified;
   el.actSkip.disabled = unit.movesLeft <= 0;
   refreshCouncil();
@@ -349,6 +357,53 @@ function refreshSelection(): void {
 
 function select(unitId: string | undefined): void {
   selectedUnitId = unitId;
+  refreshSelection();
+  dirty = true;
+}
+
+/**
+ * The neighbouring village this unit could rob, if any.
+ *
+ * Returns the hex rather than a boolean so the button and the keyboard
+ * shortcut cannot disagree about which village they meant, which they would
+ * if each searched the neighbours separately.
+ */
+function raidTarget(unitId: string): Hex | undefined {
+  const unit = state.units.get(unitId);
+  if (!unit) return undefined;
+  for (let dir = 0; dir < 6; dir++) {
+    const hex = hexNeighbour(unit.hex, dir);
+    if (canRaid(state, unitId, hex).ok) return hex;
+  }
+  return undefined;
+}
+
+function doRaid(): void {
+  if (!selectedUnitId) return;
+  const target = raidTarget(selectedUnitId);
+  if (!target) {
+    // Say why rather than doing nothing: the cooldown is invisible otherwise.
+    const near = hexNeighbour(state.units.get(selectedUnitId)!.hex, 0);
+    log(canRaid(state, selectedUnitId, near).reason ?? 'Nothing to raid here.', 'bad');
+    return;
+  }
+
+  const village = cityAt(state, target);
+  const result = raidCity(state, selectedUnitId, target);
+  if (!result.ok || !result.state) {
+    log(result.reason ?? 'The raid failed.', 'bad');
+    return;
+  }
+
+  state = result.state;
+  const parts = Object.entries(result.loot ?? {})
+    .filter(([, amount]) => (amount ?? 0) > 0)
+    .map(([id, amount]) => `${amount} ${id}`);
+  log(
+    `Raided ${village?.name ?? 'the village'}: ${parts.join(', ') || 'nothing worth taking'}.`,
+    'good',
+  );
+  effects.floatingText(target, 'RAIDED', '#ffcf7a', 1.2);
   refreshSelection();
   dirty = true;
 }
@@ -448,6 +503,43 @@ async function actOn(target: Hex): Promise<void> {
     const targetCity = cityAt(state, target);
     const dramatic = !hadFirstBattle || targetCity !== undefined;
 
+    /*
+     * Capture or raze, asked only when the blow is expected to finish it.
+     *
+     * ⚠️ Asked BEFORE the strike, because the engine resolves the whole fight
+     * in one call and the outcome has to be part of that call. The trigger is
+     * the previewed damage rather than certainty: the roll can still leave the
+     * walls standing, in which case the answer simply does not apply and the
+     * player is asked again next time. Asking on every blow of a long siege
+     * would be worse than occasionally asking a turn early.
+     */
+    let cityOutcome: 'capture' | 'raze' = 'capture';
+    if (
+      targetCity &&
+      preview &&
+      !preview.ranged &&
+      preview.expectedDamageToDefender >= targetCity.hp
+    ) {
+      const holder = state.factions.get(targetCity.factionId);
+      cityOutcome = await choice.ask(
+        `${targetCity.name} is about to fall`,
+        `${holder?.label ?? 'The defenders'} hold this place, and they hold what they know with it. Take it and their ground becomes yours to study. Burn it and you leave with the spoils and nothing else.`,
+        [
+          {
+            id: 'capture' as const,
+            label: 'Take the village',
+            detail: 'Opens their branch of the exam to you, and adds the settlement to your empire.',
+            primary: true,
+          },
+          {
+            id: 'raze' as const,
+            label: 'Burn it',
+            detail: 'A far larger haul of Data, Compute and Capacity. You learn nothing, and only ruins remain.',
+          },
+        ],
+      );
+    }
+
     if (!hadFirstBattle) {
       // Before the blow, not after it. The shot is the establishing beat and
       // it has nothing to establish once the fight is already resolved.
@@ -471,7 +563,7 @@ async function actOn(target: Hex): Promise<void> {
     }
     hadFirstBattle = true;
 
-    await playAttack(unit.id, target, challengeScore, preview, dramatic);
+    await playAttack(unit.id, target, challengeScore, preview, dramatic, cityOutcome);
     return;
   }
 
@@ -504,6 +596,7 @@ async function playAttack(
   challengeScore: number,
   preview: ReturnType<typeof previewAttack>,
   dramatic: boolean,
+  cityOutcome: 'capture' | 'raze' = 'capture',
 ): Promise<void> {
   const attacker = state.units.get(unitId);
   if (!attacker) return;
@@ -524,7 +617,10 @@ async function playAttack(
   // the numbers to the choreography means the animation can be as long or as
   // short as it likes without the rules caring. The state change is held back
   // until the moment of impact so a health bar never empties during a wind-up.
-  const outcome = resolveAttack(state, unitId, target, { challengeScore });
+  const outcome = resolveAttack(state, unitId, target, {
+    challengeScore,
+    cityOutcome,
+  });
   if (!outcome.ok) {
     log(outcome.reason, 'bad');
     return;
@@ -575,6 +671,9 @@ async function playAttack(
         }
         if (battle.cityCaptured) {
           effects.floatingText(target, 'CAPTURED', '#8fd694', 1.5);
+        }
+        if (battle.cityRazed) {
+          effects.floatingText(target, 'RAZED', '#ff9b91', 1.5);
         }
       },
       shake: (magnitude) => effects.shake(magnitude),
@@ -645,7 +744,35 @@ async function playAttack(
   if (battle.defenderDestroyed) log('Enemy unit destroyed.', 'good');
   if (battle.attackerDestroyed) log('Your unit was destroyed.', 'bad');
   if (battle.cityCaptured) {
-    log('City captured.', 'good');
+    const from = battle.cityFormerFactionId
+      ? state.factions.get(battle.cityFormerFactionId)?.label
+      : undefined;
+    log(`${defenderCity?.name ?? 'The village'} taken${from ? ` from ${from}` : ''}.`, 'good');
+    if (battle.clusterOpened) {
+      // The point of capturing rather than burning, said out loud.
+      const topic = topicById(state.topics, battle.clusterOpened);
+      log(
+        `Their ground is yours to study: ${topic?.label ?? battle.clusterOpened} is now known.`,
+        'good',
+      );
+    }
+    void playCityFallsShot(target);
+  }
+  if (battle.cityRazed) {
+    const from = battle.cityFormerFactionId
+      ? state.factions.get(battle.cityFormerFactionId)?.label
+      : undefined;
+    log(
+      `${defenderCity?.name ?? 'The village'} burned${from ? `, ${from} scattered` : ''}.`,
+      'good',
+    );
+    if (battle.loot) {
+      const parts = Object.entries(battle.loot)
+        .filter(([, amount]) => (amount ?? 0) > 0)
+        .map(([id, amount]) => `${amount} ${id}`);
+      if (parts.length > 0) log(`Carried off ${parts.join(', ')}.`, 'good');
+    }
+    log('Nothing was learned there.', 'bad');
     void playCityFallsShot(target);
   }
 
@@ -1114,11 +1241,14 @@ function describeTile(h: Hex | undefined): void {
 
   const occupant = unitAt(state, h);
   const city = cityAt(state, h);
+  const ruin = ruinAt(state, h);
   const who = city
     ? ` | ${city.name} (${state.factions.get(city.factionId)?.label ?? '?'})`
     : occupant
       ? ` | ${unitType(occupant.typeId).label} (${state.factions.get(occupant.factionId)?.label ?? '?'})`
-      : '';
+      : ruin
+        ? ` | ruins of ${ruin.name}`
+        : '';
 
   el.tileName.textContent = info.label + (tile.river ? ' (river)' : '') + who;
   el.tileDetail.textContent = parts.length > 0 ? parts.join('  ') : 'No yield';
@@ -1648,6 +1778,8 @@ window.addEventListener('keydown', (e) => {
     selectNextIdle();
   } else if (e.key === 'b') {
     doFound();
+  } else if (e.key === 'p') {
+    doRaid();
   } else if (e.key === 'h') {
     doFortify();
   } else if (e.key === 'x') {
@@ -1666,6 +1798,7 @@ el.endTurn.addEventListener('click', doEndTurn);
 el.openLibrary.addEventListener('click', () => library.toggle());
 el.faceProctor.addEventListener('click', () => void faceTheProctor());
 el.actFound.addEventListener('click', doFound);
+el.actRaid.addEventListener('click', doRaid);
 el.actFortify.addEventListener('click', doFortify);
 el.actSkip.addEventListener('click', doSkip);
 el.actCouncil.addEventListener('click', () => void doCouncil());
@@ -1836,6 +1969,7 @@ declare global {
         factionId: string,
       ) => { id: string; typeId: string; q: number; r: number; hp: number }[];
       cityCount: () => number;
+      playerCityCount: () => number;
       resources: () => Record<string, number>;
       selected: () => string | undefined;
       selectFirstIdle: () => void;
@@ -1902,7 +2036,11 @@ window.__fabricEmpires = {
   turn: () => state.turn,
   lastFrameMs: () => frameMs,
   unitCount: (factionId: string) => unitsOf(state, factionId).length,
+  // ⚠️ Every settlement on the map, the player's and all seven villages. It
+  // used to be the same number as the player's because nobody else had a city.
   cityCount: () => state.cities.size,
+  playerCityCount: () =>
+    [...state.cities.values()].filter((c) => c.factionId === PLAYER_FACTION_ID).length,
   resources: () => ({ ...state.factions.get(PLAYER_FACTION_ID)!.resources }),
   selected: () => selectedUnitId,
   selectFirstIdle: () => selectNextIdle(),

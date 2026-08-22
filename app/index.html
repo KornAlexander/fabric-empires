@@ -46,6 +46,32 @@
       h2 { margin: 0 0 4px; font-size: 13px; font-weight: 600; }
       .muted { color: var(--muted); }
 
+      /* The capture-or-raze decision, asked at the moment the walls fall. */
+      .fe-choice {
+        position: fixed; inset: 0; z-index: 40;
+        display: flex; align-items: center; justify-content: center;
+        background: rgba(6, 9, 12, 0.72); backdrop-filter: blur(3px);
+      }
+      .fe-choice-card {
+        width: min(520px, 92vw);
+        background: var(--panel); border: 1px solid var(--border);
+        border-radius: 12px; padding: 18px 20px;
+      }
+      .fe-choice-card h2 { font-size: 16px; margin-bottom: 8px; }
+      .fe-choice-body { margin: 0 0 14px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+      .fe-choice-options { display: flex; flex-direction: column; gap: 8px; }
+      .fe-choice-option {
+        display: flex; flex-direction: column; gap: 3px;
+        text-align: left; padding: 10px 12px; cursor: pointer;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid var(--border); border-radius: 8px;
+        color: inherit; font: inherit;
+      }
+      .fe-choice-option:hover { background: rgba(255, 255, 255, 0.09); }
+      .fe-choice-option.primary { border-color: var(--accent); }
+      .fe-choice-label { font-weight: 600; font-size: 13px; }
+      .fe-choice-detail { color: var(--muted); font-size: 11px; line-height: 1.45; }
+
       #resources { top: 14px; left: 14px; display: flex; gap: 18px; align-items: center; }
       #resources .res { display: flex; gap: 6px; align-items: baseline; }
       #resources .res b { font-size: 15px; font-weight: 600; }
@@ -197,6 +223,7 @@
       <div class="muted" id="sel-detail">Click one of your units.</div>
       <div class="actions">
         <button id="act-found" disabled title="Found a city here (b)">Found city</button>
+        <button id="act-raid" disabled title="Plunder the neighbouring village (p). R flies the camera, so this is not on r">Raid</button>
         <button id="act-fortify" disabled title="Fortify (h). W A S D fly the camera, so this is not on f">Fortify</button>
         <button id="act-skip" disabled title="Skip this unit (x). W A S D fly the camera, so this is not on s">Skip</button>
         <button id="act-council" disabled title="Hold a council review (c)">Council</button>
