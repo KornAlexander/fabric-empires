@@ -251,9 +251,11 @@ describe('saves', () => {
     const loaded = deserialise(JSON.stringify(old), state.topics);
     expect(capital(loaded).productionProgress).toBe(0);
     expect(capital(loaded).producing).toBeUndefined();
-    // 2 -> 3 added production, 3 -> 4 added ruins and the raid cooldown.
+    // 2 -> 3 added production, 3 -> 4 added ruins and the raid cooldown,
+    // 4 -> 5 added the cheat log.
     expect(capital(loaded).lastRaidedTurn).toBe(-1);
     expect(loaded.ruins.size).toBe(0);
-    expect(SAVE_VERSION).toBe(4);
+    expect(loaded.cheatsUsed).toEqual([]);
+    expect(SAVE_VERSION).toBe(5);
   });
 });

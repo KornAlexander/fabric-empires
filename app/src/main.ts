@@ -11,6 +11,7 @@ import {
   raidCity,
   ruinAt,
   cityAt,
+  recordCheat,
   DEFAULT_WORLD_CHOICE,
   WORLD_SHAPES,
   WORLD_SIZES,
@@ -87,6 +88,8 @@ import { createEndScreen } from './ui/endScreen.js';
 import { createCinematicOverlay } from './ui/cinematicOverlay.js';
 import { createChoiceModal } from './ui/choice.js';
 import { createSetupScreen, type SetupResult } from './ui/setupScreen.js';
+import { createCheatConsole } from './ui/cheatConsole.js';
+import { CHEATS, findCheat } from './cheats.js';
 import { approachShot, descendShot, orbitShot } from './three/cinematic.js';
 import { loadGame, localSlot, saveGame } from './persist.js';
 import { createBattleBanner, type BattleSide } from './ui/battleBanner.js';
@@ -156,6 +159,60 @@ const setup = createSetupScreen();
  * than silently dropping the player back onto one continent.
  */
 let lastSetup: SetupResult = { ...DEFAULT_WORLD_CHOICE, seed: 'FABRIC' };
+
+/**
+ * Run a typed cheat code.
+ *
+ * ⚠️ Every successful code is written into `state.cheatsUsed`, which is part of
+ * the save. The end screen reads it. A player is entirely welcome to use these,
+ * and equally entitled to be reminded that they did.
+ */
+function runCheat(raw: string): void {
+  const typed = raw.trim().toLowerCase();
+
+  if (typed === 'help' || typed === '?') {
+    cheats.say('Codes:');
+    for (const cheat of CHEATS) {
+      cheats.say(`  ${cheat.code.padEnd(14)} ${cheat.describe}`);
+    }
+    cheats.say('  None of them can make you ready. Only answering does that.');
+    return;
+  }
+
+  const cheat = findCheat(typed);
+  if (!cheat) {
+    cheats.say(`No such code: ${typed}. Try help.`, 'bad');
+    return;
+  }
+
+  const outcome = cheat.apply({
+    state,
+    selectedUnitId,
+    faceProctor: () => {
+      cheats.hide();
+      void faceTheProctor();
+    },
+  });
+
+  if (!outcome.ok) {
+    cheats.say(outcome.message, 'bad');
+    return;
+  }
+
+  if (outcome.state) state = recordCheat(outcome.state, cheat.code);
+  else state = recordCheat(state, cheat.code);
+
+  cheats.say(outcome.message, 'good');
+  log(`Cheat: ${outcome.message}`);
+  saveGame(slot, state);
+  refreshHud();
+  refreshResearch();
+  refreshSelection();
+  refreshThreats();
+  dirty = true;
+}
+
+const cheats = createCheatConsole({ submit: runCheat });
 
 /**
  * The Great Library.
@@ -1103,6 +1160,7 @@ async function doEndTurn(): Promise<void> {
     turn: report.turn,
     skills: `${state.research.known.length}/${state.topics.nodes.length}`,
     cities: [...state.cities.values()].filter((c) => c.factionId === PLAYER_FACTION_ID).length,
+    cheats: state.cheatsUsed,
   });
 }
 
@@ -1538,6 +1596,7 @@ async function faceTheProctor(): Promise<void> {
       turn: state.turn,
       skills: `${state.research.known.length}/${state.topics.nodes.length}`,
       cities: [...state.cities.values()].filter((c) => c.factionId === PLAYER_FACTION_ID).length,
+      cheats: state.cheatsUsed,
     },
   );
 }
@@ -1825,6 +1884,22 @@ window.addEventListener('keydown', (e) => {
   // While a question is on screen the modal owns the keyboard.
   if (modal.isOpen()) return;
 
+  /*
+   * The cheat console, on the traditional key.
+   *
+   * Checked before everything else so it can always be closed, and its own
+   * input stops propagation so typing a code cannot also play the game.
+   */
+  if (e.key === '`' || e.key === '~') {
+    e.preventDefault();
+    cheats.toggle();
+    return;
+  }
+  if (cheats.isOpen() && e.key === 'Escape') {
+    cheats.hide();
+    return;
+  }
+
   // The library is a reference screen, so it may be opened at any time, but
   // while it is up the map must not act on stray keys behind it.
   if (e.key === 'l') {
@@ -2084,6 +2159,7 @@ declare global {
         { id: string; isOpen: boolean; options: number; accepted: number[] } | undefined
       >;
       terrainProbe: () => unknown;
+      cheatsUsed: () => string[];
       drownedLand: () => { land: number; below: number; share: number };
       /**
        * The live three.js objects.
@@ -2206,6 +2282,7 @@ window.__fabricEmpires = {
     refreshHud();
   },
   terrainProbe: () => ({ ...scene.probe(), ...scene.stats() }),
+  cheatsUsed: () => [...state.cheatsUsed],
   /*
    * How much of the land is drawn under the sea.
    *

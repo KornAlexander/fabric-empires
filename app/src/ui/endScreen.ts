@@ -59,12 +59,24 @@ const STYLE = `
 .fe-end button:hover { background: #8cc4ff; }
 .fe-end.win h2 { color: #8fd694; }
 .fe-end.lose h2 { color: #ff9b91; }
+.fe-end-cheats {
+  margin: -8px 0 16px; font-size: 11px; line-height: 1.5;
+  color: #ffcf7a;
+}
 `;
 
 export interface EndScreenStats {
   readonly turn: number;
   readonly skills: string;
   readonly cities: number;
+  /**
+   * Cheat codes used in this game.
+   *
+   * ⚠️ Shown, always. A study tool must never let somebody finish believing an
+   * empire was won unaided when it was not, because the next inference they
+   * draw is about themselves.
+   */
+  readonly cheats: readonly string[];
 }
 
 export interface EndScreen {
@@ -99,6 +111,7 @@ export function createEndScreen(onNewGame: () => void): EndScreen {
         <div><b data-f="skills">-</b><span>skills</span></div>
         <div><b data-f="cities">-</b><span>cities</span></div>
       </div>
+      <p class="fe-end-cheats" data-f="cheats" hidden></p>
       <button type="button" data-f="again">New empire</button>
     </div>
   `;
@@ -134,6 +147,18 @@ export function createEndScreen(onNewGame: () => void): EndScreen {
       if (skills) skills.textContent = stats.skills;
       const cities = field('cities');
       if (cities) cities.textContent = String(stats.cities);
+
+      const cheats = field('cheats');
+      if (cheats) {
+        const used = stats.cheats;
+        cheats.hidden = used.length === 0;
+        if (used.length > 0) {
+          const unique = [...new Set(used)];
+          cheats.textContent =
+            `This empire had help: ${unique.join(', ')}. ` +
+            'Your readiness figure did not, and never does.';
+        }
+      }
       root.dataset.open = 'true';
       root.dataset.kind = outcome.kind;
     },

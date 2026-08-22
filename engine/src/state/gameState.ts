@@ -65,6 +65,20 @@ export interface GameState {
   readonly activeFactionId: string;
   /** Monotonic counter behind entity ids, so ids stay stable across saves. */
   readonly nextEntityId: number;
+  /**
+   * Cheat codes used in this game, in the order they were entered.
+   *
+   * ⚠️ **On the state, and therefore in the save, deliberately.** A cheat that
+   * a reload forgets would let a player win with help and then show a clean
+   * victory screen. This is a study tool, and the one thing it must never do is
+   * tell somebody they are ready when they are not, so an empire built with
+   * help says so and keeps saying so.
+   *
+   * The engine only records them. What each code DOES is entirely the app's
+   * business, which keeps the D35 boundary intact: the engine still knows
+   * nothing about the certification, the Proctor, or the Great Library.
+   */
+  readonly cheatsUsed: readonly string[];
 }
 
 export const PLAYER_FACTION_ID = 'player';
@@ -533,5 +547,17 @@ export function createGameState(
     research: EMPTY_RESEARCH,
     activeFactionId: PLAYER_FACTION_ID,
     nextEntityId: nextId,
+    cheatsUsed: [],
   };
+}
+
+/**
+ * Record that a cheat was used.
+ *
+ * Appends rather than deduplicating: using the same code five times is a
+ * different game from using it once, and the end screen should be able to say
+ * so. The engine never inspects these strings.
+ */
+export function recordCheat(state: GameState, code: string): GameState {
+  return { ...state, cheatsUsed: [...state.cheatsUsed, code] };
 }

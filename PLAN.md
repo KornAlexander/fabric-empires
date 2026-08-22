@@ -233,6 +233,59 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D202 | Size is offered because loading time is a feature | Radius 30, 45 and 56 is 2,791, 6,211 and 9,577 tiles. Measured end to end in the browser: **3.8 s, 5.3 s and 7.8 s** to playable. Section 22.2 called the cold start the worst thing about the game, and "small" is the answer for someone who wants to be in a game rather than watching one build |
 | D203 | ⚠️ The threats panel listed factions that did not exist | It mapped over all seven `ANTAGONISTS` rather than over the factions in the game, so a three-rival game showed four extra enemies, permanently "gone" and at infinite range. Found by counting the rendered rows against the chosen rival count, not by looking at it |
 | D204 | ⚠️ A loose Playwright selector silently tested the wrong thing | `getByRole('button', { name: 'Small', exact: false })` matched "Many **small** islands", which sits earlier in the DOM, so two runs used an archipelago neither had asked for and both reported the same land count. The giveaway was the number: 932 land tiles is exactly 0.15 x 6,211, a fraction no continent preset uses. Scope to the group and match exactly |
+| D205 | ⚠️ **No cheat may touch mastery.** This is the line the whole feature is built around | Cheats move Compute, armies and turns. Not one of them writes to the spaced-repetition data behind the readiness figure. A code that could show somebody a green 82% would be worse than useless, because they would act on it and sit an exam they cannot pass. Enforced by a test that reads `cheats.ts` as text with comments stripped and fails on any reference to mastery, sm2, the library model or the readiness figure, so the guarantee covers the NEXT cheat somebody adds rather than only today's |
+| D206 | `sitthepaper` opens the exam, it does not pass it | The natural cheat here is "make me ready". Instead this summons the Proctor early and still asks all forty questions at the real pass mark. It gives access, never a result, and is arguably a feature rather than a cheat: practising the paper before the game thinks you are ready is a reasonable thing to want |
+| D207 | `iknowthis` writes to the tech tree, never to the Library | Research completion is a GAME gate: it unlocks units. So the code grants the unlock and leaves the topic showing as unlearned in the Great Library and in the readiness figure. The two systems were already separate, and this is the first thing that proves it was worth separating |
+| D208 | Cheats used are saved, and the end screen says so | `cheatsUsed` is on `GameState` and in save v5. A cheat a reload forgets would let somebody win with help and then see a clean victory screen. The end screen names the codes and adds that the readiness figure did not have help and never does |
+| D209 | A console on the backtick, not a typed key sequence | Every letter is already taken: W A S D Q E R F fly the drone, and b, p, h, x, c, g, l are actions. A buffer listening for "onelake" would have flown the camera three times on the way. The console's input stops propagation, verified by typing `bpxh` into it and checking no city was founded and no unit moved |
+| D210 | Villages survive `dropthetable` | Wiping every rival unit still leaves seven villages to walk into, and taking a village is where the questions are. A code that handed over Domination outright would skip the only part of the war that teaches anything |
+
+### 28. Cheat codes
+
+Press **`** (backtick) to open the console. Type `help` to list them, `Escape`
+to close.
+
+| Code | Does |
+|---|---|
+| `onelake` | 500 of every resource |
+| `f64` | 2,000 Compute |
+| `refreshnow` | Every unit you own healed and remobilised |
+| `directlake` | A Direct Lake Titan appears at your capital |
+| `mirrored` | Duplicates the selected unit |
+| `dropthetable` | Destroys every rival unit. Villages still stand |
+| `iknowthis` | Completes the topic you are funding, without answering |
+| `sitthepaper` | Summons the Proctor now. You still have to pass |
+
+Codes are matched case-insensitively and with spaces stripped, so `ONE LAKE`
+works.
+
+#### 28.1 What no cheat does
+
+⚠️ **None of them can make you look ready.** This game's only real output is the
+readiness figure and the Great Library behind it, both built from spaced
+repetition over questions actually answered. A code that wrote to that would
+hand somebody a false belief about themselves and they would act on it.
+
+So the two codes that come near the exam are deliberately shaped:
+
+- **`sitthepaper`** gives access to the Proctor, never a result. Forty
+  questions, same pass mark.
+- **`iknowthis`** completes research, which is a *game* gate that unlocks units.
+  The Great Library still shows the topic as unlearned, because that is the
+  number that decides whether you are told you are ready.
+
+This is enforced rather than intended. `app/test/cheats.test.ts` reads
+`cheats.ts` as source text, strips the comments, and fails if it so much as
+mentions `mastery`, `sm2`, `buildLibraryModel`, `examRetained` or
+`proctorReady`. Calling today's codes and checking they behaved would prove
+nothing about the next one somebody writes.
+
+#### 28.2 They are recorded
+
+Every successful code is appended to `state.cheatsUsed`, which is part of the
+save (v5). The end screen names them and adds the line that matters: the
+readiness figure did not have help, and never does. An empire built with
+assistance is welcome, and says so.
 
 #### 27.3 The full set of choices
 

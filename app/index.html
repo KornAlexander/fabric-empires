@@ -72,8 +72,7 @@
       .fe-choice-label { font-weight: 600; font-size: 13px; }
       .fe-choice-detail { color: var(--muted); font-size: 11px; line-height: 1.45; }
 
-      /* The setup screen, shown before the world is built. */
-      .fe-setup {
+      /* The setup screen, shown before the world is built. */      .fe-setup {
         position: fixed; inset: 0; z-index: 60;
         display: flex; align-items: center; justify-content: center;
         background: radial-gradient(ellipse at 50% 30%, #14202a 0%, #070a0d 70%);
@@ -133,6 +132,30 @@
       @media (max-width: 640px) {
         .fe-setup-options { grid-template-columns: 1fr; }
       }
+
+      /* The cheat console. Backtick opens it. */
+      .fe-cheat {
+        position: fixed; top: 0; left: 0; right: 0; z-index: 45;
+        background: rgba(6, 10, 14, 0.94);
+        border-bottom: 1px solid var(--accent);
+        padding: 10px 14px 8px;
+        font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+      }
+      .fe-cheat-prompt { display: flex; align-items: center; gap: 8px; }
+      .fe-cheat-caret { color: var(--accent); font-weight: 700; }
+      .fe-cheat-prompt input {
+        flex: 1; background: transparent; border: none; outline: none;
+        color: var(--text); font: inherit; font-size: 13px;
+      }
+      .fe-cheat-output { margin-top: 6px; max-height: 26vh; overflow-y: auto; }
+      .fe-cheat-line {
+        font-size: 12px; line-height: 1.55; color: var(--muted);
+        /* The help listing pads codes into a column, and HTML would
+           otherwise collapse that padding into a single space. */
+        white-space: pre-wrap;
+      }
+      .fe-cheat-line.good { color: #8fd694; }
+      .fe-cheat-line.bad { color: #ff9b91; }
 
       #resources { top: 14px; left: 14px; display: flex; gap: 18px; align-items: center; }
       #resources .res { display: flex; gap: 6px; align-items: baseline; }
@@ -259,7 +282,8 @@
 
     <div class="panel" id="help">
       click a unit to select &middot; click to move or attack<br />
-      drag to pan &middot; wheel to zoom &middot; space ends turn
+      drag to pan &middot; wheel to zoom &middot; space ends turn<br />
+      <span class="muted">` opens the console &middot; type help</span>
     </div>
 
     <!--

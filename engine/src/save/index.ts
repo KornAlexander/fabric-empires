@@ -16,7 +16,7 @@ import { GENERIC_TOPIC_GRAPH, type TopicGraph } from '../challenge/index.js';
 import { EMPTY_RESEARCH, type ResearchState } from '../rules/research.js';
 import type { Difficulty, GameState } from '../state/index.js';
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 export interface SaveFile {
   readonly version: number;
@@ -36,6 +36,7 @@ export interface SaveFile {
   readonly research: ResearchState;
   readonly activeFactionId: string;
   readonly nextEntityId: number;
+  readonly cheatsUsed: readonly string[];
 }
 
 export function toSaveFile(state: GameState): SaveFile {
@@ -52,6 +53,7 @@ export function toSaveFile(state: GameState): SaveFile {
     research: state.research,
     activeFactionId: state.activeFactionId,
     nextEntityId: state.nextEntityId,
+    cheatsUsed: state.cheatsUsed,
   };
 }
 
@@ -130,6 +132,18 @@ const MIGRATIONS: Readonly<Record<number, (save: SaveFile) => SaveFile>> =
         lastRaidedTurn: -1,
       })),
     }),
+
+    /**
+     * 4 -> 5: the cheat log.
+     *
+     * An older save predates cheat codes entirely, so it cannot have used one.
+     * Empty is the honest answer rather than unknown.
+     */
+    4: (save) => ({
+      ...save,
+      version: 5,
+      cheatsUsed: [],
+    }),
   });
 
 export function migrate(save: SaveFile): SaveFile {
@@ -176,6 +190,7 @@ export function fromSaveFile(
     research: migrated.research ?? EMPTY_RESEARCH,
     activeFactionId: migrated.activeFactionId,
     nextEntityId: migrated.nextEntityId,
+    cheatsUsed: migrated.cheatsUsed ?? [],
   };
 }
 
