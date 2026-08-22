@@ -89,6 +89,7 @@ import { createCinematicOverlay } from './ui/cinematicOverlay.js';
 import { createChoiceModal } from './ui/choice.js';
 import { createSetupScreen, type SetupResult } from './ui/setupScreen.js';
 import { createCheatConsole } from './ui/cheatConsole.js';
+import { createRaidAlert } from './ui/raidAlert.js';
 import { CHEATS, findCheat } from './cheats.js';
 import { approachShot, descendShot, orbitShot } from './three/cinematic.js';
 import { loadGame, localSlot, saveGame } from './persist.js';
@@ -149,6 +150,7 @@ function timeLimit(base: number): number {
 const effects = createEffects();
 const banner = createBattleBanner();
 const choice = createChoiceModal();
+const raidAlert = createRaidAlert();
 const setup = createSetupScreen();
 
 /**
@@ -1054,16 +1056,58 @@ async function doEndTurn(): Promise<void> {
   const dueTopics = provider.dueTopics(Date.now());
 
   const preview = endTurn(state, { dueTopics });
-  const incoming = preview.report.enemyEvents.find(
+  const raids = preview.report.enemyEvents.filter(
     (e) => e.intent.kind === 'raid' && defends(e.intent.target),
   );
+  const incoming = raids[0];
 
   let defenderChallengeScore = 0;
-  if (incoming) {
+  if (incoming && incoming.intent.kind === 'raid') {
     const who = state.factions.get(incoming.factionId)?.label ?? 'The enemy';
     const topicId = battleTopicFor(incoming.factionId);
+    const target = incoming.intent.target;
+
+    /*
+     * ⚠️ **Show the attack before asking about it.**
+     *
+     * This used to open the question immediately, with a line in the log as
+     * the only clue. Being asked to defend against an attack you have not been
+     * shown is indistinguishable from being quizzed at random, which throws
+     * away the whole point of the faction system: who is marching on you is
+     * supposed to tell you what you are about to be tested on.
+     *
+     * So the camera goes to the threatened tile, it is marked in the
+     * attacker's colour, and the banner names the faction and the topic. Only
+     * then does the modal open, and the banner stays up behind it.
+     */
+    const colour = state.factions.get(incoming.factionId)?.colour ?? '#b5533f';
+    const defender = unitAt(state, target);
+    const city = cityAt(state, target);
+    const what = city
+      ? city.name
+      : defender
+        ? `your ${unitType(defender.typeId).label}`
+        : 'your border';
+
+    log(`${who} is at your gates. Hold them.`, 'bad');
+    scene.focus(target);
+    effects.flash(target, colour, 900);
+    effects.pulse(target, colour, 1.6);
+    effects.floatingText(target, 'UNDER ATTACK', colour, 1.3);
+
+    raidAlert.show({
+      faction: who,
+      colour,
+      target: what,
+      topic: topicId ? topicById(state.topics, topicId)?.label : undefined,
+      alsoComing: raids.length - 1,
+    });
+
+    // Long enough to read the banner and see where the camera went. Short
+    // enough that it never becomes the thing standing between turns.
+    await wait(1500);
+
     if (topicId) {
-      log(`${who} is at your gates. Hold them.`, 'bad');
       const outcome = await provider.present({
         kind: 'battle',
         topicId,
@@ -1072,6 +1116,7 @@ async function doEndTurn(): Promise<void> {
       });
       defenderChallengeScore = outcome.score;
     }
+    raidAlert.hide();
   }
 
   const result = endTurn(state, { dueTopics, defenderChallengeScore });
@@ -1777,6 +1822,7 @@ function adopt(next: GameState, message: string): void {
   seenCinematics.clear();
   scene.cinema.skip();
   cinemaOverlay.hide();
+  raidAlert.hide();
   el.endTurn.disabled = false;
   el.faceProctor.disabled = false;
   endScreen.hide();

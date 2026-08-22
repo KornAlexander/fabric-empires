@@ -133,6 +133,40 @@
         .fe-setup-options { grid-template-columns: 1fr; }
       }
 
+      /*
+        The incoming-raid warning, shown BEFORE the defence question so the
+        player can see who is attacking before being asked to hold them.
+      */
+      .fe-raid {
+        position: fixed; top: 70px; left: 50%; z-index: 55;
+        transform: translate(-50%, -10px);
+        display: flex; align-items: stretch; gap: 11px;
+        min-width: 320px; max-width: min(520px, 90vw);
+        padding: 11px 15px 11px 11px;
+        background: rgba(12, 16, 22, 0.96);
+        border: 1px solid var(--raid-colour, #b5533f);
+        border-radius: 10px;
+        box-shadow: 0 14px 44px rgba(0, 0, 0, 0.55);
+        opacity: 0; pointer-events: none;
+      }
+      .fe-raid.in {
+        animation: raid-in 260ms ease-out forwards;
+      }
+      @keyframes raid-in {
+        from { opacity: 0; transform: translate(-50%, -18px); }
+        to { opacity: 1; transform: translate(-50%, 0); }
+      }
+      .fe-raid-flag {
+        width: 5px; border-radius: 3px; flex: none;
+        background: var(--raid-colour, #b5533f);
+      }
+      .fe-raid-head {
+        font-size: 14px; font-weight: 600;
+        color: var(--raid-colour, #b5533f);
+      }
+      .fe-raid-target { font-size: 12px; color: var(--text); margin-top: 2px; }
+      .fe-raid-topic { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
       /* The cheat console. Backtick opens it. */
       .fe-cheat {
         position: fixed; top: 0; left: 0; right: 0; z-index: 45;
