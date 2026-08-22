@@ -15,6 +15,7 @@ import { unitType, type Faction } from '../entities/index.js';
 import { addResources, empireIncome, growthThreshold } from '../rules/yields.js';
 import { fundResearch, researchReady } from '../rules/research.js';
 import { reviewOpportunities, reviewPhase, type ReviewOpportunity } from '../rules/review.js';
+import { runFactionTurn, type AiEvent } from '../rules/ai.js';
 import type { GameState } from '../state/index.js';
 
 export interface TurnOptions {
@@ -26,6 +27,15 @@ export interface TurnOptions {
    * entirely, which is what the standalone strategy game does (D35).
    */
   readonly dueTopics?: readonly string[] | undefined;
+  /**
+   * How well the player answered when an antagonist raids them, in -1..+1.
+   *
+   * Defaults to zero, which means no challenge was asked and the raid is
+   * fought on the units alone. It is an option rather than a callback because
+   * the engine stays synchronous and pure: asking a human a question is the
+   * app's job, exactly as it is for research (D35).
+   */
+  readonly defenderChallengeScore?: number | undefined;
 }
 
 export interface TurnReport {
@@ -62,6 +72,15 @@ export interface TurnReport {
   readonly reviewsIgnored: readonly ReviewOpportunity[];
   /** Cities whose unrest rose this turn. */
   readonly citiesUnsettled: readonly string[];
+  /**
+   * Everything the antagonists did, in the order they did it.
+   *
+   * The app replays this as movement and duels. It is a list rather than a
+   * summary because "the Silo Horde attacked" and "the Silo Horde attacked
+   * your Architect and killed it" are different messages, and only the second
+   * one tells the player where to look.
+   */
+  readonly enemyEvents: readonly AiEvent[];
 }
 
 export interface TurnResult {
@@ -135,6 +154,7 @@ function upkeepPhase(state: GameState, factionId: string): TurnResult {
       reviewsAvailable: [],
       reviewsIgnored: [],
       citiesUnsettled: [],
+      enemyEvents: [],
     },
   };
 }
@@ -157,8 +177,10 @@ function refreshPhase(state: GameState, factionId: string): GameState {
 /**
  * End the active faction's turn.
  *
- * With one faction this is the whole turn. When antagonists arrive their AI
- * runs between the upkeep and refresh phases.
+ * The antagonists move last, after the player's upkeep, research and refresh.
+ * Putting them at the end means the board the player sees at the start of
+ * their turn is the board they will act on: an opponent that moved *after*
+ * the screen was drawn would look like it teleported.
  */
 export function endTurn(state: GameState, options: TurnOptions = {}): TurnResult {
   const factionId = state.activeFactionId;
@@ -172,7 +194,27 @@ export function endTurn(state: GameState, options: TurnOptions = {}): TurnResult
 
   const funded = fundResearch(reviewed.state, factionId);
   const refreshed = refreshPhase(funded.state, factionId);
-  const next: GameState = { ...refreshed, turn: refreshed.turn + 1 };
+
+  /*
+   * ENEMY: every faction that is not the one whose turn just ended.
+   *
+   * Each is refreshed before it acts, because `refreshPhase` only ever
+   * restored movement for the faction ending its turn. Without that the
+   * antagonists would spend the movement they were created with and then
+   * stand still for the rest of the game, which is indistinguishable from
+   * having no opponent at all.
+   */
+  let world = refreshed;
+  const enemyEvents: AiEvent[] = [];
+  for (const id of [...world.factions.keys()].filter((f) => f !== factionId)) {
+    const played = runFactionTurn(refreshPhase(world, id), id, {
+      defenderChallengeScore: options.defenderChallengeScore ?? 0,
+    });
+    world = played.state;
+    enemyEvents.push(...played.events);
+  }
+
+  const next: GameState = { ...world, turn: world.turn + 1 };
 
   return {
     state: next,
@@ -185,6 +227,7 @@ export function endTurn(state: GameState, options: TurnOptions = {}): TurnResult
       reviewsAvailable: reviewOpportunities(next, due, factionId),
       reviewsIgnored: reviewed.ignored,
       citiesUnsettled: reviewed.unsettled,
+      enemyEvents,
     },
   };
 }

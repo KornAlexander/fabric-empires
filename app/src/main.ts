@@ -32,6 +32,7 @@ import {
   unitAt,
   unitType,
   unitsOf,
+  type AiEvent,
   type GameState,
   type Hex,
   type ReachableTile,
@@ -154,6 +155,10 @@ window.addEventListener(
 const DRAMA_MS = 900;
 const PUNCH_MS = 260;
 let hadFirstBattle = false;
+/** Set when the player has lost everything, so the ending is announced once. */
+let fallen = false;
+/** Set while the antagonists are marching, so the log says so only once. */
+let hordeAdvancing = false;
 
 const canvas = document.querySelector<HTMLCanvasElement>('#map')!;
 const fxCanvas = document.querySelector<HTMLCanvasElement>('#fx')!;
@@ -679,6 +684,8 @@ function doEndTurn(): void {
   refreshCorruption();
   dirty = true;
 
+  void presentEnemyTurn(report.enemyEvents);
+
   /*
    * The autosave point.
    *
@@ -689,6 +696,87 @@ function doEndTurn(): void {
    * is what a player would expect to redo anyway.
    */
   saveGame(slot, state);
+}
+
+/**
+ * Show what the antagonists did.
+ *
+ * ⚠️ The engine has already applied all of this, which is why raids get the
+ * camera, a shake and floating damage rather than the full duel the player's
+ * own attacks get: choreographing a fight needs the result held back until the
+ * moment of impact, and by the time this runs the loser is already gone from
+ * the state. Pretending otherwise would mean animating a unit that no longer
+ * exists.
+ *
+ * What matters is that the player is never quietly attacked. Something has to
+ * move the camera to the place they just lost health, or the first they will
+ * know of it is a missing unit.
+ */
+async function presentEnemyTurn(events: readonly AiEvent[]): Promise<void> {
+  if (events.length === 0) return;
+
+  const raids = events.filter((e) => e.intent.kind === 'raid');
+  const movers = new Set(events.filter((e) => e.intent.kind === 'move').map((e) => e.unitId));
+  const faction = (id: string) => state.factions.get(id)?.label ?? 'Something';
+
+  if (movers.size > 0 && raids.length === 0) {
+    /*
+     * Once per advance, not once per turn.
+     *
+     * The horde takes several turns to cross the map, and saying so on every
+     * one of them filled the log with four identical lines before anything
+     * happened. Repetition is how a log teaches the player to stop reading it.
+     */
+    if (!hordeAdvancing) {
+      hordeAdvancing = true;
+      log(`${faction(events[0]!.factionId)} is on the move.`);
+    }
+  } else if (raids.length > 0) {
+    // They have arrived, so the next quiet spell is a new advance.
+    hordeAdvancing = false;
+  }
+
+  for (const event of raids) {
+    if (event.intent.kind !== 'raid') continue;
+    const battle = event.log;
+    const target = event.intent.target;
+    const who = faction(event.factionId);
+
+    scene.focus(target);
+    effects.shake(battle?.defenderDestroyed ? 1.4 : 0.9);
+    if (battle && battle.damageToDefender > 0) {
+      effects.floatingText(target, `-${battle.damageToDefender}`, '#ff9b91', 1.3);
+    }
+
+    if (battle?.cityCaptured) {
+      log(`${who} has taken one of your cities.`, 'bad');
+    } else if (battle?.defenderDestroyed) {
+      log(`${who} destroyed one of your units.`, 'bad');
+    } else if (battle?.attackerDestroyed) {
+      log(`You held. A raider from ${who} was destroyed.`, 'good');
+    } else {
+      log(`${who} raided you for ${battle?.damageToDefender ?? 0}.`, 'bad');
+    }
+
+    dirty = true;
+    // A beat between raids, so three of them in one turn read as three
+    // events rather than one flicker.
+    await new Promise((resolve) => window.setTimeout(resolve, 650));
+  }
+
+  /*
+   * Losing has to say so, once.
+   *
+   * A passive player is wiped out somewhere between turn 11 and 22, which is
+   * correct, but without this the game simply carried on with nothing left to
+   * command and no explanation. The flag is what stops it being carried on
+   * *about*: the first version repeated the line at the end of every
+   * subsequent turn, which read like a stuck log rather than an ending.
+   */
+  if (!fallen && unitsOf(state, PLAYER_FACTION_ID).length === 0 && state.cities.size === 0) {
+    fallen = true;
+    log('Your empire has fallen. Start a new one with a fresh seed.', 'bad');
+  }
 }
 
 // Presentation ---------------------------------------------------------
@@ -838,6 +926,8 @@ function adopt(next: GameState, message: string): void {
   // fight of a *session*, and there is no way to know from a save whether the
   // player already had theirs.
   hadFirstBattle = false;
+  fallen = false;
+  hordeAdvancing = false;
   banner.hide();
   // A duel interrupted by a new game would otherwise leave its pose behind,
   // and a pose keeps a wreck alive on screen for as long as it exists.
@@ -1104,6 +1194,7 @@ declare global {
       turn: () => number;
       lastFrameMs: () => number;
       unitCount: (factionId: string) => number;
+      factionUnits: (factionId: string) => { id: string; q: number; r: number; hp: number }[];
       cityCount: () => number;
       resources: () => Record<string, number>;
       selected: () => string | undefined;
@@ -1196,6 +1287,8 @@ window.__fabricEmpires = {
     };
   },
   faceNorth: () => scene.drone.faceNorth(),
+  factionUnits: (factionId: string) =>
+    unitsOf(state, factionId).map((u) => ({ id: u.id, q: u.hex.q, r: u.hex.r, hp: u.hp })),
   saveNow: () => saveGame(slot, state),
   savedBytes: () => slot.read()?.length ?? 0,
   wipeSave: () => slot.clear(),
