@@ -12,11 +12,12 @@
 
 import { generateMap, type MapOptions } from '../map/index.js';
 import type { City, Faction, Ruin, Unit } from '../entities/index.js';
+import { CITY_RANKS, FIRST_RANK, type CityRank } from '../entities/rank.js';
 import { GENERIC_TOPIC_GRAPH, type TopicGraph } from '../challenge/index.js';
 import { EMPTY_RESEARCH, type ResearchState } from '../rules/research.js';
 import type { Difficulty, GameState } from '../state/index.js';
 
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 
 export interface SaveFile {
   readonly version: number;
@@ -171,7 +172,39 @@ const MIGRATIONS: Readonly<Record<number, (save: SaveFile) => SaveFile>> =
       version: 6,
       explored: [],
     }),
+
+    /**
+     * 6 -> 7: settlements have a rank.
+     *
+     * ⚠️ **Granted on population alone, and knowingly generously.** The honest
+     * migration would also check retained knowledge, since that is half of
+     * what a rank costs, but a save from before ranks existed was played by
+     * someone who was never told that revising grows their towns. Demoting a
+     * nine-citizen capital to a Siedlung on load because its topics have gone
+     * stale would be punishing them for a rule that did not exist when they
+     * played.
+     *
+     * So an old city keeps whatever its size already justifies, and every rank
+     * after that has to be earned the real way.
+     */
+    6: (save) => ({
+      ...save,
+      version: 7,
+      cities: save.cities.map((city) => ({
+        ...city,
+        rank: rankFromPopulationAlone(city.population ?? 1),
+      })),
+    }),
   });
+
+/** The best rank a population would justify if knowledge were not asked for. */
+function rankFromPopulationAlone(population: number): CityRank {
+  let best: CityRank = FIRST_RANK;
+  for (const rank of CITY_RANKS) {
+    if (population >= rank.minPopulation) best = rank.id;
+  }
+  return best;
+}
 
 export function migrate(save: SaveFile): SaveFile {
   let current = save;

@@ -8,4 +8,5 @@ export * from './ai.js';
 export * from './production.js';
 export * from './victory.js';
 export * from './sack.js';
+export * from './rank.js';
 export * from './vision.js';

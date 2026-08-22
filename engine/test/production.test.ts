@@ -252,7 +252,7 @@ describe('saves', () => {
     expect(capital(loaded).productionProgress).toBe(0);
     expect(capital(loaded).producing).toBeUndefined();
     // 2 -> 3 added production, 3 -> 4 added ruins and the raid cooldown,
-    // 4 -> 5 added the cheat log, 5 -> 6 added fog of war.
+    // 4 -> 5 added the cheat log, 5 -> 6 added fog of war, 6 -> 7 added rank.
     expect(capital(loaded).lastRaidedTurn).toBe(-1);
     expect(loaded.ruins.size).toBe(0);
     expect(loaded.cheatsUsed).toEqual([]);
@@ -260,6 +260,13 @@ describe('saves', () => {
     // player has already seen all of it. Blanking it would take back ground
     // they genuinely uncovered.
     expect(loaded.explored.size).toBe(loaded.map.tiles.size);
-    expect(SAVE_VERSION).toBe(6);
+    /*
+     * ⚠️ Rank is granted on population alone, knowingly generously. Checking
+     * retained knowledge as well would be the honest rule, and it would demote
+     * a large capital on load because its topics went stale under a rule that
+     * did not exist when the save was played.
+     */
+    expect(capital(loaded).rank).toBe('siedlung');
+    expect(SAVE_VERSION).toBe(7);
   });
 });

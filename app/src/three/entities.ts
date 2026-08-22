@@ -27,7 +27,7 @@ import {
   SphereGeometry,
   type BufferGeometry,
 } from 'three';
-import { cityKind, unitType, type City, type Ruin, type Unit } from '@fabric-empires/engine';
+import { cityKind, rankIndex, unitType, type City, type Ruin, type Unit } from '@fabric-empires/engine';
 
 const materialCache = new Map<string, MeshStandardMaterial>();
 
@@ -739,9 +739,36 @@ export function buildCity(city: City, factionColour: string): Group {
     return x - Math.floor(x);
   };
 
+  /*
+   * ⚠️ **The fortress is earned, and used to be free.**
+   *
+   * Every settlement got the full bastioned trace the moment it was founded,
+   * which was wrong twice over. Historically it is absurd: a *trace italienne*
+   * was the most expensive thing a state could build, years of work and the
+   * reason early modern treasuries went bankrupt, and one did not appear
+   * around a hut. And in play it wasted the whole vocabulary, because if a
+   * one-citizen camp already looks like a fortress there is nothing left for a
+   * real city to look like.
+   *
+   * So the rank decides what stands here:
+   *
+   *   Siedlung    a few huts and a track. No wall at all
+   *   Dorf        more houses, and a church tower to be recognised by
+   *   Gemeinde    the earth rampart goes up, and the gate with it
+   *   Stadt       bastions, and the keep
+   *   Großstadt   a second storey on everything, and the cathedral spire
+   */
+  const tier = rankIndex(city.rank);
+  const walled = tier >= 2;
+  const bastioned = tier >= 3;
+  const great = tier >= 4;
+
   const RAMPART_RADIUS = 0.74;
   const RAMPART_HEIGHT = 0.2;
+  /** Where the buildings stand. Inside the walls once there are walls. */
+  const GROUND = walled ? 0.14 : 0.02;
 
+  if (walled) {
   /*
    * ⚠️ **Value separation, which is what this town was actually missing.**
    *
@@ -820,22 +847,29 @@ export function buildCity(city: City, factionColour: string): Group {
    * platform was earth so shot would bury itself instead of throwing stone
    * splinters, and the thing that finally makes the bastion legible from
    * above: a dark cap on a light plinth has an edge, and an edge is a shape.
+   *
+   * ⚠️ Only from Stadt. A rampart is earth and labour; a bastioned trace is
+   * the thing that bankrupted states, and it should not be standing round a
+   * township of four families.
    */
-  for (let i = 0; i < 3; i++) {
-    const angle = (i / 3) * Math.PI * 2 + Math.PI / 6;
-    const height = RAMPART_HEIGHT + 0.03;
-    const x = Math.cos(angle) * (RAMPART_RADIUS + 0.02);
-    const z = Math.sin(angle) * (RAMPART_RADIUS + 0.02);
-    const bastion = part(new CylinderGeometry(0.2, 0.26, height, 3), stone());
-    bastion.position.set(x, 0.07 + height / 2, z);
-    // Point the arrowhead outwards, which is the whole idea of a bastion.
-    bastion.rotation.y = -angle + Math.PI / 2;
-    group.add(bastion);
+  if (bastioned) {
+    for (let i = 0; i < 3; i++) {
+      const angle = (i / 3) * Math.PI * 2 + Math.PI / 6;
+      const height = RAMPART_HEIGHT + 0.03;
+      const x = Math.cos(angle) * (RAMPART_RADIUS + 0.02);
+      const z = Math.sin(angle) * (RAMPART_RADIUS + 0.02);
+      const bastion = part(new CylinderGeometry(0.2, 0.26, height, 3), stone());
+      bastion.position.set(x, 0.07 + height / 2, z);
+      // Point the arrowhead outwards, which is the whole idea of a bastion.
+      bastion.rotation.y = -angle + Math.PI / 2;
+      group.add(bastion);
 
-    const terreplein = part(new CylinderGeometry(0.202, 0.202, 0.028, 3), sward());
-    terreplein.position.set(x, 0.07 + height + 0.012, z);
-    terreplein.rotation.y = -angle + Math.PI / 2;
-    group.add(terreplein);
+      const terreplein = part(new CylinderGeometry(0.202, 0.202, 0.028, 3), sward());
+      terreplein.position.set(x, 0.07 + height + 0.012, z);
+      terreplein.rotation.y = -angle + Math.PI / 2;
+      group.add(terreplein);
+    }
+  }
   }
 
   /*
@@ -852,7 +886,9 @@ export function buildCity(city: City, factionColour: string): Group {
    * these were not surveyed, but the jitter is now noise on an order rather
    * than the order itself.
    */
-  const houses = Math.min(11, 3 + city.population * 2);
+  // Houses come from both axes: people need housing, and a higher rank means
+  // the place is denser as well as bigger.
+  const houses = Math.min(14, 2 + city.population + tier * 2);
   /** The street runs on this bearing, and the gate is at the end of it. */
   const STREET = Math.PI * 0.18;
   const along = { x: Math.cos(STREET), z: Math.sin(STREET) };
@@ -860,26 +896,28 @@ export function buildCity(city: City, factionColour: string): Group {
 
   for (let i = 0; i < houses; i++) {
     const side = i % 2 === 0 ? 1 : -1;
-    const rank = Math.floor(i / 2);
+    const row = Math.floor(i / 2);
     // Down the street from the market place, plus a little slop.
-    const t = -0.34 + rank * 0.2 + (rand(i) - 0.5) * 0.05;
+    const t = -0.34 + row * 0.2 + (rand(i) - 0.5) * 0.05;
     const off = side * (0.15 + rand(i + 40) * 0.05);
 
     const w = 0.12 + rand(i + 80) * 0.05;
     const d = 0.13 + rand(i + 120) * 0.06;
-    const h = 0.13 + rand(i + 160) * 0.09;
+    // A Großstadt builds upwards, because inside a wall there is nowhere else
+    // to go. That is why real ones did it.
+    const h = (0.13 + rand(i + 160) * 0.09) * (great ? 1.35 : 1);
     const x = along.x * t + across.x * off;
     const z = along.z * t + across.z * off;
     // Square to the street, give or take a few degrees of settling.
     const lean = STREET + (rand(i + 200) - 0.5) * 0.22;
 
     const walls = part(new BoxGeometry(w, h, d), rand(i + 240) > 0.55 ? plaster() : timber());
-    walls.position.set(x, 0.14 + h / 2, z);
+    walls.position.set(x, GROUND + h / 2, z);
     walls.rotation.y = lean;
     group.add(walls);
 
     const roof = part(new ConeGeometry(Math.max(w, d) * 0.82, h * 0.85, 4), tile());
-    roof.position.set(x, 0.14 + h + h * 0.425, z);
+    roof.position.set(x, GROUND + h + h * 0.425, z);
     roof.rotation.y = lean + Math.PI / 4;
     group.add(roof);
   }
@@ -892,28 +930,31 @@ export function buildCity(city: City, factionColour: string): Group {
    * one is a model sitting on a table.
    */
   const street = part(new BoxGeometry(0.98, 0.012, 0.15), trackway());
-  street.position.set(along.x * 0.08, 0.147, along.z * 0.08);
+  street.position.set(along.x * 0.08, GROUND + 0.007, along.z * 0.08);
   street.rotation.y = -STREET;
   street.castShadow = false;
   group.add(street);
 
   // A gap in the rampart on the street's bearing, with the road running down
-  // the glacis and off the hex.
+  // the glacis and off the hex. No wall, no gate: an open village still has a
+  // road, it just has nothing to pass through.
   const gateX = along.x * (RAMPART_RADIUS + 0.06);
   const gateZ = along.z * (RAMPART_RADIUS + 0.06);
-  const gateway = part(new BoxGeometry(0.19, 0.1, 0.26), trackway());
-  gateway.position.set(gateX, 0.13, gateZ);
-  gateway.rotation.y = -STREET;
-  group.add(gateway);
+  if (walled) {
+    const gateway = part(new BoxGeometry(0.19, 0.1, 0.26), trackway());
+    gateway.position.set(gateX, 0.13, gateZ);
+    gateway.rotation.y = -STREET;
+    group.add(gateway);
 
-  for (const side of [-1, 1]) {
-    const post = part(new CylinderGeometry(0.035, 0.042, 0.3, 6), stone());
-    post.position.set(
-      gateX + across.x * side * 0.1,
-      0.07 + 0.15,
-      gateZ + across.z * side * 0.1,
-    );
-    group.add(post);
+    for (const side of [-1, 1]) {
+      const post = part(new CylinderGeometry(0.035, 0.042, 0.3, 6), stone());
+      post.position.set(
+        gateX + across.x * side * 0.1,
+        0.07 + 0.15,
+        gateZ + across.z * side * 0.1,
+      );
+      group.add(post);
+    }
   }
 
   const approach = part(new BoxGeometry(0.34, 0.01, 0.12), trackway());
@@ -948,53 +989,89 @@ export function buildCity(city: City, factionColour: string): Group {
   const wellX = along.x * -0.44;
   const wellZ = along.z * -0.44;
   const wellWall = part(new CylinderGeometry(0.05, 0.055, 0.055, 10), stone());
-  wellWall.position.set(wellX, 0.168, wellZ);
+  wellWall.position.set(wellX, GROUND + 0.028, wellZ);
   group.add(wellWall);
   for (const side of [-1, 1]) {
     const upright = part(new CylinderGeometry(0.008, 0.009, 0.11, 4), ash());
-    upright.position.set(wellX + across.x * side * 0.045, 0.22, wellZ + across.z * side * 0.045);
+    upright.position.set(
+      wellX + across.x * side * 0.045,
+      GROUND + 0.08,
+      wellZ + across.z * side * 0.045,
+    );
     group.add(upright);
   }
   const winch = part(new CylinderGeometry(0.01, 0.01, 0.1, 6), ash());
   winch.rotation.z = Math.PI / 2;
   winch.rotation.y = -STREET;
-  winch.position.set(wellX, 0.272, wellZ);
+  winch.position.set(wellX, GROUND + 0.132, wellZ);
   group.add(winch);
 
   /*
    * The church tower, which is what a 1600 town is recognised by from a
    * distance, and the keep in the faction's colours beside it.
+   *
+   * ⚠️ The tower is the first thing a settlement earns, at Dorf, because a
+   * church is what a village built before it built anything else. The keep
+   * waits for Stadt: a lord's residence is a statement about power, and a
+   * hamlet is not in a position to make one.
    */
-  const towerHeight = 0.42 + city.population * 0.05;
-  const tower = part(new BoxGeometry(0.16, towerHeight, 0.16), stone());
-  tower.position.set(-0.12, 0.14 + towerHeight / 2, 0.06);
-  group.add(tower);
+  const hasTower = tier >= 1;
+  const hasKeep = bastioned;
 
-  const spire = part(new ConeGeometry(0.13, 0.28, 4), slate());
-  spire.position.set(-0.12, 0.14 + towerHeight + 0.14, 0.06);
-  spire.rotation.y = Math.PI / 4;
-  group.add(spire);
+  let bannerTop = GROUND + 0.28;
 
-  const keepHeight = 0.3 + city.population * 0.05;
-  const keep = part(new CylinderGeometry(0.15, 0.18, keepHeight, 8), stone());
-  keep.position.set(0.16, 0.14 + keepHeight / 2, -0.08);
-  group.add(keep);
+  if (hasTower) {
+    /*
+     * ⚠️ **Capped, and it widens as it rises.** Height alone ran away with it:
+     * a Großstadt's tower came out 1.22 units on a 0.16 base, an aspect of
+     * more than seven to one, which stopped reading as a church and started
+     * reading as a factory chimney. Real towers get thicker as they get
+     * taller because the base has to carry the thing.
+     */
+    const towerHeight = Math.min(0.78, 0.32 + city.population * 0.018 + tier * 0.07);
+    const towerWidth = 0.15 + tier * 0.022;
+    const tower = part(new BoxGeometry(towerWidth, towerHeight, towerWidth), stone());
+    tower.position.set(-0.12, GROUND + towerHeight / 2, 0.06);
+    group.add(tower);
 
-  const keepRoof = part(new ConeGeometry(0.2, 0.18, 8), tile());
-  keepRoof.position.set(0.16, 0.14 + keepHeight + 0.09, -0.08);
-  group.add(keepRoof);
+    const spire = part(
+      new ConeGeometry(towerWidth * 0.82, great ? 0.4 : 0.26, 4),
+      slate(),
+    );
+    spire.position.set(-0.12, GROUND + towerHeight + (great ? 0.2 : 0.13), 0.06);
+    spire.rotation.y = Math.PI / 4;
+    group.add(spire);
+    bannerTop = Math.max(bannerTop, GROUND + towerHeight);
+  }
+
+  if (hasKeep) {
+    // Capped for the same reason as the tower.
+    const keepHeight = Math.min(0.62, 0.3 + city.population * 0.03);
+    const keep = part(new CylinderGeometry(0.15, 0.18, keepHeight, 8), stone());
+    keep.position.set(0.16, GROUND + keepHeight / 2, -0.08);
+    group.add(keep);
+
+    const keepRoof = part(new ConeGeometry(0.2, 0.18, 8), tile());
+    keepRoof.position.set(0.16, GROUND + keepHeight + 0.09, -0.08);
+    group.add(keepRoof);
+    bannerTop = GROUND + keepHeight + 0.18;
+  }
 
   /*
    * The banner. It replaces an emissive sphere, which was the single most
    * science-fiction thing on the map, and it does the same job: says whose
    * town this is, from above, at a glance.
+   *
+   * ⚠️ Flown from whatever the tallest thing here happens to be, which changes
+   * with rank. A fixed height put the flag inside the keep of a large town and
+   * hovering over nothing in a small one.
    */
   const pole = part(new CylinderGeometry(0.008, 0.008, 0.26, 6), timber());
-  pole.position.set(0.16, 0.14 + keepHeight + 0.3, -0.08);
+  pole.position.set(0.16, bannerTop + 0.13, -0.08);
   group.add(pole);
 
   const banner = part(new BoxGeometry(0.13, 0.08, 0.006), cloth(factionColour));
-  banner.position.set(0.16 + 0.065, 0.14 + keepHeight + 0.36, -0.08);
+  banner.position.set(0.16 + 0.065, bannerTop + 0.19, -0.08);
   group.add(banner);
 
   // Bigger kinds sit on a broader footprint, which is the readability aid the

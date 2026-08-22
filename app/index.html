@@ -321,6 +321,13 @@
       #cities .city-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
       #cities .city-head b { font-size: 13px; }
       #cities .city-head span { color: var(--muted); font-size: 11px; }
+      /*
+        What the next rank wants. Muted while it is only a matter of time, and
+        picked out when the thing standing in the way is revision, because that
+        is the one the player can act on this minute.
+      */
+      #cities .city-need { color: var(--muted); font-size: 11px; margin-top: 3px; }
+      #cities .city-need.knowledge { color: #e0b552; }
       #cities .bar { height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.1); margin: 5px 0; overflow: hidden; }
       #cities .bar > div { height: 100%; background: #8fd694; width: 0%; }
       #cities .build { display: flex; gap: 5px; align-items: center; margin-top: 4px; }

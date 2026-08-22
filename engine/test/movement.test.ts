@@ -628,6 +628,7 @@ describe('founding cities', () => {
       kind: 'workspace',
       hp: 200,
       population: 1,
+      rank: 'siedlung',
       growthStore: 0,
       boundSkills: [],
       unrest: 0,

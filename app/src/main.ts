@@ -5,6 +5,11 @@ import {
   hexDistance,
   BASE_HEX_SIZE,
   PLAYER_FACTION_ID,
+  promoteCities,
+  nextRankNeed,
+  rankInfo,
+  type CityRank,
+  type CityRankInfo,
   canAttack,
   canFoundCity,
   canRaid,
@@ -66,6 +71,7 @@ import {
   Dp600ChallengeProvider,
   SIEGE_LENGTH,
   SIEGE_QUESTION_MS,
+  bandStrength,
   buildLibraryModel,
   buildSiege,
   campaignById,
@@ -366,6 +372,22 @@ const endScreen = createEndScreen(() => {
  * unplayable by turn twenty. `seen` is reset when a new empire starts, not
  * carried in the save, because these mark the beats of a *run*.
  */
+/**
+ * How well a topic is currently held, as a number the engine can use.
+ *
+ * ⚠️ The whole of the D35 boundary, in one function. The engine asks "how
+ * strong is this opaque string" and gets a number; it never learns that the
+ * strings are DP-600 skills, that there is such a thing as spaced repetition,
+ * or that a certification exists.
+ */
+const topicStrength = (topicId: string): number => bandStrength(mastery.get(topicId));
+
+/** One line saying what a new rank is actually worth, so it is not just a word. */
+function whyItRose(rank: CityRankInfo): string {
+  const percent = Math.round((rank.yieldBonus - 1) * 100);
+  return percent > 0 ? `Yields +${percent}%.` : 'The first step.';
+}
+
 const cinemaOverlay = createCinematicOverlay();
 cinemaOverlay.onSkip(() => scene.cinema.skip());
 const seenCinematics = new Set<string>();
@@ -1267,6 +1289,25 @@ async function doEndTurn(): Promise<void> {
   for (const cityId of report.grownCities) {
     log(`${state.cities.get(cityId)?.name ?? 'A city'} grew.`, 'good');
   }
+
+  /*
+   * Settlements rise here, after the citizens have been counted.
+   *
+   * ⚠️ Run from the app rather than inside the turn pipeline, because a rank
+   * is bought with retained knowledge as well as with people, and the mastery
+   * tracker lives on this side of the D35 line. The engine is handed a plain
+   * function from an opaque topic id to a number and never learns what the
+   * topics are.
+   */
+  const risen = promoteCities(state, topicStrength);
+  if (risen.promoted.length > 0) {
+    state = risen.state;
+    for (const p of risen.promoted) {
+      log(`${p.cityName} is now a ${p.to.label}. ${whyItRose(p.to)}`, 'good');
+    }
+    dirty = true;
+  }
+
   if (report.bankrupt) log('Upkeep could not be paid in full.', 'bad');
 
   if (report.researchSpent > 0) {
@@ -1683,9 +1724,39 @@ function refreshCities(): void {
     const name = document.createElement('b');
     name.textContent = city.name;
     const meta = document.createElement('span');
-    meta.textContent = `pop ${city.population}${city.unrest > 0 ? ` · unrest ${city.unrest}` : ''}`;
+    meta.textContent = `${rankInfo(city.rank).label} · pop ${city.population}${city.unrest > 0 ? ` · unrest ${city.unrest}` : ''}`;
     head.append(name, meta);
     row.append(head);
+
+    /*
+     * What the next rank is waiting for.
+     *
+     * ⚠️ Spelled out rather than left to be inferred. A settlement that has
+     * quietly stopped growing because a topic lapsed is indistinguishable from
+     * one that is merely slow, and a player who cannot tell the difference
+     * learns nothing from either. The knowledge case is called out separately
+     * because it is the one the player can do something about right now.
+     */
+    const need = nextRankNeed(city, topicStrength);
+    if (need) {
+      const wants = document.createElement('div');
+      wants.className = need.blockedByKnowledge ? 'city-need knowledge' : 'city-need';
+      const parts: string[] = [];
+      if (need.citizensShort > 0) {
+        parts.push(`${need.citizensShort} more ${need.citizensShort === 1 ? 'citizen' : 'citizens'}`);
+      }
+      if (need.topicsShort > 0) {
+        const band = need.rank.strengthRequired >= 0.95 ? 'strong' : 'familiar';
+        parts.push(
+          `${need.topicsShort} more ${need.topicsShort === 1 ? 'topic' : 'topics'} at ${band}`,
+        );
+      }
+      wants.textContent =
+        parts.length > 0
+          ? `${need.rank.label} needs ${parts.join(' and ')}`
+          : `Rising to ${need.rank.label}`;
+      row.append(wants);
+    }
 
     if (city.producing) {
       const type = unitType(city.producing);
@@ -2618,6 +2689,10 @@ declare global {
       look: (hex: Hex, distance?: number) => void;
       playOpening: () => Promise<void>;
       anthemReady: () => boolean;
+      setRank: (
+        rank: string,
+        population: number,
+      ) => { rank: string; population: number; label: string } | undefined;
       quality: (level: 'high' | 'low') => void;
       spawnEnemyAdjacent: (unitId: string) => Hex | undefined;
       clickHex: (hex: Hex) => void;
@@ -2890,6 +2965,22 @@ window.__fabricEmpires = {
   /** Replay the opening. Exists so the trailer can be recorded from the game. */
   playOpening: () => playOpening(),
   anthemReady: () => anthem.available,
+  /**
+   * Force the player's first settlement to a rank.
+   *
+   * For photographing all five without playing a whole game to reach the last
+   * one. Sets population too, because a rank with the wrong number of people
+   * in it would be a picture of a state the rules cannot produce.
+   */
+  setRank: (rank: string, population: number) => {
+    const city = [...state.cities.values()].find((c) => c.factionId === PLAYER_FACTION_ID);
+    if (!city) return undefined;
+    const cities = new Map(state.cities);
+    cities.set(city.id, { ...city, rank: rank as CityRank, population });
+    state = { ...state, cities };
+    dirty = true;
+    return { rank, population, label: rankInfo(rank as CityRank).label };
+  },
   quality: (level: 'high' | 'low') => {
     scene.setQuality(level === 'low' ? LOW_QUALITY : HIGH_QUALITY);
     fitCanvas();

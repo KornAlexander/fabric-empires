@@ -9,6 +9,7 @@
 import type { Hex } from '../hex/index.js';
 import type { ResourceId } from '../map/index.js';
 import type { UnitTypeId } from './units.js';
+import type { CityRank } from './rank.js';
 
 export type CityKind =
   | 'workspace'
@@ -89,6 +90,17 @@ export interface City {
   readonly kind: CityKind;
   readonly hp: number;
   readonly population: number;
+  /**
+   * How far the settlement has come: Siedlung through Großstadt.
+   *
+   * ⚠️ Stored rather than derived, and that is deliberate. Rank is a pure
+   * function of population and retained knowledge, so deriving it would need
+   * no save field at all, but a derived rank also FALLS the moment a topic
+   * lapses. Keeping it means a settlement stalls instead of collapsing, which
+   * is the promise made in `rank.ts`, and it means the high-water mark
+   * survives a reload.
+   */
+  readonly rank: CityRank;
   /** Data accumulated towards the next citizen. */
   readonly growthStore: number;
   /**
@@ -152,3 +164,4 @@ export function emptyResources(): Resources {
 }
 
 export * from './units.js';
+export * from './rank.js';

@@ -199,3 +199,27 @@ export function masteryBand(record: MasteryRecord | undefined): MasteryBand {
   if (record.repetitions >= 2) return 'familiar';
   return 'learning';
 }
+
+/**
+ * A band as a number between 0 and 1.
+ *
+ * ⚠️ **The only place the four bands are given a size**, so that anything
+ * asking "how well is this known" gets the same answer. The engine cannot use
+ * the bands themselves: it must not know what a mastery band is, or what a
+ * certification is, so it takes a plain number for an opaque topic id (D35).
+ * This is the function that converts between the two worlds.
+ *
+ * The values are spaced so that the thresholds a caller writes read the way
+ * the design is spoken about: above 0.3 means "at least learning", above 0.6
+ * means "at least familiar", above 0.95 means "strong".
+ */
+export const BAND_STRENGTH: Readonly<Record<MasteryBand, number>> = Object.freeze({
+  unseen: 0,
+  learning: 0.34,
+  familiar: 0.67,
+  strong: 1,
+});
+
+export function bandStrength(record: MasteryRecord | undefined): number {
+  return BAND_STRENGTH[masteryBand(record)];
+}

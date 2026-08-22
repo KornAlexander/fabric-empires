@@ -583,9 +583,12 @@ export function createScene3D(
 
         const existing = cityObjects.get(city.id);
         const colour = state.factions.get(city.factionId)?.colour ?? '#888888';
-        // Population and ownership both change the model, so those two are
-        // the rebuild triggers rather than rebuilding blindly every turn.
-        const signature = `${city.population}:${city.factionId}`;
+        // Population, rank and ownership all change the model, so those three
+        // are the rebuild triggers rather than rebuilding blindly every turn.
+        // ⚠️ Rank belongs here: a promotion adds walls and a keep, and without
+        // it in the signature the town keeps its old shape until it happens to
+        // grow a citizen or change hands.
+        const signature = `${city.population}:${city.rank}:${city.factionId}`;
         if (existing && existing.userData.signature === signature) {
           placeOnGround(existing, city.hex);
           continue;

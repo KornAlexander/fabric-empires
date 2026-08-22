@@ -9,6 +9,7 @@
 import { hexKey, type Hex } from '../hex/index.js';
 import { terrain } from '../map/index.js';
 import { cityKind, unitType, type City, type CityKind, type Unit } from '../entities/index.js';
+import { FIRST_RANK } from '../entities/rank.js';
 import { tileAt, unitAt, type GameState } from '../state/index.js';
 import { canFoundCity, pathTo, reachable } from './movement.js';
 import { rememberVisible } from './vision.js';
@@ -126,6 +127,7 @@ export function foundCity(
     kind,
     hp: cityKind(kind).baseHp,
     population: 1,
+    rank: FIRST_RANK,
     growthStore: 0,
     boundSkills: [],
     unrest: 0,

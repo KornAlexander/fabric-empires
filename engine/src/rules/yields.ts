@@ -10,6 +10,7 @@
 import { hexDistance, hexKey, hexSpiral, type Hex } from '../hex/index.js';
 import { tileYields, type MapTile, type ResourceId } from '../map/index.js';
 import { cityKind, isCivilian, type City, type Resources } from '../entities/index.js';
+import { rankInfo } from '../entities/rank.js';
 import { cityMoraleMultiplier } from './review.js';
 import { tileAt, type GameState } from '../state/index.js';
 
@@ -165,13 +166,18 @@ export function cityOutput(
     biased[key] = total[key] * (bias[key] ?? 1);
   }
 
-  // Morale last, so a city running on a fresh council review really is worth
-  // more than the same city that ignored one. Applying it here rather than at
-  // the call sites means no caller can collect yields and forget it.
+  // Rank and then morale, both applied here rather than at the call sites so
+  // that no caller can collect a city's yields and quietly forget one of them.
+  //
+  // Rank is what makes revising pay in the currency the game is actually
+  // played in: a Großstadt returns 45 percent more than the Siedlung it grew
+  // from, and it could only have got there by retaining what was built in it.
+  const rankBonus = rankInfo(city.rank).yieldBonus;
   const morale = cityMoraleMultiplier(city, state.turn);
-  if (morale !== 1) {
+  const multiplier = rankBonus * morale;
+  if (multiplier !== 1) {
     for (const key of Object.keys(biased) as ResourceId[]) {
-      biased[key] = biased[key]! * morale;
+      biased[key] = biased[key]! * multiplier;
     }
   }
 

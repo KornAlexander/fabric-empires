@@ -266,6 +266,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D235–D242 | Two players on one screen | Recorded in full in section 30.3 |
 | D243–D253 | The period pass: units as wargame stands, a fort with an inside | Recorded in full in section 31.5 |
 | D254–D260 | The opening title sequence and the anthem | Recorded in full in section 32.6 |
+| D261–D268 | Settlements that develop, Siedlung to Großstadt | Recorded in full in section 33.4 |
 
 ### 28. Cheat codes
 
@@ -1727,7 +1728,7 @@ is allowed to block on it.
 | 3d | unplanned | **The opening and the anthem** (section 32). A live title sequence over the seed's own world, and a 46 s trailer | **Done 22 Aug** |
 | 4 | 24 to 28 Aug | **The siege** (19). Walls, siege state, the assault set piece, the four defender options | Fog of war, for what a besieger can see |
 | 4b | 28 to 30 Aug | **Ships and islands** (23). Embark, cargo, AI crossings, coastal production, then flip `islands` on | |
-| 4c | 28 to 29 Aug | **Depth from Anno** (24). Progressive pacing tied to readiness, then reduced city tiers | Tiers need the city panel |
+| 4c | 28 to 29 Aug | **Depth from Anno** (24). Progressive pacing tied to readiness | Tiers done early, section 33 |
 | 5 | 26 to 28 Aug | **Art integration.** Wire the generated set into the renderer and the interface | Phase 2 |
 | 6 | 28 to 29 Aug | **Docs.** README, `NOTICE.md` (art and audio provenance), `PREVIEW-FEEDBACK.md` | Phases 2 and 3 |
 | 7 | 29 Aug | **Share card** (D40), and the **loading screen** the enlarged map now requires (22.2) | |
@@ -2142,7 +2143,7 @@ So it is staged, and the split is by leverage rather than by appetite:
 | | Item | Before 1 Sep |
 |---|---|---|
 | 4 | Progressive pacing tied to readiness | **Yes.** Hours, not days |
-| 1 | City tiers demanding mastery | **Yes, reduced**: three tiers, no decline |
+| 1 | City tiers demanding mastery | **Done 22 Aug**, section 33: five tiers, stall but no decline |
 | 2 | Island affinity | Only if ships land (23.4) |
 | 3 | Medallion production chains | No |
 | 1b | Tier decline and riots | No |
@@ -2519,6 +2520,103 @@ pulled down the moment they existed rather than left in the workspace.
 - Nobody has listened to the anthem yet. Everything above about it is inferred
   from its loudness envelope, which is a real measurement of a real property
   and is not the same thing as it being good.
+
+---
+
+### 33. Settlements that develop: Siedlung to Großstadt
+
+Built 22 Aug. This is item 1 of section 24.1, "city tiers that demand
+knowledge, not goods", which was called there "the single most valuable idea
+here" and scoped for the 29 August window. It came early and it came at five
+tiers rather than the three the deadline plan allowed.
+
+| | German | English | Citizens | Topics retained |
+|---|---|---|---|---|
+| 1 | Siedlung | Settlement | 1 | none |
+| 2 | Dorf | Village | 2 | 1 at learning |
+| 3 | Gemeinde | Township | 4 | 2 at familiar |
+| 4 | Stadt | Town | 6 | 3 at familiar |
+| 5 | Großstadt | City | 9 | 4 at strong |
+
+#### 33.1 A rank cannot be bought with food
+
+⚠️ **This is the point of the whole feature and it is worth being blunt about
+it.** A town that grows purely on food rewards ending turns quickly. A town
+that grows on what its owner has actually retained rewards revising. Only the
+second of those is why this project exists, so a rank costs both: citizens are
+the body of the place and retained knowledge is its licence.
+
+Every city already carried `boundSkills`, the topics whose buildings stand in
+it, and the spaced-repetition data already graded every topic into `unseen`,
+`learning`, `familiar` and `strong`. So this is composition, not machinery.
+The one new piece is `bandStrength` in `sm2.ts`, which is the single place the
+four bands are given a size.
+
+Yields climb with rank, from parity at Siedlung to **+45% at Großstadt**, so
+revision pays in the currency the game is actually played in.
+
+#### 33.2 A second axis, not a replacement
+
+`CityKind` already says what a settlement *does*: Workspace, Lakehouse,
+Warehouse, Eventhouse, Semantic Model. Rank says how far along it is. They
+compose, so a place reads "Lakehouse, Township" and neither half repeats the
+other.
+
+#### 33.3 The fortress is earned, and used to be free
+
+Every settlement got the full bastioned trace the moment it was founded, which
+was wrong twice over. Historically it is absurd: a *trace italienne* was among
+the most expensive things an early modern state could build, and one did not
+appear around a hut. And in play it wasted the whole vocabulary, because if a
+one-citizen camp already looks like a fortress there is nothing left for a real
+city to look like.
+
+| Rank | What stands there |
+|---|---|
+| Siedlung | A few huts and a track. **No wall at all** |
+| Dorf | More houses, and a church tower to be recognised by |
+| Gemeinde | The earth rampart goes up, and the gate with it |
+| Stadt | Bastions, and the keep |
+| Großstadt | A second storey on everything, and the cathedral spire |
+
+#### 33.4 Decisions
+
+| ID | Decision | Why |
+|---|---|---|
+| D261 | ⚠️ **A rank costs citizens AND retained knowledge** | Section 24.1's idea, built. Population alone would let a well-fed hamlet outrank a studied capital; mastery alone would let a city with one bound topic reach the top on turn three, which is arguably the purer rule and reads as broken. Guarded by a test that gives a city a hundred citizens and no knowledge and expects it to stay a Siedlung |
+| D262 | ⚠️ **It stalls, it never falls** | The plan wanted full Anno downgrade behaviour, and that is the sharper mechanic. It is also the one most likely to feel like a punishment, which is the last thing a study aid can afford. Forgetting blocks progress; it does not burn your town down. That single sentence is why `rank` is stored rather than derived: a derived rank falls the moment a topic lapses |
+| D263 | Both names live on one row of the rank table | The interface is English until after 1 September (D214) and the German pass will already have these. Carrying `label` and `labelDe` together means they cannot drift apart, which is exactly what happens when a name lives in a translation file away from the thing it names |
+| D264 | Rank is a second axis over `CityKind`, not a replacement | What a settlement does and how big it is are different questions. Merging them would have meant either five ranks of Lakehouse or losing the Fabric item types, and both are worse than a two-word label |
+| D265 | Promotion runs in the app, not in the turn pipeline | A rank needs to know how well a topic is retained, and that lives on the far side of the D35 line. Threading a knowledge callback down through `runUpkeep` would put a certification-shaped hole in the middle of the engine's turn loop for one rule. The engine gets a plain function from an opaque string to a number and never learns what the strings are |
+| D266 | ⚠️ **The city panel says what the next rank is waiting for** | A growth rule nobody can see is a growth rule nobody plays, and a settlement that has quietly stopped is indistinguishable from a slow one. The knowledge case is picked out in colour because waiting on food is waiting on time, while a lapsed topic is something the player can fix this minute |
+| D267 | The bastioned trace starts at Stadt | Section 33.3. It is both the historically sane reading and the one that leaves the vocabulary somewhere to go |
+| D268 | Old saves are promoted on population alone | The honest migration would also check retained knowledge, and it would demote a nine-citizen capital on load because its topics went stale under a rule that did not exist when it was played. Every rank after the migration has to be earned properly |
+
+#### 33.5 Verified
+
+- 758 tests, 21 new. The load-bearing ones: a city with a hundred citizens and
+  no knowledge stays a Siedlung; a city that knows everything and has one
+  citizen stays a Siedlung; a Großstadt whose topics have all lapsed keeps its
+  rank and gains nothing; promotion returns **the same state object** when
+  nothing changed, so it is safe to run every turn.
+- All five ranks photographed on one seed. The progression reads at a glance:
+  huts and a track, then a church tower, then the rampart and gate, then
+  bastions and a keep, then a dense walled city.
+- ⚠️ One thing the pictures caught that the code could not: at Großstadt the
+  church tower came out 1.22 units tall on a 0.16 base, an aspect of more than
+  seven to one, which stopped reading as a church and started reading as a
+  factory chimney. Height is now capped and the tower widens as it rises,
+  because a real one thickens to carry itself.
+
+#### 33.6 Open
+
+- Rival settlements start at Dorf and never rise, because nothing computes
+  mastery for an antagonist. Their villages are therefore permanently a
+  village, which is invisible today and will look odd once a game runs long.
+- Nothing yet spends a rank. It pays yields and hit points; a Großstadt should
+  probably unlock something a Siedlung cannot build.
+- The five thresholds have not been played against a real game's pace. They are
+  reasoned, not tuned, and the first honest playthrough is likely to move them.
 
 ---
 
