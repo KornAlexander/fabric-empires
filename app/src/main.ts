@@ -236,9 +236,20 @@ async function askBattle(
   return together;
 }
 
-/** Timers from D50: tight, but every modal can be paused without penalty. */
-const BATTLE_TIME_MS = 20_000;
-const RESEARCH_TIME_MS = 30_000;
+/**
+ * Timers from D50: tight, but every modal can be paused without penalty.
+ *
+ * ⚠️ **These are THINKING budgets, not clocks.** The presenter adds a reading
+ * allowance for each question on top, computed from that question's own length,
+ * so a long one about Direct Lake and a four-word sum for a six-year-old do not
+ * share a stopwatch. They were total limits until it was measured that only 54
+ * percent of the DP-600 bank could be answered at all inside the old flat 20
+ * seconds, and only 3 percent could earn the fast bonus.
+ *
+ * Read them as: once you have finished reading, this is how long you get.
+ */
+const BATTLE_TIME_MS = 14_000;
+const RESEARCH_TIME_MS = 22_000;
 
 /**
  * Every question's time limit, scaled by the chosen pace.

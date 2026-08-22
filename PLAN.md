@@ -267,6 +267,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D243–D253 | The period pass: units as wargame stands, a fort with an inside | Recorded in full in section 31.5 |
 | D254–D260 | The opening title sequence and the anthem | Recorded in full in section 32.6 |
 | D261–D268 | Settlements that develop, Siedlung to Großstadt | Recorded in full in section 33.4 |
+| D269–D272 | The clock was grading reading speed, not knowledge | Recorded in full in section 34.4 |
 
 ### 28. Cheat codes
 
@@ -2617,6 +2618,88 @@ city to look like.
   probably unlock something a Siedlung cannot build.
 - The five thresholds have not been played against a real game's pace. They are
   reasoned, not tuned, and the first honest playthrough is likely to move them.
+
+---
+
+### 34. ⚠️ The clock was grading reading speed
+
+Reported: *"enemies don't die normally on first fight, only on second fight."*
+Fixed 22 Aug. The cause was not in combat.
+
+#### 34.1 What was actually wrong
+
+A correct answer scored **1.0 inside half the time limit and 0.6 outside it**,
+and the time limit was a flat 20 seconds covering **reading as well as
+answering**. Measured against the real question bank at the default pace:
+
+| Pace | Limit | Fast window | Could score 1.0 | **Could be answered at all** |
+|---|---|---|---|---|
+| Relaxed | 30 s | 15 s | 27% | 100% |
+| **Standard** | **20 s** | **10 s** | **3%** | **54%** |
+| Exam pace | 13 s | 7 s | 0% | 19% |
+
+The median DP-600 question needs **19.6 seconds simply to read and choose**,
+against a 20 second budget. So nearly half the bank was unanswerable, and 97
+percent of correct answers were quietly marked down to 0.6.
+
+That lands exactly on the boundary the report describes, against an evenly
+matched defender:
+
+```
+score 0.6 -> attack 18.8 vs 10 ->  77 damage -> survives with 23 -> dies on the SECOND fight
+score 1.0 -> attack 26.0 vs 10 -> 126 damage -> capped at 100     -> dies on the FIRST
+```
+
+One blow or two, decided by a stopwatch that was measuring how fast somebody
+reads English.
+
+#### 34.2 The fix
+
+The clock now has two halves and only one of them is graded:
+
+- **Reading time is granted free**, computed from that question's own word
+  count at 200 words per minute, which is the low end of adult silent reading
+  and the right end for prose that is deliberately about a distinction the
+  reader is unsure of.
+- **Thinking time is the budget and the thing scored.** The app's constants are
+  now thinking budgets: battle 14 s, research 22 s.
+
+After: **100% answerable and 100% able to earn the bonus when the answer is
+known**, at every pace, on both banks.
+
+#### 34.3 ⚠️ What this was really about
+
+A shared flat clock grades **literacy, not knowledge**, and this is a study
+aid. A long question about Direct Lake and a four-word sum for a six-year-old
+cannot share a stopwatch: the Klasse 1 bank scored 100 percent fast while
+DP-600 scored 3 percent, on the same timer, and the difference was sentence
+length. A good share of the people this is built for are reading in a second
+language, and quietly marking them down for it measures the wrong thing.
+
+#### 34.4 Decisions
+
+| ID | Decision | Why |
+|---|---|---|
+| D269 | ⚠️ **Reading time is granted; only thinking time is scored** | The clock must measure hesitation, not literacy. A slow reader who knows the answer now scores exactly what a fast reader who knows the answer scores, which is the only defensible behaviour for a study tool |
+| D270 | The allowance is per question, from its own length | One number for all of them is what produced a bank where 97 percent of correct answers were marked down and a child's bank where none were. Length is the variable, so length is what the allowance follows |
+| D271 | ⚠️ **The damage curve was deliberately NOT changed** | The obvious response to "enemies do not die" is to make weapons hit harder. That would have buried the real cause under an unplaytested balance change days before a deadline, and it would have been wrong: the numbers were right and the input to them was corrupt. Pinned by a test that asserts parity damage is still 30 |
+| D272 | ⚠️ **An automated repro could not have found this** | `answerOpen` answers in milliseconds, so a robot always scored 1.0 and always saw the enemy die. The bug only existed for humans. The evidence had to be a measurement of the bank's reading time, not a browser run, and that is worth remembering the next time a report cannot be reproduced |
+
+#### 34.5 Verified
+
+- 776 tests, 18 new. `learn/test/clock.test.ts` asserts that **every** question
+  in both banks can be answered and can earn the bonus when known, which is
+  the guard that was missing: the entire suite stayed green through this bug.
+- `engine/test/firstBlow.test.ts` pins the arithmetic of the report itself, so
+  nobody re-tunes the damage curve chasing a symptom whose cause was elsewhere.
+
+#### 34.6 Open
+
+- 200 words per minute is a reasonable figure, not a measured one. Nobody has
+  been timed reading these questions.
+- The final exam now gets 45 s of thinking plus reading, around 62 s a
+  question. The real DP-600 allows roughly 100 s, so this is still the
+  harder end, but it moved and nobody asked for it to.
 
 ---
 
