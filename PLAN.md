@@ -207,6 +207,52 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D176 | Measured before it was allowed to stay: the curve holds | Passive player, garrisons on, six seeds: **defeated on 6 of 6, median turn 19** (range 18 to 31), first raid turn 12 to 27, and every faction pinned at the 4-unit cap by the end. Section 16.7 needs a passive player to lose and they still do. Giving seven factions unit production was the most dangerous change made to this game, and the only honest way to know was to run it |
 | D177 | Domination now means taking their settlements, not hunting their units | `stillStanding` already counted cities, so seeding villages silently changed the win condition from killing fourteen wandering raiders to reducing seven places. That is a better game and it was worth making explicit, so `victory.test.ts` now asserts that clearing every rival unit while a village stands is **not** a victory |
 | D178 | Raid is on `p`, not `r` | `r` is one of `flyControls`' `MOVEMENT_KEYS`, so binding raid to it would have engaged the drone and flown the camera on every raid. The same trap that already moved fortify off `f` and skip off `s` |
+| D179 | ⚠️ The coastline is smoothed before land and water are split | The map read as "long narrow islands". The bulk was never the problem: the main continent scored **1.27** for slenderness against a disc's 1.13, one mass on nearly every seed. The **edge** was the problem, fringed into one-tile spits with a perimeter **3.3 to 4.2 times** that of a circle of the same area. Six blur passes over the classifying field bring that to 2.3 to 2.7 against a floor of 2.11, lift the thinnest part of the continent from 15 hexes to 25, and remove detached scraps entirely |
+| D180 | ⚠️ The smoothed field is a SEPARATE field from the elevation | `rawTileHeight` in the renderer reads `tile.elevation` as the interpolant between a terrain profile's base and its range, so blurring it in place would have smoothed the coast by flattening every hill on the map. That is exactly the blandness the erosion-droplet scaling in section 22 exists to avoid. `shapeScore` decides what KIND of ground a tile is; `elevation` decides how tall it is. Measured after the split: minY ‑1.977 against ‑1.978 before, maxY 3.76 against 3.73. The relief did not move |
+| D181 | Smoothing before the quantile, never tidying the coast after it | The land/water split is a quantile, so blurring first leaves the land fraction exact. Cleaning up the coastline after classification would have changed how much land there is and silently broken the composition guarantees that the whole terrain system rests on |
+| D182 | Fewer noise octaves makes it WORSE, which was worth measuring | The obvious fix is to remove the fine octaves that crinkle the coast. Measured: octaves 5 to 4 or 3 took roughness from 3.28 **up** to 3.5 and 3.8, because with less high-frequency detail the low frequencies dominate and the threshold contour meanders into broad lobes instead. The blur was the right lever and the intuition was wrong |
+| D183 | The golden digests are kept in two sets | Coast smoothing changed the default map, so those digests had to move. A second set pinned at `coastSmoothing: 0` still asserts the three original hashes, and they still hold, which proves the noise, mask and classification were untouched and only a new stage was added in front. Without it, "changed because I meant to" and "changed because I broke it" would look identical |
+| D184 | ⚠️ Archipelagos need one blur pass, not six | The blur reach grows a hex per pass, so 6 is nothing against a 25-hex-thick continent but comparable to a small island's half-width, and it dissolves them: asking for 5 islands gave 3 to 4 masses at 1 pass and 1 to 2 at 6, with one seed collapsing to a single continent. Pinned at 1 in the archipelago test. The naval phase must choose this deliberately |
+| D185 | Whole-mass averages could not see the problem | Slenderness over 2,800 tiles said the continent was fine, because it was fine in the middle. A fringe lives entirely on the boundary and any metric that averages over area will miss it. The lesson is not "measure", which was already being done, but **measure the thing being complained about**: the complaint was about the coast, so the metric had to be a property of the coast |
+
+### 26. The coastline
+
+The map looked like it was made of long narrow islands. It was not. It was one
+compact continent with a shredded edge, and at the zoom the game is actually
+played at, a shredded edge is indistinguishable from an archipelago of threads.
+
+#### 26.1 What the numbers said, in order
+
+| Question | Metric | Answer |
+|---|---|---|
+| Is the land broken up? | landmass count | No. One mass, 2,788 of 2,795 land tiles |
+| Is the continent long and thin? | slenderness, disc = 1.13 | No. 1.27 to 1.31 |
+| Is it thin anywhere? | max distance to water | 14 to 22 hexes. Not thin |
+| Is the render drowning it? | land tiles below sea level | 13.5%. Real, but not the cause |
+| **Is the coast shredded?** | **perimeter vs a circle** | **Yes. 3.3 to 4.2, floor 2.11** |
+
+The first four all said "fine". Only the fifth matched what could be seen,
+because it is the only one that is a property of the boundary rather than an
+average over the area.
+
+#### 26.2 After
+
+| Seed | Roughness before | after | Thickness before | after | Islets before | after |
+|---|---|---|---|---|---|---|
+| FABRIC | 3.38 | 2.40 | 15 | 25 | 0 | 0 |
+| DP600 | 3.77 | 2.35 | 17 | 26 | 1 | 0 |
+| HORDE | 3.67 | 2.43 | 22 | 25 | 0 | 0 |
+| LAKEHOUSE | 4.17 | 2.66 | 18 | 24 | 0 | 0 |
+| ONELAKE | 3.44 | 2.55 | 22 | 25 | 0 | 0 |
+| DIRECTLAKE | 3.31 | 2.33 | 14 | 27 | 1 | 0 |
+
+Every seed is now a single landmass. `map.test.ts` bounds roughness under 3.0
+and the spindly share under 0.4%, so this cannot quietly come back.
+
+⚠️ The floor for this metric on a hex grid is about **2.1**, not 1.0: counting
+an exposed hex edge per missing land neighbour, even an ideal blob scores that.
+Forty blur passes reach 2.11 and produce a featureless disc, so 2.3 to 2.7 is
+deliberately short of the floor. A coast should still be a shape.
 
 ### 25. Their villages: attack, capture, raze or raid
 

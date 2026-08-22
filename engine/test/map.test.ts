@@ -46,10 +46,30 @@ describe('determinism', () => {
    */
   const GOLDEN = { radius: 25, islands: 1, landFraction: 0.45 } as const;
 
+  /*
+   * ⚠️ **Two sets, deliberately.**
+   *
+   * Coast smoothing changed what the default generator produces, so the
+   * digests below it had to move. Freezing a second set at `coastSmoothing: 0`
+   * keeps the original evidence intact: these three hashes are the ones this
+   * file has always asserted, and they still hold, which proves the noise, the
+   * mask and the quantile classification were not touched. Only a new stage was
+   * added in front of them.
+   *
+   * Without the second set, "the digests changed because I meant them to" and
+   * "the digests changed because I broke something" would look identical.
+   */
+  it('matches the golden digests with smoothing off, exactly as before', () => {
+    const raw = { ...GOLDEN, coastSmoothing: 0 } as const;
+    expect(mapDigest(generateMap('FABRIC', raw))).toBe('43c60ea9');
+    expect(mapDigest(generateMap('ALPHA', raw))).toBe('33bc72b1');
+    expect(mapDigest(generateMap('DP600', raw))).toBe('12c5f509');
+  });
+
   it('matches the golden digests', () => {
-    expect(mapDigest(generateMap('FABRIC', GOLDEN))).toBe('43c60ea9');
-    expect(mapDigest(generateMap('ALPHA', GOLDEN))).toBe('33bc72b1');
-    expect(mapDigest(generateMap('DP600', GOLDEN))).toBe('12c5f509');
+    expect(mapDigest(generateMap('FABRIC', GOLDEN))).toBe('3b00e3da');
+    expect(mapDigest(generateMap('ALPHA', GOLDEN))).toBe('3eb41ad3');
+    expect(mapDigest(generateMap('DP600', GOLDEN))).toBe('12dc97fe');
   });
 
   it('different seeds produce different maps', () => {
@@ -224,6 +244,45 @@ describe('geography', () => {
 
     for (const size of sizes) {
       expect(size).toBeGreaterThanOrEqual(DEFAULT_MAP_OPTIONS.minIslandSize);
+    }
+  });
+
+  /*
+   * Coastline quality.
+   *
+   * ⚠️ The complaint was that the map looked like long narrow islands, and the
+   * first metric tried said everything was fine: the main continent scored 1.27
+   * for slenderness against a disc's 1.13. It was fine, in the BULK. The damage
+   * was all at the edge, where the coast was fringed into one-tile spits, and
+   * an average over 2,800 tiles cannot see a fringe.
+   *
+   * So the thing pinned here is the coast itself: perimeter against the
+   * perimeter of a circle of the same area. Counting an exposed hex edge per
+   * missing land neighbour, an ideal blob on this grid scores about 2.1, so the
+   * floor is not 1.0. Before smoothing this ran 3.3 to 4.2; it now runs 2.3 to
+   * 2.7. The bound is 3.0, which is comfortably below where it was and well
+   * above where it is.
+   */
+  it('does not fringe the coastline into spits and threads', () => {
+    for (const seed of ['FABRIC', 'ALPHA', 'DP600', 'HORDE']) {
+      const map = generateMap(seed);
+      const land = new Set(landTiles(map).map((t) => hexKey(t.hex)));
+
+      let perimeter = 0;
+      let spindly = 0;
+      for (const key of land) {
+        const tile = map.tiles.get(key)!;
+        const neighbours = hexNeighbours(tile.hex).filter((n) =>
+          land.has(hexKey(n)),
+        ).length;
+        perimeter += 6 - neighbours;
+        if (neighbours <= 2) spindly += 1;
+      }
+
+      const roughness = perimeter / (2 * Math.sqrt(Math.PI * land.size));
+      expect(roughness, `${seed} coastline roughness`).toBeLessThan(3);
+      // Spits and threads: tiles with almost no land around them.
+      expect(spindly / land.size, `${seed} spindly share`).toBeLessThan(0.004);
     }
   });
 

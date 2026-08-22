@@ -71,7 +71,7 @@ import {
 import { createEffects } from './render/effects.js';
 import { createScene3D } from './three/scene3d.js';
 import { playDuel } from './three/duel.js';
-import { HEX_RADIUS, hexToWorld } from './three/terrain.js';
+import { HEX_RADIUS, SEA_LEVEL, hexToWorld } from './three/terrain.js';
 import { HIGH_QUALITY, LOW_QUALITY } from './three/world.js';
 import { createQuestionModal } from './ui/questionModal.js';
 import { createGreatLibrary } from './ui/greatLibrary.js';
@@ -2014,6 +2014,7 @@ declare global {
         { id: string; isOpen: boolean; options: number; accepted: number[] } | undefined
       >;
       terrainProbe: () => unknown;
+      drownedLand: () => { land: number; below: number; share: number };
       /**
        * The live three.js objects.
        *
@@ -2135,6 +2136,25 @@ window.__fabricEmpires = {
     refreshHud();
   },
   terrainProbe: () => ({ ...scene.probe(), ...scene.stats() }),
+  /*
+   * How much of the land is drawn under the sea.
+   *
+   * ⚠️ The map and the render can disagree, and when they do it is the render
+   * that the player believes. The generator can report one compact continent
+   * while the screen shows thin ribbons, because a land tile whose surface
+   * ends up below the water plane simply is not land any more as far as anyone
+   * looking at it is concerned. Nothing measured this before.
+   */
+  drownedLand: () => {
+    let land = 0;
+    let below = 0;
+    for (const tile of state.map.tiles.values()) {
+      if (tile.terrain === 'onelake') continue;
+      land += 1;
+      if (scene.groundAt(tile.hex).y <= SEA_LEVEL) below += 1;
+    }
+    return { land, below, share: land === 0 ? 0 : +(below / land).toFixed(3) };
+  },
 
   cityBindings: () => {
     const out: Record<string, readonly string[]> = {};

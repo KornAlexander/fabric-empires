@@ -78,6 +78,23 @@ export interface MapOptions {
    * what the golden digests are pinned against.
    */
   readonly islands: number;
+  /**
+   * Blur passes over the elevation field before land and water are split.
+   *
+   * ⚠️ **This is what stops the coast being shredded.** Raw fbm has detail at
+   * every scale, including the scale of a single hex, so thresholding it puts
+   * that detail straight into the coastline: measured at radius 45, the main
+   * continent had a perimeter **3.3 to 4.2 times** that of a circle of the same
+   * area. The bulk was compact (slenderness 1.27 against a disc's 1.13) but the
+   * edges were fringed into one-tile spits and threads, and close up that reads
+   * as a map made of long narrow islands.
+   *
+   * Blurring before the split, rather than tidying the coastline afterwards,
+   * keeps the land fraction EXACT: the quantile is taken on the smoothed field,
+   * so the same number of tiles are land either way. It also leaves rivers
+   * flowing downhill on the same field the coast was cut from.
+   */
+  readonly coastSmoothing: number;
 }
 
 export const DEFAULT_MAP_OPTIONS: MapOptions = Object.freeze({
@@ -136,6 +153,16 @@ export const DEFAULT_MAP_OPTIONS: MapOptions = Object.freeze({
    * The capability lands now; the default flips in the naval phase (23).
    */
   islands: 1,
+  /*
+   * Six passes, measured. The coastline was fringed into one-tile spits: a
+   * perimeter 4.17 times a circle of the same area, against a floor of 2.11
+   * for this metric on a hex grid. Six passes brings that to 2.66, lifts the
+   * thinnest part of the main continent from 15 hexes to 25, and removes the
+   * detached scraps entirely, while still leaving the coast a shape rather
+   * than a disc. Reducing the noise octaves instead made it WORSE (3.5 to 3.8),
+   * because fewer octaves let the low frequencies meander into broad lobes.
+   */
+  coastSmoothing: 6,
 });
 
 /**
@@ -288,6 +315,14 @@ adius * 0.52 apart,
       hex: h,
       key: hexKey(h),
       elevation: shaped,
+      /**
+       * The smoothed copy that decides land, water and terrain zone.
+       *
+       * Starts equal to `elevation` and is blurred below. Kept separate
+       * because the two are different questions: how tall is this ground, and
+       * what KIND of ground is it.
+       */
+      shapeScore: shaped,
       moisture: fbm(moistureNoise, nx, ny, options.moisture),
       corruption: fbm(corruptionNoise, nx, ny, options.corruption),
       edgeDistance: hexDistance({ q: 0, r: 0 }, h) / options.radius,
@@ -298,6 +333,42 @@ adius * 0.52 apart,
   // thousands of times, and a linear scan there turns generation from
   // milliseconds into seconds.
   const fieldByKey = new Map(field.map((f) => [f.key, f]));
+
+  /*
+   * Smooth the field that DECIDES the coastline, and only that field.
+   *
+   * Self weight 2 against six neighbours at 1: enough to cut hex-scale detail
+   * out of the coastline without flattening the continent into a dome. Tiles at
+   * the rim simply have fewer neighbours to average with, which is harmless
+   * because the edge falloff has already drowned them.
+   *
+   * ⚠️ **`elevation` itself is left alone.** `rawTileHeight` in the renderer
+   * reads it as the interpolant between a terrain profile's base and its full
+   * range, so blurring it would have smoothed the coast by flattening every
+   * hill on the map: precisely the blandness the erosion-droplet scaling in
+   * section 22 was added to avoid. Smoothing the classifier and keeping the
+   * relief is the whole reason these are two fields.
+   *
+   * ⚠️ Done before the quantile, so the land fraction is unaffected. Tidying
+   * the coastline after classification would have changed how much land there
+   * is and quietly broken the composition guarantees below.
+   */
+  const SELF_WEIGHT = 2;
+  for (let pass = 0; pass < options.coastSmoothing; pass++) {
+    const blurred = new Map<string, number>();
+    for (const f of field) {
+      let sum = f.shapeScore * SELF_WEIGHT;
+      let weight = SELF_WEIGHT;
+      for (const n of hexNeighbours(f.hex)) {
+        const neighbour = fieldByKey.get(hexKey(n));
+        if (!neighbour) continue;
+        sum += neighbour.shapeScore;
+        weight += 1;
+      }
+      blurred.set(f.key, sum / weight);
+    }
+    for (const f of field) f.shapeScore = blurred.get(f.key)!;
+  }
 
   /*
    * Classification is by QUANTILE, not by fixed elevation thresholds.
@@ -313,7 +384,7 @@ adius * 0.52 apart,
    * and makes the land fraction exact rather than something to search for.
    */
   const byElevation = [...field].sort(
-    (a, b) => a.elevation - b.elevation || a.key.localeCompare(b.key),
+    (a, b) => a.shapeScore - b.shapeScore || a.key.localeCompare(b.key),
   );
   const waterCount = Math.round(field.length * (1 - options.landFraction));
   const landTiles = byElevation.slice(waterCount); // ascending elevation
