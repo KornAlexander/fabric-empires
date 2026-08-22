@@ -148,8 +148,78 @@ describe('every unit is a stand of figures', () => {
   });
 });
 
-describe('⚠️ nothing on the map glows any more', () => {
+describe('⚠️ the elite melee units are knights, and the line unit is not', () => {
   /*
+   * Three units share the role `melee` and used to share one drawing: a pike
+   * block with more men in it. So a player's two most powerful units looked
+   * exactly like the one they started the game with, which is a strange thing
+   * for a strategy game to do with its top end.
+   *
+   * The split is by strength rather than by unit id, so a campaign that
+   * invents its own roster inherits the same hierarchy.
+   */
+  const line = make('pipelineRunner');
+  const colossus = make('semanticColossus');
+  const titan = make('directLakeTitan');
+
+  it('gives the heavy units more to draw than the line unit', () => {
+    expect(unitType('semanticColossus').strength).toBeGreaterThan(
+      unitType('pipelineRunner').strength,
+    );
+    expect(meshCount(colossus)).toBeGreaterThan(meshCount(line));
+    expect(meshCount(titan)).toBeGreaterThan(meshCount(colossus));
+  });
+
+  it('keeps all three inside one stand, however grand they get', () => {
+    // Knights are not an excuse to spill off the tray. A stand is a stand.
+    for (const [name, group] of [
+      ['line', line],
+      ['colossus', colossus],
+      ['titan', titan],
+    ] as const) {
+      const box = new Box3().setFromObject(group);
+      const reach = Math.max(
+        Math.abs(box.min.x),
+        Math.abs(box.max.x),
+        Math.abs(box.min.z),
+        Math.abs(box.max.z),
+      );
+      // The tray is 0.46; a lance and a flag may overhang a little.
+      expect(reach, `${name} spills off its tray`).toBeLessThan(0.75);
+    }
+  });
+
+  it('⚠️ still obeys the rule that armour does not make a man taller', () => {
+    /*
+     * D244. A knight is better equipped, not bigger, and a mounted man sits
+     * higher only by the height of the horse. The tallest thing on any land
+     * stand remains the colours it carries, so all three end up within a few
+     * centimetres of each other.
+     */
+    const heights = [line, colossus, titan].map(standsProud);
+    expect(Math.max(...heights) - Math.min(...heights)).toBeLessThan(0.05);
+  });
+
+  it('gives every knight the faction colour to be recognised by', () => {
+    for (const [name, group] of [
+      ['colossus', colossus],
+      ['titan', titan],
+    ] as const) {
+      let found = 0;
+      group.traverse((o) => {
+        const mesh = o as Mesh;
+        if (!mesh.isMesh) return;
+        const mat = mesh.material as { color?: { getHexString(): string } };
+        if (mat.color && `#${mat.color.getHexString()}` === FACTION) found += 1;
+      });
+      // A sash, a crest, the tray ring and the colours: more than one place,
+      // so losing any single one does not make the stand anonymous.
+      expect(found, `${name} shows too little of whose it is`).toBeGreaterThan(2);
+    }
+  });
+});
+
+describe('⚠️ nothing on the map glows any more', () => {  /*
    * The old unit carried an emissive strip at intensity 2.4, and the old city
    * a glowing beacon. Both were the most science-fiction objects in a scene
    * that is trying to be 1600. The tray band under a stand is the single

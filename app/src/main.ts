@@ -63,6 +63,7 @@ import {
   type GameState,
   type Hex,
   type ReachableTile,
+  type Unit,
   type UnitTypeId,
 } from '@fabric-empires/engine';
 import {
@@ -401,6 +402,19 @@ function whyItRose(rank: CityRankInfo): string {
 
 const cinemaOverlay = createCinematicOverlay();
 cinemaOverlay.onSkip(() => scene.cinema.skip());
+
+/**
+ * Whether the player has asked to be done with the opening.
+ *
+ * ⚠️ **`cinema.skip()` ends the current SHOT, not the sequence.** The opening
+ * plays four of them in a row, so pressing Escape skipped one beat and started
+ * the next, and a player who wanted to get on with the game had to press it
+ * four times. Nobody reads that as "skip"; they read it as ignored.
+ */
+let openingSkipped = false;
+cinemaOverlay.onSkip(() => {
+  openingSkipped = true;
+});
 const seenCinematics = new Set<string>();
 
 /**
@@ -2170,11 +2184,12 @@ async function playOpening(): Promise<void> {
   });
 
   anthem.start();
+  openingSkipped = false;
   revealingForOpening = true;
   refreshFog();
   try {
     for (const shot of shots) {
-      if (finished) break;
+      if (finished || openingSkipped) break;
       cinemaOverlay.show(shot.title, shot.subtitle);
       // The fog falls on the last beat, under the title, rather than after the
       // sequence has ended. Letting it happen off screen wastes the one moment
@@ -2704,6 +2719,7 @@ declare global {
         rank: string,
         population: number,
       ) => { rank: string; population: number; label: string } | undefined;
+      showcase: (typeIds: string[], centre: Hex) => string[];
       quality: (level: 'high' | 'low') => void;
       spawnEnemyAdjacent: (unitId: string) => Hex | undefined;
       clickHex: (hex: Hex) => void;
@@ -2996,6 +3012,40 @@ window.__fabricEmpires = {
     scene.setQuality(level === 'low' ? LOW_QUALITY : HIGH_QUALITY);
     fitCanvas();
   },
+  /**
+   * Line up one unit of each type on neighbouring hexes.
+   *
+   * For photographing the roster side by side. Comparing two units by playing
+   * until you own both takes a whole game, and "do these read as different
+   * things" is a question about a single frame.
+   */
+  showcase: (typeIds: string[], centre: Hex) => {
+    const units = new Map(state.units);
+    for (const [id, u] of units) if (u.factionId === PLAYER_FACTION_ID) units.delete(id);
+
+    const placed: string[] = [];
+    let next = state.nextEntityId;
+    for (const [i, typeId] of typeIds.entries()) {
+      const hex = i === 0 ? centre : hexNeighbour(centre, (i - 1) % 6);
+      const tile = state.map.tiles.get(hexKey(hex));
+      if (!tile || tile.terrain === 'onelake') continue;
+      const id = `showcase-${next++}`;
+      units.set(id, {
+        id,
+        typeId: typeId as Unit['typeId'],
+        factionId: PLAYER_FACTION_ID,
+        hex,
+        hp: 100,
+        movesLeft: 2,
+        fortified: false,
+      });
+      placed.push(`${typeId}@${hex.q},${hex.r}`);
+    }
+    state = { ...state, units, nextEntityId: next };
+    dirty = true;
+    return placed;
+  },
+
   spawnEnemyAdjacent: (unitId: string) => {
     // Test affordance: put a hostile next door so the combat choreography
     // can be exercised without marching across the continent first.

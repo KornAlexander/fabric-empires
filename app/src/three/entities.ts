@@ -158,6 +158,22 @@ const iron = () =>
       new MeshStandardMaterial({ color: new Color('#4c4a48'), metalness: 0.65, roughness: 0.62 }),
   );
 
+/**
+ * Burnished plate armour.
+ *
+ * ⚠️ Brighter and smoother than `iron`, and still nowhere near chrome. Harness
+ * of this period was often blackened or blued against rust and then polished
+ * on the raised surfaces, so it catches light in bands rather than mirroring
+ * the sky. A knight has to read as metal at forty pixels; a knight that reads
+ * as a mirror is the science fiction this palette was built to get rid of.
+ */
+const plate = () =>
+  material(
+    'plate',
+    () =>
+      new MeshStandardMaterial({ color: new Color('#6e7176'), metalness: 0.78, roughness: 0.42 }),
+  );
+
 /** Ash and oak in the pale: pike shafts, cart beds, wheel spokes. */
 const ash = () =>
   material(
@@ -276,6 +292,19 @@ const MAN = 0.092;
 const M = MAN / 1.75;
 
 /**
+ * Where a melee unit stops walking and starts riding.
+ *
+ * ⚠️ Strength rather than a list of unit ids, so a campaign that invents its
+ * own roster gets the same hierarchy for free. The engine's `melee` role
+ * covers everything from a line unit at 20 to a Direct Lake Titan at 60, and
+ * drawing all of them as one pike block meant the best units a player owned
+ * looked exactly like the one they started with.
+ */
+const HORSE_FROM_STRENGTH = 40;
+/** And where the horse gets armour of its own. */
+const BARDING_FROM_STRENGTH = 55;
+
+/**
  * One soldier: coat, head, hat, and whatever he is carrying.
  *
  * No arms and no legs, on purpose. At the zoom this game is played at the
@@ -390,6 +419,125 @@ function horse(): Group {
       g.add(leg);
     }
   }
+  return g;
+}
+
+/**
+ * A man in three-quarter harness: the *Ritter* of this century.
+ *
+ * ⚠️ **Knights and 1600 are not in conflict, which is why this exists.** The
+ * armoured horseman did not vanish with the Middle Ages; he became the
+ * cuirassier, and in German he was still a Ritter. Three-quarter plate down to
+ * the knee, a closed helm, a lance or a pair of wheel-lock pistols. The
+ * Thirty Years' War is full of them. So the roster gets its knights without
+ * touching the period the forts and the siege are built on (D145).
+ *
+ * Built on the same `MAN` as everyone else. Armour does not make a man taller.
+ */
+function knight(colour: string): Group {
+  const g = new Group();
+
+  // Cuirass over a padded arming coat, flaring into tassets at the thigh.
+  const cuirass = part(new CylinderGeometry(MAN * 0.19, MAN * 0.23, MAN * 0.4, 8), plate());
+  cuirass.position.y = MAN * 0.44;
+  g.add(cuirass);
+
+  const tassets = part(new CylinderGeometry(MAN * 0.23, MAN * 0.2, MAN * 0.2, 8), plate());
+  tassets.position.y = MAN * 0.2;
+  g.add(tassets);
+
+  // Pauldrons. The one silhouette cue that says "armour" rather than "coat".
+  for (const side of [-1, 1]) {
+    const pauldron = part(new SphereGeometry(MAN * 0.11, 8, 6), plate());
+    pauldron.position.set(0, MAN * 0.6, side * MAN * 0.17);
+    pauldron.scale.y = 0.7;
+    g.add(pauldron);
+  }
+
+  // A sash across the breastplate: in a war where both sides wore the same
+  // harness, a coloured scarf was how you knew who to shoot at. It is also
+  // where this stand's faction colour lives.
+  const sash = part(new BoxGeometry(MAN * 0.42, MAN * 0.09, MAN * 0.42), cloth(colour));
+  sash.position.y = MAN * 0.5;
+  sash.rotation.y = Math.PI / 4;
+  g.add(sash);
+
+  // Closed helm: skull, and a visor projecting forward over the face.
+  const skull = part(new SphereGeometry(MAN * 0.115, 8, 6), plate());
+  skull.position.y = MAN * 0.73;
+  g.add(skull);
+  const visor = part(new BoxGeometry(MAN * 0.13, MAN * 0.1, MAN * 0.16), plate());
+  visor.position.set(MAN * 0.07, MAN * 0.71, 0);
+  g.add(visor);
+
+  // The crest. Reads before anything else does from above, and it is the
+  // reason a knight is findable in a crowd of pikemen.
+  const crest = part(new ConeGeometry(MAN * 0.05, MAN * 0.26, 5), cloth(colour));
+  crest.position.y = MAN * 0.93;
+  g.add(crest);
+
+  return g;
+}
+
+/**
+ * A lance, couched.
+ *
+ * Shorter than a pike at about four metres, and carried level under the arm
+ * rather than upright: a hedge of vertical shafts says infantry, and a row of
+ * horizontal ones says a charge. That contrast is the whole point of drawing
+ * both.
+ */
+function lance(): Group {
+  const g = new Group();
+  const length = 4 * M;
+  const shaft = part(new CylinderGeometry(M * 0.035, M * 0.055, length, 6), ash());
+  shaft.rotation.z = Math.PI / 2;
+  shaft.position.set(length * 0.28, MAN * 0.52, 0);
+  g.add(shaft);
+
+  const head = part(new ConeGeometry(M * 0.07, M * 0.4, 5), plate());
+  head.rotation.z = -Math.PI / 2;
+  head.position.set(length * 0.28 + length / 2 + M * 0.2, MAN * 0.52, 0);
+  g.add(head);
+
+  // The grapper: the flared ring that stops the lance sliding back on impact.
+  const vamplate = part(new CylinderGeometry(M * 0.16, M * 0.09, M * 0.18, 8), plate());
+  vamplate.rotation.z = Math.PI / 2;
+  vamplate.position.set(length * 0.28 - length * 0.3, MAN * 0.52, 0);
+  g.add(vamplate);
+
+  return g;
+}
+
+/**
+ * Barding: armour for the horse.
+ *
+ * Reserved for the heaviest stand on the field. A barded horse was ruinously
+ * expensive and by 1600 already rare, which makes it exactly the right way to
+ * say "this is the most frightening thing you own" without drawing it bigger
+ * than everything else (D244).
+ */
+function barding(colour: string): Group {
+  const g = new Group();
+
+  // Chanfron over the face.
+  const chanfron = part(new BoxGeometry(0.55 * M, 0.26 * M, 0.26 * M), plate());
+  chanfron.position.set(1.2 * M, 1.87 * M, 0);
+  g.add(chanfron);
+
+  // Peytral across the chest.
+  const peytral = part(new CylinderGeometry(0.36 * M, 0.4 * M, 0.5 * M, 8), plate());
+  peytral.rotation.z = Math.PI / 2;
+  peytral.position.set(0.7 * M, 1.25 * M, 0);
+  g.add(peytral);
+
+  // A caparison hanging over the flank, in the faction's colour.
+  for (const side of [-1, 1]) {
+    const cloth_ = part(new BoxGeometry(1.5 * M, 0.75 * M, 0.05 * M), cloth(colour));
+    cloth_.position.set(-0.15 * M, 1.0 * M, side * 0.36 * M);
+    g.add(cloth_);
+  }
+
   return g;
 }
 
@@ -573,6 +721,42 @@ export function buildUnit(unit: Unit, factionColour: string): Group {
 
   switch (type.role) {
     case 'melee': {
+      /*
+       * ⚠️ **Two very different things share this role, and used to share one
+       * drawing.** Pipeline Runner at strength 20, Semantic Colossus at 45 and
+       * Direct Lake Titan at 60 were all rendered as the same pike block with
+       * more men in it, so a player's two most powerful units looked exactly
+       * like their starter. Strength is the split: the line unit fights on
+       * foot, the heavy units ride.
+       *
+       * That is also how these armies really worked. Infantry held ground with
+       * the pike; the decisive arm was armoured horse.
+       */
+      if (type.strength >= HORSE_FROM_STRENGTH) {
+        // A wedge, which is the formation that made the charge worth making.
+        const riders = Math.max(3, Math.min(5, Math.round(type.strength / 13)));
+        const barded = type.strength >= BARDING_FROM_STRENGTH;
+        for (let i = 0; i < riders; i++) {
+          const mount = horse();
+          if (barded) mount.add(barding(factionColour));
+
+          const rider = knight(factionColour);
+          rider.add(lance());
+          rider.position.y = 1.45 * M;
+          mount.add(rider);
+
+          // Front rank of one or two, the rest fanned out behind it.
+          const front = riders >= 5 ? 2 : 1;
+          const inFront = i < front;
+          const idx = inFront ? i : i - front;
+          const count = inFront ? front : riders - front;
+          const x = (idx - (count - 1) / 2) * 0.2 + (rand(i) - 0.5) * 0.02;
+          const z = (inFront ? -0.14 : 0.12) + (rand(i + 30) - 0.5) * 0.04;
+          place(mount, x, z, (rand(i + 60) - 0.5) * 0.16);
+        }
+        break;
+      }
+
       // A pike block. The hedge of shafts all leaning the same way is the
       // most recognisable silhouette of the century, and it survives being
       // small better than anything else here does.

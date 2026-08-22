@@ -268,6 +268,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D254–D260 | The opening title sequence and the anthem | Recorded in full in section 32.6 |
 | D261–D268 | Settlements that develop, Siedlung to Großstadt | Recorded in full in section 33.4 |
 | D269–D272 | The clock was grading reading speed, not knowledge | Recorded in full in section 34.4 |
+| D273–D277 | Ritter: the elite melee units ride | Recorded in full in section 35.3 |
 
 ### 28. Cheat codes
 
@@ -2700,6 +2701,72 @@ language, and quietly marking them down for it measures the wrong thing.
 - The final exam now gets 45 s of thinking plus reading, around 62 s a
   question. The real DP-600 allows roughly 100 s, so this is still the
   harder end, but it moved and nobody asked for it to.
+
+---
+
+### 35. Ritter: the elite melee units ride
+
+Asked for: *"the fighters are most likely best Ritter or similar stuff."* Built
+22 Aug.
+
+#### 35.1 Knights and 1600 are not in conflict
+
+⚠️ The obvious reading of this request breaks D145, which fixed the period at
+around 1600 because it is the last moment when fortifying a city was decisive,
+and which the bastioned forts, the siege, the Siedlung to Großstadt progression
+and the whole pike-and-shot vocabulary all hang off. Moving to the Middle Ages
+days before the deadline would mean rebuilding all of it.
+
+It is also unnecessary, because **the armoured horseman did not end with the
+Middle Ages.** He became the *cuirassier*: three-quarter plate to the knee, a
+closed helm, a lance or a pair of wheel-lock pistols, sometimes a barded horse.
+The Thirty Years' War is full of them, and in German he was still called a
+Ritter. So the roster gets its knights, and they are **more** historically
+correct than the bare-headed riders that were there before.
+
+#### 35.2 It fixed a problem that was already there
+
+Three units share the engine role `melee`, and all three were drawn as one pike
+block with more men in it:
+
+| Unit | Strength | Was | Now |
+|---|---|---|---|
+| Pipeline Runner | 20 | pike block | pike block |
+| Semantic Colossus | 45 | the same, more men | armoured lancers |
+| Direct Lake Titan | 60 | the same, more men | armoured lancers, barded horses |
+
+So a player's two most powerful units looked exactly like the one they started
+with. The split is on **strength**, not on unit ids, so a campaign that invents
+its own roster inherits the same hierarchy. It is also how those armies really
+worked: infantry held ground with the pike, and the decisive arm was horse.
+
+#### 35.3 Decisions
+
+| ID | Decision | Why |
+|---|---|---|
+| D273 | ⚠️ **Ritter as cuirassiers, inside 1600, rather than moving to the Middle Ages** | Gives the request what it actually wants without touching the period that the forts, the siege and section 33 are built on. The armoured horseman of 1600 is a knight by any ordinary meaning of the word, and drawing him is more accurate than what was there before, not less |
+| D274 | The foot and horse split is by strength, not by unit id | The engine's roles do not distinguish a line unit from an elite one, and hard-coding three names would leave any future campaign's roster back where this started |
+| D275 | A lance is carried couched, a pike upright | The contrast is the whole reason for drawing both. A hedge of vertical shafts says infantry holding ground; a row of horizontal ones says a charge. At map zoom that difference in direction survives when no detail does |
+| D276 | Barding is reserved for the single heaviest stand | Ruinously expensive and already rare by 1600, which makes it exactly the right way to say "this is the most frightening thing you own" without breaking D244 by drawing it bigger |
+| D277 | ⚠️ **Armour still does not make a man taller** | D244 again, and it needed a test of its own here: a knight is better equipped, not larger, and a mounted man sits higher only by the height of the horse. All three melee stands finish within five centimetres of each other because the tallest thing on any of them is the colours it carries |
+
+#### 35.4 A bug found while photographing this
+
+⚠️ **Escape skipped one beat of the opening, not the opening.** `cinema.skip()`
+ends the current shot, and section 32's sequence plays four in a row, so a
+player pressing Escape watched the next beat begin and had to press it four
+times. Nobody reads that as "skip"; they read it as ignored. Found because a
+screenshot script pressed Escape once and photographed the title sequence
+instead of the units. Now a single press abandons the whole opening.
+
+#### 35.5 Verified
+
+- 780 tests, 4 new: the heavy units draw more than the line unit and the Titan
+  more than the Colossus; all three stay inside their tray; all three remain
+  the same height; and every knight carries the faction colour in more than one
+  place, so losing any single one does not make the stand anonymous.
+- Photographed at three distances. Foot, horse and barded horse are
+  distinguishable at the zoom the game is played at.
 
 ---
 
