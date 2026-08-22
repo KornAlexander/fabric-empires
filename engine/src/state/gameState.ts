@@ -65,13 +65,42 @@ export interface GameState {
 export const PLAYER_FACTION_ID = 'player';
 
 /**
- * The first antagonist.
+ * The first antagonist, and the one every test names.
  *
- * The plan calls for one faction per skill cluster. This is the placeholder
- * that lets combat exist on screen before the full roster and their AI arrive:
- * its units are placed and do not yet act.
+ * Kept as a constant because it is the faction closest to the player on most
+ * maps and therefore the one a scenario usually means.
  */
 export const ANTAGONIST_FACTION_ID = 'silo-horde';
+
+/**
+ * The seven antagonists, one per cluster of the outline.
+ *
+ * ⚠️ **The cluster is the whole point.** Each faction quizzes on its own
+ * cluster, so who is marching on you tells you what you are about to be tested
+ * on, and fighting on two fronts means revising two branches. With only the
+ * Silo Horde in the game, six of the seven clusters never tested the player at
+ * all and the study planner covered one seventh of the exam.
+ *
+ * They are misconceptions, not products: no competitor is named, and nobody
+ * real is either.
+ */
+export interface AntagonistDefinition {
+  readonly id: string;
+  readonly label: string;
+  /** Opaque to the engine; the learning layer maps it to skills. */
+  readonly topicCluster: string;
+  readonly colour: string;
+}
+
+export const ANTAGONISTS: readonly AntagonistDefinition[] = Object.freeze([
+  { id: ANTAGONIST_FACTION_ID, label: 'The Silo Horde', topicCluster: 'B1', colour: '#b5533f' },
+  { id: 'open-gate', label: 'The Open Gate', topicCluster: 'A1', colour: '#c2793a' },
+  { id: 'untracked', label: 'The Untracked', topicCluster: 'A2', colour: '#8a6fb0' },
+  { id: 'denormalizers', label: 'The Denormalizers', topicCluster: 'B2', colour: '#a8474f' },
+  { id: 'scan-wraiths', label: 'The Scan Wraiths', topicCluster: 'B3', colour: '#4f7f7a' },
+  { id: 'flat-table-cult', label: 'The Flat Table Cult', topicCluster: 'C1', colour: '#9c5f8a' },
+  { id: 'import-zealots', label: 'The Import Zealots', topicCluster: 'C2', colour: '#7b8a3f' },
+]);
 
 export interface NewGameOptions {
   readonly difficulty?: Difficulty;
@@ -216,39 +245,54 @@ function freeAdjacent(
  */
 export const MIN_ANTAGONIST_DISTANCE = 7;
 
-export function chooseAntagonistCamp(map: GameMap, playerStart: Hex): Hex[] {
-  const candidates = [...map.tiles.values()]
-    .filter((tile) => {
-      if (!map.mainland.has(hexKey(tile.hex))) return false;
-      if (!isPassableByLand(tile.terrain)) return false;
-      if (tile.terrain !== 'ungovernedWastes') return false;
-      return hexDistance(tile.hex, playerStart) >= MIN_ANTAGONIST_DISTANCE;
-    })
-    .sort(
-      (a, b) =>
-        hexDistance(a.hex, playerStart) - hexDistance(b.hex, playerStart) ||
-        hexKey(a.hex).localeCompare(hexKey(b.hex)),
-    );
+/**
+ * How far apart two camps must be.
+ *
+ * Without a separation rule the greedy pick takes the seven closest wastes
+ * tiles, which are usually neighbours, and all seven factions spawn in one
+ * heap: a single doom-stack rather than seven fronts, and six of the seven
+ * clusters would still never reach the player.
+ */
+export const MIN_CAMP_SEPARATION = 6;
 
-  // Fall back to any distant passable land if the wastes are unreachable,
-  // so a strange map cannot produce a game with no opposition at all.
-  const pool =
-    candidates.length > 0
-      ? candidates
-      : [...map.tiles.values()]
-          .filter(
-            (tile) =>
-              map.mainland.has(hexKey(tile.hex)) &&
-              isPassableByLand(tile.terrain) &&
-              hexDistance(tile.hex, playerStart) >= MIN_ANTAGONIST_DISTANCE,
-          )
-          .sort(
-            (a, b) =>
-              hexDistance(a.hex, playerStart) - hexDistance(b.hex, playerStart) ||
-              hexKey(a.hex).localeCompare(hexKey(b.hex)),
-          );
+/**
+ * Camp anchors, one per antagonist, spread around the map.
+ *
+ * Sorted by distance from the player and picked greedily, so the nearest
+ * faction arrives first and the far ones take many more turns. That ordering
+ * is the difficulty ramp: nobody had to schedule it.
+ */
+export function chooseAntagonistCamps(
+  map: GameMap,
+  playerStart: Hex,
+  count: number,
+): Hex[] {
+  const far = (tile: MapTile): boolean =>
+    map.mainland.has(hexKey(tile.hex)) &&
+    isPassableByLand(tile.terrain) &&
+    hexDistance(tile.hex, playerStart) >= MIN_ANTAGONIST_DISTANCE;
 
-  return pool.slice(0, 3).map((tile) => tile.hex);
+  const byDistance = (a: MapTile, b: MapTile): number =>
+    hexDistance(a.hex, playerStart) - hexDistance(b.hex, playerStart) ||
+    hexKey(a.hex).localeCompare(hexKey(b.hex));
+
+  const wastes = [...map.tiles.values()]
+    .filter((tile) => far(tile) && tile.terrain === 'ungovernedWastes')
+    .sort(byDistance);
+
+  // Fall back to any distant passable land if the wastes are unreachable or
+  // too few, so a strange map cannot produce a game with no opposition.
+  const rest = [...map.tiles.values()]
+    .filter((tile) => far(tile) && tile.terrain !== 'ungovernedWastes')
+    .sort(byDistance);
+
+  const anchors: Hex[] = [];
+  for (const tile of [...wastes, ...rest]) {
+    if (anchors.length >= count) break;
+    if (anchors.some((a) => hexDistance(a, tile.hex) < MIN_CAMP_SEPARATION)) continue;
+    anchors.push(tile.hex);
+  }
+  return anchors;
 }
 
 // Construction ----------------------------------------------------------
@@ -295,21 +339,37 @@ export function createGameState(
   const factions = new Map<string, Faction>([[player.id, player]]);
 
   if (options.spawnAntagonists !== false) {
-    const antagonist: Faction = {
-      id: ANTAGONIST_FACTION_ID,
-      label: 'The Silo Horde',
-      isPlayer: false,
-      colour: '#b5533f',
-      resources: emptyResources(),
-      topicCluster: 'B1',
-    };
-    factions.set(antagonist.id, antagonist);
+    /*
+     * Two units each, not three.
+     *
+     * Seven factions of three would be twenty-one raiders against a starting
+     * pair, all converging. Two each keeps every front survivable on its own
+     * while the total still makes standing still fatal, which is the balance
+     * this was meant to correct.
+     */
+    const roster: UnitTypeId[] = ['pipelineRunner', 'profiler'];
+    const camps = chooseAntagonistCamps(map, start, ANTAGONISTS.length);
 
-    const camp = chooseAntagonistCamp(map, start);
-    const roster: UnitTypeId[] = ['pipelineRunner', 'pipelineRunner', 'profiler'];
-    camp.forEach((hex, index) => {
-      if (taken.has(hexKey(hex))) return;
-      place(roster[index] ?? 'pipelineRunner', hex, ANTAGONIST_FACTION_ID);
+    camps.forEach((anchor, index) => {
+      const definition = ANTAGONISTS[index];
+      if (!definition) return;
+
+      factions.set(definition.id, {
+        id: definition.id,
+        label: definition.label,
+        isPlayer: false,
+        colour: definition.colour,
+        resources: emptyResources(),
+        topicCluster: definition.topicCluster,
+      });
+
+      for (const typeId of roster) {
+        const hex = taken.has(hexKey(anchor))
+          ? freeAdjacent(map, anchor, taken)
+          : anchor;
+        if (!hex) break;
+        place(typeId, hex, definition.id);
+      }
     });
   }
 

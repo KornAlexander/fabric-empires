@@ -75,8 +75,22 @@ describe('defeat', () => {
 
 describe('domination', () => {
   it('is driving every rival off the map', () => {
-    const state = withoutUnitsOf(createGameState('FABRIC'), ANTAGONIST_FACTION_ID);
+    // Every rival, not just the nearest one. There are seven.
+    let state = createGameState('FABRIC');
+    for (const id of state.factions.keys()) {
+      if (id !== PLAYER_FACTION_ID) state = withoutUnitsOf(state, id);
+    }
     expect(checkOutcome(state, PLAYER_FACTION_ID)?.kind).toBe('domination');
+  });
+
+  it('is not declared while one rival still stands', () => {
+    // Clearing six of seven is not a victory, and this is the assertion that
+    // would have caught a check that only ever looked at the Silo Horde.
+    let state = createGameState('FABRIC');
+    const rivals = [...state.factions.keys()].filter((id) => id !== PLAYER_FACTION_ID);
+    expect(rivals.length).toBeGreaterThan(1);
+    for (const id of rivals.slice(0, -1)) state = withoutUnitsOf(state, id);
+    expect(checkOutcome(state, PLAYER_FACTION_ID)).toBeUndefined();
   });
 
   it('is not declared in a sandbox that never had a rival', () => {

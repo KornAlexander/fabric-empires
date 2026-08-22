@@ -1311,7 +1311,10 @@ function refreshCorruption(): void {
   const territory = cityTerritory(state);
   for (const [key, cityId] of territory) {
     const city = state.cities.get(cityId);
-    if (city && city.factionId === ANTAGONIST_FACTION_ID) next.add(key);
+    // Any antagonist's ground is corrupted, not just the Silo Horde's. This
+    // checked one hard-coded faction id and would have silently ignored the
+    // other six the moment they took a city.
+    if (city && city.factionId !== PLAYER_FACTION_ID) next.add(key);
   }
   corrupted = next;
 }

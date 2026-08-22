@@ -106,14 +106,33 @@ function inTurnOrder(ids: readonly string[]): string[] {
   return [...ids].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
 }
 
-/** Every tile holding something this faction would like to attack. */
+/**
+ * Every tile holding something this faction would like to attack.
+ *
+ * ⚠️ **Antagonists are hostile to the player and to nobody else.** The first
+ * version returned everything not their own, and with seven factions on the
+ * map that meant they spent the opening turns fighting each other: the first
+ * raid landed on turn 2 of every seed and had nothing to do with the player,
+ * who then watched their opposition delete itself for free.
+ *
+ * There is no diplomacy model here and there should not be one. These are
+ * seven misconceptions besieging a learner, not seven nations with interests.
+ * The player is hostile to everyone; everyone is hostile to the player.
+ */
 function targetsFor(state: GameState, factionId: string): Hex[] {
+  const acting = state.factions.get(factionId);
+  const hostile = (ownerId: string): boolean => {
+    if (ownerId === factionId) return false;
+    if (acting?.isPlayer) return true;
+    return state.factions.get(ownerId)?.isPlayer === true;
+  };
+
   const out: Hex[] = [];
   for (const city of state.cities.values()) {
-    if (city.factionId !== factionId) out.push(city.hex);
+    if (hostile(city.factionId)) out.push(city.hex);
   }
   for (const unit of state.units.values()) {
-    if (unit.factionId !== factionId) out.push(unit.hex);
+    if (hostile(unit.factionId)) out.push(unit.hex);
   }
   return out;
 }

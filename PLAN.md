@@ -137,6 +137,11 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D106 | Defeat outranks victory | An empire with nothing left cannot claim a win in the same breath, even in the edge case where the last topic completes on the turn the last unit dies. Tested explicitly, because it is the kind of tie nobody thinks about until it happens on screen |
 | D107 | Domination needs someone to dominate | A sandbox started with `spawnAntagonists: false` has no rivals, so "every rival is gone" is trivially true and a naive check declares victory on turn one. Exactly the sort of thing that would first appear in a live demo |
 | D108 | The ending interrupts | A finished game used to keep accepting turns, with only a log line that scrolled away. The overlay stops play, disables the turn button, and offers a new empire on the same seed, because there is nothing to go back to |
+| D109 | **All seven antagonists take the field** | One per cluster, as 5.7 always said. With only the Silo Horde in play, **six of the seven clusters never tested the player at all** and the diegetic study planner covered one seventh of the exam. Fighting on two fronts now means revising two branches |
+| D110 | Antagonists are hostile to the player and nobody else | The first seven-faction run had them deleting each other: `targetsFor` returned everything not their own, so the first raid landed on **turn 2 of every seed** and the player was not in it. There is no diplomacy model here and there should not be one. These are seven misconceptions besieging a learner, not seven nations with interests |
+| D111 | Camps must be six hexes apart | The greedy pick takes the nearest wastes tiles, which are usually neighbours, so without a separation rule all seven spawn as one doom-stack on one side of the map and six of them still never arrive |
+| D112 | Two units each, not three | Seven factions of three is twenty-one raiders against a starting pair. Two each keeps each front survivable alone while the total makes standing still fatal, which is the balance this was meant to correct |
+| D113 | Corruption follows any antagonist | `refreshCorruption` compared against one hard-coded faction id and would have silently ignored the other six the moment they took a city |
 
 ### 16.1 What "realistic" does and does not mean in this build
 
@@ -1133,6 +1138,7 @@ Accepted knowingly. Partial mitigations in place:
 - [x] The diegetic study planner: raids test you on the attacking faction's cluster, and knowing it is your defence
 - [x] Cities that build, gated by the tech tree, so research finally hands out an army
 - [x] Games that end: domination, science and defeat, with a screen that says so
+- [x] All seven antagonists on the map, one per cluster, so the whole outline can come for you
 - [ ] Live URL on `prdsweden` (primary submitted link)
 - [ ] Static GitHub Pages build as the guaranteed-alive fallback link (D37)
 - [ ] Shareable result image working and pasteable into Discord (D40)
@@ -1175,6 +1181,15 @@ turns earlier.
 passive but knowledgeable player currently *wins*. With one antagonist of
 three units that is defensible, but it is the number to watch when the other
 six factions arrive.
+
+**They arrived, and it settled the question.** With all seven on the map the
+passive run loses on every seed measured (turn 10 to 24), because the nearest
+faction is only the first of seven. Playing properly changes it completely: a
+run that founded its capital and kept building Profilers held for 40 turns
+with seven units alive, and was tested by **three different factions on three
+different clusters** along the way. Surviving longer is what earns the wider
+revision, which is the difficulty ramp and the study plan being the same
+thing.
 
 ---
 

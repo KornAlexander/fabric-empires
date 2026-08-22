@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   ANTAGONIST_FACTION_ID,
+  ANTAGONISTS,
+  BASE_AGGRO_RADIUS,
+  MIN_CAMP_SEPARATION,
   PLAYER_FACTION_ID,
+  cityAt,
   createGameState,
   endTurn,
   hexDistance,
@@ -12,6 +16,7 @@ import {
   reachable,
   runFactionTurn,
   terrain,
+  unitAt,
   unitType,
   unitsOf,
   type GameState,
@@ -89,6 +94,95 @@ function nearestEnemyDistance(state: GameState): number {
   return best;
 }
 
+describe('the seven antagonists', () => {
+  it('all take the field, one per cluster of the outline', () => {
+    const state = createGameState('FABRIC');
+    expect(ANTAGONISTS).toHaveLength(7);
+
+    for (const antagonist of ANTAGONISTS) {
+      const faction = state.factions.get(antagonist.id);
+      expect(faction, `${antagonist.id} should exist`).toBeDefined();
+      expect(unitsOf(state, antagonist.id).length).toBeGreaterThan(0);
+    }
+
+    // The clusters are the reason there are seven of them. Duplicates would
+    // mean a branch of the exam that never sends anyone.
+    const clusters = ANTAGONISTS.map((a) => a.topicCluster);
+    expect(new Set(clusters).size).toBe(7);
+    expect([...clusters].sort()).toEqual(['A1', 'A2', 'B1', 'B2', 'B3', 'C1', 'C2']);
+    expect(new Set(ANTAGONISTS.map((a) => a.colour)).size).toBe(7);
+  });
+
+  it('camps them apart rather than in one heap', () => {
+    for (const seed of ['FABRIC', 'CONTOSO', 'DP600']) {
+      const state = createGameState(seed);
+      const camps = ANTAGONISTS.map((a) => unitsOf(state, a.id)[0]?.hex).filter(
+        (h): h is NonNullable<typeof h> => h !== undefined,
+      );
+      expect(camps.length).toBe(7);
+
+      for (let i = 0; i < camps.length; i++) {
+        for (let j = i + 1; j < camps.length; j++) {
+          /*
+           * ⚠️ Without a separation rule the greedy pick takes the seven
+           * nearest wastes tiles, which are usually neighbours, and all seven
+           * factions spawn as a single doom-stack on one side of the map.
+           */
+          expect(
+            hexDistance(camps[i]!, camps[j]!),
+            `${seed}: camps ${i} and ${j} are on top of each other`,
+          ).toBeGreaterThanOrEqual(MIN_CAMP_SEPARATION - 2);
+        }
+      }
+    }
+  });
+
+  it('starts every camp beyond the opening leash', () => {
+    for (const seed of ['FABRIC', 'CONTOSO', 'DP600', 'HORDE']) {
+      const state = createGameState(seed);
+      const mine = unitsOf(state, PLAYER_FACTION_ID);
+      for (const antagonist of ANTAGONISTS) {
+        for (const raider of unitsOf(state, antagonist.id)) {
+          const closest = Math.min(...mine.map((m) => hexDistance(raider.hex, m.hex)));
+          expect(closest, `${seed}: ${antagonist.id} spawned too close`).toBeGreaterThan(
+            BASE_AGGRO_RADIUS,
+          );
+        }
+      }
+    }
+  });
+
+  it('never fights the other antagonists', () => {
+    /*
+     * ⚠️ The bug this exists to prevent, which is what the seven factions
+     * did on their first run: `targetsFor` returned everything not their own,
+     * so they spent the opening turns deleting each other. The first raid
+     * landed on turn 2 of every seed and the player was not in it.
+     *
+     * These are seven misconceptions besieging a learner, not seven nations
+     * with interests.
+     */
+    let state = createGameState('FABRIC');
+    const enemyIds = new Set(ANTAGONISTS.map((a) => a.id));
+    let raids = 0;
+
+    for (let i = 0; i < 25; i++) {
+      const before = state;
+      const turn = endTurn(state);
+      state = turn.state;
+      for (const event of turn.report.enemyEvents) {
+        if (event.intent.kind !== 'raid') continue;
+        raids++;
+        const victim =
+          unitAt(before, event.intent.target) ?? cityAt(before, event.intent.target);
+        // Whatever was struck, it was not another antagonist.
+        expect(victim === undefined || !enemyIds.has(victim.factionId)).toBe(true);
+      }
+    }
+    expect(raids).toBeGreaterThan(0);
+  });
+});
+
 describe('the antagonist acts at all', () => {
   /*
    * ⚠️ These bounds are measured, not chosen. Across the seeds below the horde
@@ -123,7 +217,7 @@ describe('the antagonist acts at all', () => {
     }
   });
 
-  it('reports what it did, and it is all the antagonist', () => {
+  it('reports what it did, and none of it is the player', () => {
     let state = createGameState('FABRIC');
     const events = [];
     for (let i = 0; i < 20; i++) {
@@ -132,7 +226,9 @@ describe('the antagonist acts at all', () => {
       events.push(...turn.report.enemyEvents);
     }
     expect(events.length).toBeGreaterThan(0);
-    expect(events.every((e) => e.factionId === ANTAGONIST_FACTION_ID)).toBe(true);
+    // Seven factions can appear here now, so the assertion is that the player
+    // is not among them rather than that one particular horde is.
+    expect(events.every((e) => e.factionId !== PLAYER_FACTION_ID)).toBe(true);
   });
 
   it('actually closes the distance', () => {
