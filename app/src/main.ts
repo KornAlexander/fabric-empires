@@ -55,6 +55,7 @@ import { HIGH_QUALITY, LOW_QUALITY } from './three/world.js';
 import { createQuestionModal } from './ui/questionModal.js';
 import { createGreatLibrary } from './ui/greatLibrary.js';
 import { createDroneHud } from './ui/droneHud.js';
+import { loadGame, localSlot, saveGame } from './persist.js';
 import { createBattleBanner, type BattleSide } from './ui/battleBanner.js';
 
 /**
@@ -202,6 +203,8 @@ const el = {
 };
 
 let state: GameState = createGameState('FABRIC', { topics: provider.topics() });
+/** Where the empire is kept between visits. See `persist.ts`. */
+const slot = localSlot();
 let selectedUnitId: string | undefined;
 let reach: ReadonlyMap<string, ReachableTile> | undefined;
 let attackTargets: Set<string> | undefined;
@@ -675,6 +678,17 @@ function doEndTurn(): void {
   refreshResearch();
   refreshCorruption();
   dirty = true;
+
+  /*
+   * The autosave point.
+   *
+   * End of turn rather than after every action, for two reasons. It is the
+   * only moment the game state is unambiguously between things, with no unit
+   * half-moved and no question waiting for an answer. And it is the natural
+   * unit of loss: the worst a crash can cost is the turn being played, which
+   * is what a player would expect to redo anyway.
+   */
+  saveGame(slot, state);
 }
 
 // Presentation ---------------------------------------------------------
@@ -802,15 +816,35 @@ function fitCanvas(): void {
 
 function newGame(rawSeed: string): void {
   const seed = normaliseSeed(rawSeed);
-  state = createGameState(seed, { topics: provider.topics() });
+  adopt(createGameState(seed, { topics: provider.topics() }), `New empire on seed ${seed}.`);
+  // Write immediately rather than waiting for the first turn to end, so a
+  // player who starts a game and closes the tab comes back to that game and
+  // not to the one before it.
+  saveGame(slot, state);
+}
+
+/**
+ * Take a game state, from wherever, and make it the one on screen.
+ *
+ * Shared by starting a new empire and by resuming a saved one, because the
+ * only difference between the two is where the state came from and what the
+ * log says about it. Keeping them apart is how one of the two ends up missing
+ * a step, and the missing step is always the one that leaves a stale unit
+ * pose or a stale overlay behind.
+ */
+function adopt(next: GameState, message: string): void {
+  state = next;
+  // A resumed game gets one dramatic battle too. The flag marks the first
+  // fight of a *session*, and there is no way to know from a save whether the
+  // player already had theirs.
   hadFirstBattle = false;
   banner.hide();
   // A duel interrupted by a new game would otherwise leave its pose behind,
   // and a pose keeps a wreck alive on screen for as long as it exists.
   scene.fx.clearAllPoses();
-  el.seedInput.value = seed;
+  el.seedInput.value = state.seed;
   el.log.replaceChildren();
-  log(`New empire on seed ${seed}.`);
+  log(message);
 
   const first = unitsOf(state, PLAYER_FACTION_ID).find((u) => u.typeId === 'architect');
   scene.loadMap(state.map);
@@ -824,6 +858,25 @@ function newGame(rawSeed: string): void {
   refreshResearch();
   refreshCorruption();
   dirty = true;
+}
+
+/**
+ * Resume the stored empire, or start a fresh one.
+ *
+ * An unreadable save says so in the log instead of failing silently. The
+ * player cannot do anything about it, but "could not be read" and "you never
+ * had a game" are different facts and only one of them is alarming.
+ */
+function boot(): void {
+  const loaded = loadGame(slot, provider.topics());
+  if (loaded.ok) {
+    adopt(loaded.state, `Resumed on seed ${loaded.state.seed}, turn ${loaded.state.turn}.`);
+    return;
+  }
+  newGame('FABRIC');
+  if (loaded.reason === 'unreadable') {
+    log('A saved game was found but could not be read, so this is a new one.', 'bad');
+  }
 }
 
 // Input ----------------------------------------------------------------
@@ -1027,9 +1080,21 @@ function frame(now: number): void {
 }
 
 fitCanvas();
-newGame('FABRIC');
-requestAnimationFrame(frame);
+boot();
 
+/*
+ * Save when the page goes away.
+ *
+ * `visibilitychange` rather than `beforeunload`: a phone or a tab that is
+ * closed by the operating system often never fires `beforeunload` at all,
+ * and `hidden` is the last moment guaranteed to arrive. Writing a few
+ * kilobytes here is cheap enough that doing it on every tab switch does not
+ * matter.
+ */
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') saveGame(slot, state);
+});
+requestAnimationFrame(frame);
 // Exposed for automated checks, so a test can assert the game actually plays
 // rather than assuming a screenshot means success.
 declare global {
@@ -1058,6 +1123,9 @@ declare global {
         cruiseMs: number;
       };
       faceNorth: () => void;
+      saveNow: () => boolean;
+      savedBytes: () => number;
+      wipeSave: () => void;
       unitHex: (unitId: string) => Hex | undefined;
       research: () => {
         known: number;
@@ -1073,6 +1141,9 @@ declare global {
       expireReviews: () => number;
       masterySummary: () => Record<string, number>;
       answerOpen: (correct?: boolean) => Promise<string | undefined>;
+      openQuestion: () => Promise<
+        { id: string; isOpen: boolean; options: number; accepted: number[] } | undefined
+      >;
       terrainProbe: () => unknown;
       /**
        * The live three.js objects.
@@ -1125,6 +1196,9 @@ window.__fabricEmpires = {
     };
   },
   faceNorth: () => scene.drone.faceNorth(),
+  saveNow: () => saveGame(slot, state),
+  savedBytes: () => slot.read()?.length ?? 0,
+  wipeSave: () => slot.clear(),
   unitHex: (unitId: string) => state.units.get(unitId)?.hex,
   research: () => {
     const current = state.research.current;
@@ -1208,20 +1282,80 @@ window.__fabricEmpires = {
     const question = modal.current();
     if (!question || !modal.isOpen()) return undefined;
     const options = question.options ?? [];
-    let chosen: string | undefined;
+
+    /*
+     * ⚠️ Selecting an option is not answering it.
+     *
+     * This used to click one option and stop, which sets `aria-pressed` and
+     * nothing else: the modal stayed open, the promise never resolved, and
+     * the research it was waiting on sat at 12/12 Compute forever. Every
+     * assertion downstream then read a game that had quietly stopped, and
+     * the only visible symptom was a counter that would not move.
+     *
+     * A multi-answer question needs every correct option before Submit even
+     * enables, so the loop collects them all rather than breaking at the
+     * first.
+     */
+    const multi = question.type === 'multi';
+    const needed = multi ? (question.selectCount ?? 2) : 1;
+    const wanted: string[] = [];
     for (const option of options) {
       const isRight = await checkAnswer(question.id, option, question.answerHash);
       if (isRight === correct) {
-        chosen = option;
-        break;
+        wanted.push(option);
+        if (wanted.length === needed) break;
       }
     }
-    if (chosen === undefined) return undefined;
+    if (wanted.length === 0) return undefined;
 
-    const index = options.indexOf(chosen);
-    const nodes = document.querySelectorAll<HTMLElement>('.fe-option');
-    nodes[index]?.click();
-    return chosen;
+    const nodes = [...document.querySelectorAll<HTMLElement>('.fe-option')];
+    for (const choice of wanted) {
+      nodes[options.indexOf(choice)]?.click();
+    }
+
+    const submit = [...document.querySelectorAll<HTMLButtonElement>('.fe-modal button.act')].find(
+      (b) => b.textContent === 'Submit',
+    );
+    if (!submit || submit.disabled) return undefined;
+    submit.click();
+
+    /*
+     * Submitting is still not the end of it. The modal then shows why the
+     * answer was what it was, and waits on Continue: that explanation is the
+     * point of the whole game, so it is not skippable and nothing downstream
+     * resumes until it is dismissed. A test that stopped at Submit left the
+     * research permanently at 12/12 Compute.
+     */
+    for (let i = 0; i < 40; i++) {
+      const cont = [...document.querySelectorAll<HTMLButtonElement>('.fe-modal button.act')].find(
+        (b) => b.textContent === 'Continue',
+      );
+      if (cont) {
+        cont.click();
+        break;
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 50));
+    }
+    return wanted.join(' | ');
+  },
+
+  /**
+   * What the answer check makes of the question currently on screen.
+   *
+   * `answerOpen` returning undefined has two very different causes: no modal,
+   * or a modal whose options all fail the hash check. The second would mean
+   * the shipped question bank and the shipped hashes disagree, which is a
+   * content bug that no screenshot could ever show.
+   */
+  openQuestion: async () => {
+    const question = modal.current();
+    if (!question) return undefined;
+    const options = question.options ?? [];
+    const accepted: number[] = [];
+    for (let i = 0; i < options.length; i++) {
+      if (await checkAnswer(question.id, options[i]!, question.answerHash)) accepted.push(i);
+    }
+    return { id: question.id, isOpen: modal.isOpen(), options: options.length, accepted };
   },
 
   gfx: () => scene.world,
