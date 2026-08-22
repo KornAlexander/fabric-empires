@@ -63,6 +63,7 @@ import { HIGH_QUALITY, LOW_QUALITY } from './three/world.js';
 import { createQuestionModal } from './ui/questionModal.js';
 import { createGreatLibrary } from './ui/greatLibrary.js';
 import { createDroneHud } from './ui/droneHud.js';
+import { createEndScreen } from './ui/endScreen.js';
 import { loadGame, localSlot, saveGame } from './persist.js';
 import { createBattleBanner, type BattleSide } from './ui/battleBanner.js';
 
@@ -126,6 +127,14 @@ const library = createGreatLibrary(() => {
 /** The free camera's instrument panel. Hidden until the drone has the camera. */
 const droneHud = createDroneHud();
 
+/**
+ * The end of a game.
+ *
+ * Starts the next one on the seed in the box, so a player who lost to a
+ * particular map can immediately try it again knowing what is coming.
+ */
+const endScreen = createEndScreen(() => newGame(el.seedInput.value));
+
 /*
  * Keep the drone on the ground while an overlay is up.
  *
@@ -162,10 +171,10 @@ window.addEventListener(
 const DRAMA_MS = 900;
 const PUNCH_MS = 260;
 let hadFirstBattle = false;
-/** Set when the player has lost everything, so the ending is announced once. */
-let fallen = false;
 /** Set while the antagonists are marching, so the log says so only once. */
 let hordeAdvancing = false;
+/** Set when the game has an outcome, so no further turns can be played. */
+let finished = false;
 
 const canvas = document.querySelector<HTMLCanvasElement>('#map')!;
 const fxCanvas = document.querySelector<HTMLCanvasElement>('#fx')!;
@@ -693,6 +702,9 @@ async function doCouncil(): Promise<void> {
  * damage, which is exactly the point.
  */
 async function doEndTurn(): Promise<void> {
+  // A finished game has nothing left to resolve. The button is disabled too,
+  // but the keyboard and the debug hook both reach this directly.
+  if (finished) return;
   const dueTopics = provider.dueTopics(Date.now());
 
   const preview = endTurn(state, { dueTopics });
@@ -771,8 +783,8 @@ async function doEndTurn(): Promise<void> {
   refreshCities();
   dirty = true;
 
-  void presentEnemyTurn(report.enemyEvents, defenderChallengeScore);
-
+  const presentedEnemyTurn = presentEnemyTurn(report.enemyEvents, defenderChallengeScore);
+  void presentedEnemyTurn;
   /*
    * The autosave point.
    *
@@ -783,6 +795,24 @@ async function doEndTurn(): Promise<void> {
    * is what a player would expect to redo anyway.
    */
   saveGame(slot, state);
+
+  /*
+   * The ending, if this turn was one.
+   *
+   * The raids above are presented unawaited so an ordinary turn hands control
+   * straight back. A finishing turn is different: the overlay must not cover
+   * the blow that caused it, so here we wait for the presentation to run out
+   * before putting anything on top of the map.
+   */
+  if (!report.outcome) return;
+  finished = true;
+  el.endTurn.disabled = true;
+  await presentedEnemyTurn;
+  endScreen.show(report.outcome, {
+    turn: report.turn,
+    skills: `${state.research.known.length}/${state.topics.nodes.length}`,
+    cities: [...state.cities.values()].filter((c) => c.factionId === PLAYER_FACTION_ID).length,
+  });
 }
 
 /**
@@ -865,22 +895,7 @@ async function presentEnemyTurn(
     // events rather than one flicker.
     await new Promise((resolve) => window.setTimeout(resolve, 650));
   }
-
-  /*
-   * Losing has to say so, once.
-   *
-   * A passive player is wiped out somewhere between turn 11 and 22, which is
-   * correct, but without this the game simply carried on with nothing left to
-   * command and no explanation. The flag is what stops it being carried on
-   * *about*: the first version repeated the line at the end of every
-   * subsequent turn, which read like a stuck log rather than an ending.
-   */
-  if (!fallen && unitsOf(state, PLAYER_FACTION_ID).length === 0 && state.cities.size === 0) {
-    fallen = true;
-    log('Your empire has fallen. Start a new one with a fresh seed.', 'bad');
-  }
 }
-
 // Presentation ---------------------------------------------------------
 
 function refreshResearch(): void {
@@ -1129,8 +1144,10 @@ function adopt(next: GameState, message: string): void {
   // fight of a *session*, and there is no way to know from a save whether the
   // player already had theirs.
   hadFirstBattle = false;
-  fallen = false;
   hordeAdvancing = false;
+  finished = false;
+  el.endTurn.disabled = false;
+  endScreen.hide();
   banner.hide();
   // A duel interrupted by a new game would otherwise leave its pose behind,
   // and a pose keeps a wreck alive on screen for as long as it exists.

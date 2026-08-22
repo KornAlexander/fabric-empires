@@ -132,6 +132,11 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D101 | **The tech tree hands out the army** | `unlockedBySkill` has sat in the unit table since the beginning with nothing reading it. It is a 1-based index into the topic graph, so a Pipeline Runner exists only once its skill is known. At turn one you may build exactly three things. An index past the end of the tree is locked rather than free, so a small generic tree cannot hand out a Direct Lake Titan |
 | D102 | Changing your mind is free | Switching a city to a different unit keeps the Compute already spent, and so does cancelling. Punishing a player for changing an order is a classic mechanic with nothing to teach here |
 | D103 | Save version 3 | Cities gained `producing` and `productionProgress`. `producing` is left absent rather than set to undefined, because `exactOptionalPropertyTypes` makes those different and absent is what "no orders" means everywhere else |
+| D104 | **Games end, and ending is a rule** | The app counted units and cities itself to notice a defeat. That worked and was wrong in principle: whether a game is over is the same question for every faction, and a rule the interface computes is a rule nothing tests. `checkOutcome` now owns it and the app renders what it says |
+| D105 | Two of the three victories are in the engine | Domination and Science are statements about units, cities and topics, all of which the engine owns. **The Exam victory is not here on purpose**: it is a statement about weighted readiness against a real certification outline, and the engine is not allowed to know such a thing exists (D35). It belongs to the learning layer |
+| D106 | Defeat outranks victory | An empire with nothing left cannot claim a win in the same breath, even in the edge case where the last topic completes on the turn the last unit dies. Tested explicitly, because it is the kind of tie nobody thinks about until it happens on screen |
+| D107 | Domination needs someone to dominate | A sandbox started with `spawnAntagonists: false` has no rivals, so "every rival is gone" is trivially true and a naive check declares victory on turn one. Exactly the sort of thing that would first appear in a live demo |
+| D108 | The ending interrupts | A finished game used to keep accepting turns, with only a log line that scrolled away. The overlay stops play, disables the turn button, and offers a new empire on the same seed, because there is nothing to go back to |
 
 ### 16.1 What "realistic" does and does not mean in this build
 
@@ -1127,6 +1132,7 @@ Accepted knowingly. Partial mitigations in place:
 - [x] An opponent that actually plays: the Silo Horde advances, raids, and can end your empire
 - [x] The diegetic study planner: raids test you on the attacking faction's cluster, and knowing it is your defence
 - [x] Cities that build, gated by the tech tree, so research finally hands out an army
+- [x] Games that end: domination, science and defeat, with a screen that says so
 - [ ] Live URL on `prdsweden` (primary submitted link)
 - [ ] Static GitHub Pages build as the guaranteed-alive fallback link (D37)
 - [ ] Shareable result image working and pasteable into Discord (D40)
@@ -1139,6 +1145,36 @@ Accepted knowingly. Partial mitigations in place:
 - [ ] LinkedIn post staged in the composer, not published
 - [ ] Blog post for actionablereporting.com
 - [ ] `awesome-rayfin` template PR (post contest)
+
+---
+
+### 16.7 The controlled experiment
+
+The thesis of this whole project is that knowing the material should be worth
+something in the game rather than merely being asked about alongside it. That
+is easy to claim and easy to fake, so it was measured.
+
+Two runs of the **same seed**, same map, same antagonist decisions, same
+combat rolls. In both the player does nothing at all: never moves a unit,
+never founds a city, never builds, never researches. The only variable in the
+entire run is whether the defence questions are answered correctly.
+
+| | Answering correctly | Guessing |
+|---|---|---|
+| Ending | **Domination**, turn 25 | **Defeat**, turn 21 |
+| Player units left | 1 | 0 |
+| Silo Horde units left | 0 | 3 |
+
+Nothing was tuned to produce this. The defence score raises the defender's
+strength, so a player who knows the answer both takes less damage and deals
+more back to the raider, and three raiders eventually break themselves on a
+single well-informed Profiler. A player who guesses loses that same unit four
+turns earlier.
+
+⚠️ It also says something about balance that is worth keeping in view: a
+passive but knowledgeable player currently *wins*. With one antagonist of
+three units that is defensible, but it is the number to watch when the other
+six factions arrive.
 
 ---
 

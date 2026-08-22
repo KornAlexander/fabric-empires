@@ -6,3 +6,4 @@ export * from './research.js';
 export * from './review.js';
 export * from './ai.js';
 export * from './production.js';
+export * from './victory.js';

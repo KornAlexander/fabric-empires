@@ -17,6 +17,7 @@ import { fundResearch, researchReady } from '../rules/research.js';
 import { reviewOpportunities, reviewPhase, type ReviewOpportunity } from '../rules/review.js';
 import { runFactionTurn, type AiEvent } from '../rules/ai.js';
 import { productionPhase, type ProductionEvent } from '../rules/production.js';
+import { checkOutcome, type Outcome } from '../rules/victory.js';
 import type { GameState } from '../state/index.js';
 
 export interface TurnOptions {
@@ -88,6 +89,13 @@ export interface TurnReport {
   readonly unitsBuilt: readonly ProductionEvent[];
   /** Cities that finished something with nowhere to put it. */
   readonly citiesBlocked: readonly string[];
+  /**
+   * How the game stands, or undefined while it is still being played.
+   *
+   * Computed after the antagonists have moved, so a raid that takes the last
+   * unit ends the game on the turn it happens rather than the turn after.
+   */
+  readonly outcome: Outcome | undefined;
 }
 
 export interface TurnResult {
@@ -165,6 +173,7 @@ function upkeepPhase(state: GameState, factionId: string): TurnResult {
       productionSpent: 0,
       unitsBuilt: [],
       citiesBlocked: [],
+      outcome: undefined,
     },
   };
 }
@@ -250,6 +259,7 @@ export function endTurn(state: GameState, options: TurnOptions = {}): TurnResult
       productionSpent: produced.spent,
       unitsBuilt: produced.built,
       citiesBlocked: produced.blocked,
+      outcome: checkOutcome(next, factionId),
     },
   };
 }
