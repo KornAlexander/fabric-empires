@@ -167,6 +167,12 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D136 | **Corruption is drawn at last (D56)** | `refreshCorruption` had been maintaining a set of corrupted hexes for days and assigning it to a variable **nothing ever read**. The rule existed as bookkeeping and never as a picture. Torn scanlines in clashing hues now cover the Ungoverned Wastes and any ground an antagonist holds |
 | D137 | The wastes are corrupted in their own right | The first pass only marked antagonist city territory, and no antagonist founds a city, so the effect would have stayed invisible for a second reason after being made visible for the first |
 | D138 | Corruption must be able to **darken**, not only add light | Purely additive, it washed out to a faint pink haze on sunlit sand: present in the scene graph, invisible on screen. It now goes almost black between the scanlines so only the lines glow, which is what reads as a broken signal rather than as coloured terrain. This is the one surreal thing in a scene that otherwise aims at plausibility, and it should look like it does not belong |
+| D139 | **The siege is on the 1 September path** | Your call, against my recommendation to defer it. It becomes phase 4 and the headline feature, with a dated trigger in 19.5 that cuts the multi-turn half if the assault is not playable by 28 August |
+| D140 | Set piece at the city hex, no second board | The cinematic camera already exists and can hold the camera for a sequence. A separate tactical map would have been roughly three times the work and would have left the real, seed-generated world behind at the most dramatic moment |
+| D141 | One question per assault round, deciding whether the tactic lands | Not a single breach question and not a pre-unlock. It keeps the pressure per round and it keeps the existing rule that a battle asks about the *defending* faction's cluster, so besieging the Scan Wraiths drills B3 repeatedly |
+| D142 | **Walls are built and upgraded** | The Stronghold staple, and the largest engine change on the list: new city fields, a production category competing for the same capped Compute, save version 4, and an AI that understands a wall. Without it a siege is an assault on a health bar with better staging |
+| D143 | The defender gets all four options | Hold, sally, reinforce, endure. Today the defender is a number; in Stronghold the defender is the more interesting side to play, and the AI picks by rule so an antagonist city defends itself the same way |
+| D144 | Multi-turn investment, with the assault inside it | The two answers that looked like a conflict are the design: the siege persists on the map, and each assault is the set piece |
 
 ### 16.1 What "realistic" does and does not mean in this build
 
@@ -1244,13 +1250,19 @@ is allowed to block on it.
 | 1 | 22 Aug | **Publish.** Private repo, push, branch normalised | Done |
 | 2 | 22 to 25 Aug | **Art pipeline.** Azure OpenAI resource, prompt manifest, style lock, generation script, first coherent batch | Resource decision (17) |
 | 3 | 23 to 24 Aug | **Sound.** Code-generated effects plus the ambient bed, verified through `OfflineAudioContext` | |
-| 4 | 25 to 27 Aug | **Art integration.** Wire the generated set into the renderer and the interface | Phase 2 |
-| 5 | 26 to 27 Aug | **Docs.** README, `NOTICE.md` (art and audio provenance), `PREVIEW-FEEDBACK.md` | Phases 2 and 3 for provenance |
-| 6 | 27 to 28 Aug | **Share card** (D40) | |
-| 7 | 28 to 29 Aug | **Deploy.** Flip the repo public, Pages fallback, then `prdsweden` as the primary link | Capacity confirmation |
-| 8 | 30 to 31 Aug | **Demo video.** Screen capture, cloned voiceover, roughly 90 seconds | Everything visual |
-| 9 | 31 Aug | **Drafts.** Discord entry, LinkedIn post staged, blog draft. None of them posted (D135) | |
-| 10 | 1 Sep | **You submit** | |
+| 4 | 24 to 28 Aug | **The siege** (19). Walls, siege state, the assault set piece, the four defender options | |
+| 5 | 26 to 28 Aug | **Art integration.** Wire the generated set into the renderer and the interface | Phase 2 |
+| 6 | 28 to 29 Aug | **Docs.** README, `NOTICE.md` (art and audio provenance), `PREVIEW-FEEDBACK.md` | Phases 2 and 3 |
+| 7 | 29 Aug | **Share card** (D40) | |
+| 8 | 29 to 30 Aug | **Deploy.** Flip the repo public, Pages fallback, then `prdsweden` as the primary link | Capacity confirmation |
+| 9 | 30 to 31 Aug | **Demo video.** Screen capture, cloned voiceover, roughly 90 seconds | Everything visual |
+| 10 | 31 Aug | **Drafts.** Discord entry, LinkedIn post staged, blog draft. None of them posted (D135) | |
+| 11 | 1 Sep | **You submit** | |
+
+⚠️ **This is now a very full ten days.** The full art programme and the full
+siege are each a week's work on their own, and they overlap. Both carry dated
+triggers (18.1 and 19.5) that cut scope rather than slip the date, because the
+date is the one thing that cannot move.
 
 ### 18.1 The art fallback, with a date
 
@@ -1269,45 +1281,85 @@ rest of the cut list: a trigger, not a hope.
 
 ---
 
-## 19. Phase 11: the siege (NOT on the 1 September path)
+## 19. The siege
 
-⚠️ **Planned only, deliberately scheduled after the submission.** Attacking a
-city currently uses the same one-exchange resolution as a field battle, with a
-siege bonus for the right unit role. That is thin for what should be the
-largest thing that happens in a game, and the request is for something closer
-to **Stronghold**: walls that exist, an assault that takes time, and a
-defender who is doing something other than losing hit points.
+The largest thing that happens in a game should not resolve like a skirmish
+with a bonus. Today attacking a city is one exchange with `SIEGE_CITY_BONUS`
+applied; this replaces that with something closer to **Stronghold**: walls that
+were built, an investment that takes time, and a defender with decisions.
 
-The design questions are open and listed in 19.2, because the shape of this
-changes what it costs by an order of magnitude.
+⚠️ **On the 1 September path** (D139). It is the headline feature and it is
+scheduled as one, not left as an appendix.
 
-### 19.1 What is already in place
+### 19.1 The shape
 
-- Cities have `hp`, a `kind` with a `baseHp`, and can be captured.
-- `cityCombatSide` exists and already applies a siege bonus to the siege role.
-- `SIEGE_CITY_BONUS` is a tuned constant, so the numbers have a home.
-- The cinematic system can take the camera and hold it for a set piece.
-- `defenderChallengeScore` means the defender answering is already expressible.
-- The Proctor siege shows a long multi-question sequence is workable.
+Two answers that looked like a conflict are actually the design. The siege is a
+**multi-turn investment** that sits on the map, and each **assault** the
+attacker commits to is a **set piece at the city hex**, filmed with the
+cinematic camera. Nothing gets a second board.
 
-### 19.2 The open questions
+```
+lay siege ──► invested (turns pass, attrition, defender acts)
+                  │
+                  ├── attacker assaults ──► set piece: 3 to 5 rounds
+                  │                          one question per round
+                  ├── defender sallies ──► field battle, siege may break
+                  └── relieved or starved ──► siege ends
+```
 
-1. **Where it happens.** A separate tactical board, an extended state on the
-   main map, or a set-piece encounter at the city hex.
-2. **How questions enter.** One per assault round, questions unlocking siege
-   options, or a single breach question at the decisive moment.
-3. **Whether walls are built.** Cities gaining wall levels through production
-   is the Stronghold staple and the largest engine change here.
-4. **How long a siege lasts.** One dramatic encounter, or a multi-turn
-   investment the defender can break.
-5. **What the defender does.** Answer to hold, sally out, or spend resources.
+### 19.2 Walls
 
-### 19.3 The constraint that does not move
+Cities gain **wall levels through production** (D142), which finally gives
+production a purpose beyond units. A wall level raises the effective defence
+and the number of assault rounds needed to reach the gate.
 
-Whatever shape it takes, **the questions must decide something the player can
-see**, in the way the defence question already does: 36 damage against 100 on
-the same seed. A siege that asks four questions and then resolves on the same
-arithmetic as today would be a longer battle, not a better one.
+- New city fields: `wallLevel`, `wallHp`. **Save version 4** with a migration
+  defaulting both to zero, so every existing save keeps working.
+- Wall levels are a production category alongside units, drawing on the same
+  capped Compute, so arming and fortifying compete exactly as building and
+  studying already do.
+- The AI must understand walls, or it will throw itself at a fortress forever.
+
+### 19.3 One question per round, and it decides the tactic
+
+Each assault round the attacker picks a tactic and answers **one question from
+the defending faction's cluster**, which is the rule battles already use. So
+besieging the Scan Wraiths tests you on B3, repeatedly, in the branch you are
+about to be examined on.
+
+| Answer | What it buys |
+|---|---|
+| Right, fast | The tactic lands at full force |
+| Right | The tactic lands |
+| Wrong | It stalls: the round is spent, the wall holds |
+| Abandoned | It stalls and the defenders counter |
+
+⚠️ **The result has to be visible**, in the way the defence question already is
+at 36 damage against 100 on the same seed. A siege that asks four questions and
+then resolves on today's arithmetic is a longer battle, not a better one.
+
+### 19.4 The defender has four answers, and all of them ship (D143)
+
+| Option | Cost | Effect |
+|---|---|---|
+| **Hold the walls** | A question | `defenderChallengeScore`, as today |
+| **Sally out** | Risk the garrison | A field battle against the besiegers; a win can break the siege |
+| **Pour in resources** | Compute or CU | Repair wall damage mid-siege |
+| **Wait it out** | Population and yield | Attrition works on both sides; the besieger is also spending |
+
+The AI picks by rule, so an antagonist city defends itself the same way.
+
+### 19.5 Build order, and the trigger
+
+1. Walls: city fields, production category, save v4, tests.
+2. Siege state: lay, persist, relieve, break. Turn pipeline phase.
+3. The assault set piece: rounds, tactics, questions, cinematic camera.
+4. Defender options, one at a time in the order above.
+
+⚠️ **If the assault is not playable by end of Thursday 28 August**, ship walls
+plus the set-piece assault and cut the multi-turn investment, leaving the
+siege as a single dramatic encounter. That keeps the visible half and drops
+the half that is mostly state management.
 
 ---
 
