@@ -188,6 +188,13 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D157 | Land fraction has to fall for islands to survive | Classification is by quantile, so a fixed share of tiles becomes land whatever the mask says and the sea between islands gets promoted instead. About 0.3 fits the land inside the masks |
 | D158 | ⚠️ **Islands stay off by default until ships exist** | Turning them on broke the game and the tests said so exactly: three AI tests and the defeat test failed because land units cannot cross water, so factions on other islands never arrive. The capability lands tested and disabled; the default flips when the AI can cross, not before |
 | D159 | Antagonist camps may use any island | The camp filter required `map.mainland`, which was right while every map was one continent and would have quietly put all seven factions on the player's own island |
+| D160 | **Anno 1602 is the reference for depth** | It is set in 1602, the era already chosen at D145, and its premise is colonising an archipelago, which is the generator built at D155. Its real lesson is that the engine of the game is **escalating demand**, which is the same shape as studying for an exam |
+| D161 | **Cities demand mastery, not goods** | Anno's tiers want cloth, then tobacco, then spices. Ours want a bound topic *seen*, then *familiar*, then *strong*, then most of a cluster. Failing the demand stalls growth. It turns forgetting into a visible economic event: today a lapse costs a bonus, here it can cost a city its tier |
+| D162 | **Island affinity forces breadth** | In Anno an island grows tobacco or it does not, and that is what makes you settle a second. Here each island favours certain clusters, so one island cannot carry an empire, and it cannot carry an exam either. The geography then argues for the thing DP-600 actually requires: you cannot pass it on one branch |
+| D163 | Production chains map onto the medallion architecture | Anno's "line of production" has an exact counterpart in raw files to Bronze to Silver to Gold. A real pattern, on the real exam, and a genuine chain rather than a metaphor stretched over one. **Post-contest** |
+| D164 | Pacing responds to readiness | Anno 1602's AI is documented as adapting to how quickly the player acts. The leash is already a function of the turn; making it partly a function of exam readiness gives a fast learner a harder game and a struggling one room. Cheap, and the honest difficulty curve for a study tool |
+| D165 | Ships carry cargo, not cannon | Anno upgrades hold size rather than firepower, and its peaceful strategies are the praised ones. Transport and trade are the point of phase 23; naval combat is a consequence |
+| D166 | ⚠️ Three Anno ideas are deliberately refused | Trade routes would be a logistics interface serving a game about revision. A tax slider would compete with the review loop, which already is the satisfaction mechanic. And a neutral trader selling progress is the wrong message in a study tool: if one ever exists it sells time, never answers |
 
 ### 16.1 What "realistic" does and does not mean in this build
 
@@ -1269,6 +1276,7 @@ is allowed to block on it.
 | 3c | 23 to 26 Aug | **Units at 1600** (D148). Pike, shot, horse and cannon, replacing the tracked hulls | |
 | 4 | 24 to 28 Aug | **The siege** (19). Walls, siege state, the assault set piece, the four defender options | Fog of war, for what a besieger can see |
 | 4b | 28 to 30 Aug | **Ships and islands** (23). Embark, cargo, AI crossings, coastal production, then flip `islands` on | |
+| 4c | 28 to 29 Aug | **Depth from Anno** (24). Progressive pacing tied to readiness, then reduced city tiers | Tiers need the city panel |
 | 5 | 26 to 28 Aug | **Art integration.** Wire the generated set into the renderer and the interface | Phase 2 |
 | 6 | 28 to 29 Aug | **Docs.** README, `NOTICE.md` (art and audio provenance), `PREVIEW-FEEDBACK.md` | Phases 2 and 3 |
 | 7 | 29 Aug | **Share card** (D40), and the **loading screen** the enlarged map now requires (22.2) | |
@@ -1567,6 +1575,95 @@ that is the step that decides whether an archipelago is a world or a diorama.
 1 for the submission and the archipelago ships as an option the README
 mentions. The capability is already tested, so that costs nothing but the
 headline.
+
+---
+
+## 24. Depth: what Anno 1602 knows
+
+Anno 1602 (Max Design, 1998) is set in **1602**, the period already chosen at
+D145, and its premise is building colonies "on islands of various sizes in an
+archipelago". The era, the islands and the ships all line up with decisions
+already taken here for unrelated reasons, which is why it is worth mining
+rather than admiring.
+
+Its lesson is not a feature. It is that **the engine of the game is escalating
+demand**. Anno's population rises through Pioneers, Settlers, Citizens and
+Merchants, and each tier wants more sophisticated goods; meeting the demand
+unlocks more, failing it causes decline, riots and lost income. Nobody is
+fighting. The pressure is entirely economic and it never stops rising.
+
+That is the same shape as studying for an exam, which is the whole opportunity.
+
+### 24.1 The five worth taking, in order of leverage
+
+**1. City tiers that demand knowledge, not goods.** The single most valuable
+idea here. A city rises through tiers, and each tier raises what it needs from
+the skills bound to it: a Hamlet wants one topic merely *seen*, a Town wants
+two at **familiar**, a City wants **strong**, a Capital wants most of a
+cluster. Fail the demand and the city stops growing, then slides back, exactly
+as Anno's houses downgrade. Unrest (D71) already exists as the pressure valve
+and mastery bands (`sm2.ts`) already exist as the measure, so this is mostly
+composition rather than new machinery.
+
+⚠️ This turns *forgetting* into a visible economic event. Today a lapsed topic
+costs a bonus; here a lapsed topic can cost a city its tier.
+
+**2. Island affinity, which forces breadth.** In Anno, an island grows tobacco
+or it does not, and that is what makes you settle a second one. Here: **each
+island favours certain clusters**, so a city on it can only rise to the higher
+tiers on those. One island therefore cannot carry an empire, and it cannot
+carry an exam either. This is the mechanic that makes the map argue for the
+thing the exam actually requires: **you cannot pass DP-600 by studying one
+branch**, and the geography would stop you trying.
+
+**3. Production chains, which Fabric hands us for free.** Anno's "line of
+production" has an exact counterpart in the medallion architecture: **raw files
+to Bronze to Silver to Gold**, each stage a building that consumes the one
+before. It is a real pattern, it is on the exam, and it is a genuine chain
+rather than a metaphor stretched over one.
+
+**4. Progressive pacing.** Anno 1602's AI is documented as adapting "in
+response to how quickly players act". The aggro leash (D92, D151) is already a
+function of the turn number; making it partly a function of **exam readiness**
+means a player who is learning fast gets a harder game, and a player who is
+struggling gets room. Small change, large effect, and it is the honest
+difficulty curve for a study tool.
+
+**5. Ships carry cargo, not cannon.** Anno upgrades ships for hold size rather
+than firepower, and its peaceful strategies are the ones people praise. Worth
+copying directly: the naval phase (23) should make transport and trade the
+point, with naval combat a consequence rather than a goal.
+
+### 24.2 What to leave alone
+
+- **Trade routes between your own cities.** Lovely in Anno, and here it would
+  be a logistics interface serving a game whose subject is revision.
+- **A tax and satisfaction slider.** The review loop already is the satisfaction
+  mechanic, and a second one would compete with it.
+- **Neutral traders selling goods.** Tempting as flavour, but a shop that sells
+  progress is the wrong message in a study tool. If it ever exists it sells
+  *time*, never answers.
+
+### 24.3 ⚠️ Scope: this does not fit before 1 September
+
+Being straight about it. The remaining nine days already carry the full art
+programme, the siege, sound, fog of war, the 1600 unit roster, ships and the
+deployment. Section 24 is a second game's worth of design on top of that.
+
+So it is staged, and the split is by leverage rather than by appetite:
+
+| | Item | Before 1 Sep |
+|---|---|---|
+| 4 | Progressive pacing tied to readiness | **Yes.** Hours, not days |
+| 1 | City tiers demanding mastery | **Yes, reduced**: three tiers, no decline |
+| 2 | Island affinity | Only if ships land (23.4) |
+| 3 | Medallion production chains | No |
+| 1b | Tier decline and riots | No |
+
+⚠️ **Trigger: if city tiers are not playable by end of Friday 29 August**, the
+progressive pacing ships alone and the rest becomes the post-contest roadmap.
+Pacing is a handful of lines against a system that already exists; tiers touch
+the save format, the city panel and the AI's idea of what a city is worth.
 
 ---
 
