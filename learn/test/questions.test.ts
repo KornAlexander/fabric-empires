@@ -33,6 +33,8 @@ import draftA2 from '../content/dp-600/questions/src/A2.json' with { type: 'json
 import draftB1 from '../content/dp-600/questions/src/B1.json' with { type: 'json' };
 import draftB2 from '../content/dp-600/questions/src/B2.json' with { type: 'json' };
 import draftB3 from '../content/dp-600/questions/src/B3.json' with { type: 'json' };
+import draftC1 from '../content/dp-600/questions/src/C1.json' with { type: 'json' };
+import draftC2 from '../content/dp-600/questions/src/C2.json' with { type: 'json' };
 
 interface Draft {
   readonly id: string;
@@ -47,14 +49,13 @@ const DRAFTS = [
   ...(draftB1 as { questions: Draft[] }).questions,
   ...(draftB2 as { questions: Draft[] }).questions,
   ...(draftB3 as { questions: Draft[] }).questions,
+  ...(draftC1 as { questions: Draft[] }).questions,
+  ...(draftC2 as { questions: Draft[] }).questions,
 ];
 const draftById = new Map(DRAFTS.map((d) => [d.id, d]));
 
-/** Skills that currently have authored questions: all of branch A and B. */
-const COVERED = [
-  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
-  12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
-];
+/** Every skill in the outline now has authored questions. */
+const COVERED = Array.from({ length: 41 }, (_, i) => i + 1);
 
 function questionById(id: string): Question {
   const found = DP600_QUESTIONS.find((q) => q.id === id);
@@ -138,12 +139,18 @@ describe('explanation encryption', () => {
 
 describe('the built bank', () => {
   it('loaded the authored clusters', () => {
-    expect(LOADED_CLUSTERS).toContain('A1');
-    expect(LOADED_CLUSTERS).toContain('A2');
-    expect(LOADED_CLUSTERS).toContain('B1');
-    expect(LOADED_CLUSTERS).toContain('B2');
-    expect(LOADED_CLUSTERS).toContain('B3');
+    for (const cluster of ['A1', 'A2', 'B1', 'B2', 'B3', 'C1', 'C2']) {
+      expect(LOADED_CLUSTERS).toContain(cluster);
+    }
     expect(DP600_QUESTIONS.length).toBe(DRAFTS.length);
+  });
+
+  it('covers every skill in the outline, with none left behind', () => {
+    // The bank is complete: 41 of 41 skills across all three branches. This
+    // is the assertion that would catch a future outline update adding a
+    // skill that nobody wrote questions for.
+    expect(coveredSkills().size).toBe(allSkills().length);
+    expect(coverage(DP600_QUESTIONS).uncovered).toEqual([]);
   });
 
   it('covers all of branch B, the half of the exam that matters most', () => {
@@ -159,11 +166,17 @@ describe('the built bank', () => {
     expect(new Set(branchA.map((q) => q.skillId)).size).toBe(11);
   });
 
+  it('covers all of branch C, the semantic model half', () => {
+    // 12 skills across designing models and optimising them.
+    const branchC = DP600_QUESTIONS.filter((q) => q.branch === 'C');
+    expect(new Set(branchC.map((q) => q.skillId)).size).toBe(12);
+  });
+
   it('draws every question from a branch that has actually been authored', () => {
     // Guards against a stray branch letter in a new file, which would
     // otherwise only surface as a topic that never asks a question.
     const branches = new Set(DP600_QUESTIONS.map((q) => q.branch));
-    expect([...branches].sort()).toEqual(['A', 'B']);
+    expect([...branches].sort()).toEqual(['A', 'B', 'C']);
   });
 
   it('passes validation', () => {
@@ -244,11 +257,17 @@ describe('the built bank', () => {
     }
   });
 
-  it('reports the skills still without questions, honestly', () => {
-    // 41 skills, four clusters written. The report must say so rather than
-    // implying the bank is complete.
-    const report = coverage(DP600_QUESTIONS);
-    expect(report.uncovered.length).toBe(allSkills().length - COVERED.length);
+  it('reports uncovered skills honestly when the bank is partial', () => {
+    // The coverage report is what tells an author what is left, so it has to
+    // be right about a partial bank rather than only about a complete one.
+    // Feeding it one cluster must leave every other skill listed as missing.
+    const onlyA1 = questionsForCluster(DP600_QUESTIONS, 'A1');
+    const report = coverage(onlyA1);
+    const covered = new Set(onlyA1.map((q) => q.skillId));
+    expect(report.uncovered.length).toBe(allSkills().length - covered.size);
+    for (const skillId of report.uncovered) {
+      expect(covered.has(skillId)).toBe(false);
+    }
   });
 
   it('writes stems as questions, not fragments', () => {
@@ -374,12 +393,16 @@ describe('selecting a question', () => {
     expect(selectQuestion('dp600-12')).toBeDefined();
   });
 
-  it('returns nothing for a topic with no questions yet', () => {
-    // Skill 30 is the first of branch C, which is not authored. Twelve of the
-    // 41 are in this state, and that must not break anything. When branch C
-    // is written this test needs a new example, and its failure is the
-    // reminder.
-    expect(selectQuestion('dp600-30')).toBeUndefined();
+  it('returns nothing when the pool holds no question for the topic', () => {
+    /*
+     * This used to point at a real skill that had not been written yet, and
+     * it failed the moment the last cluster landed, which is exactly what it
+     * was meant to do. With the outline fully covered there is no such skill
+     * left, so the empty case is now produced explicitly. The behaviour still
+     * matters: an outline update can add a skill at any time, and the game
+     * must carry on rather than throw.
+     */
+    expect(selectQuestion('dp600-30', {}, [])).toBeUndefined();
   });
 
   it('returns nothing for a nonsense topic id', () => {
@@ -416,7 +439,9 @@ describe('selecting a question', () => {
     expect(questionsForCluster(DP600_QUESTIONS, 'B1')).toHaveLength(15);
     expect(questionsForCluster(DP600_QUESTIONS, 'B2')).toHaveLength(27);
     expect(questionsForCluster(DP600_QUESTIONS, 'B3')).toHaveLength(12);
-    expect(questionsForCluster(DP600_QUESTIONS, 'C1')).toHaveLength(0);
+    expect(questionsForCluster(DP600_QUESTIONS, 'C1')).toHaveLength(21);
+    expect(questionsForCluster(DP600_QUESTIONS, 'C2')).toHaveLength(15);
+    expect(questionsForCluster(DP600_QUESTIONS, 'Z9')).toHaveLength(0);
   });
 });
 
@@ -549,14 +574,15 @@ describe('the presenter', () => {
   });
 
   it('resolves neutral without bothering the player when a topic has no questions', async () => {
-    // Branch C does not exist yet. An unfinished bank must degrade quietly
-    // rather than blocking research.
+    // An incomplete bank must degrade quietly rather than blocking research.
+    // The pool is emptied explicitly, because the real bank no longer has a
+    // gap to borrow for the test.
     const { ui, prompts } = scriptedUi(() => ({
       answer: 'anything',
       elapsedMs: 1,
       abandoned: false,
     }));
-    const outcome = await createQuestionPresenter(ui)({
+    const outcome = await createQuestionPresenter(ui, { questions: [] })({
       ...request,
       topicId: 'dp600-30',
     });

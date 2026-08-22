@@ -102,6 +102,14 @@ export function scoreFor(
 export interface PresenterOptions extends SelectOptions {
   /** Questions already asked, so a session repeats itself as little as possible. */
   readonly asked?: Set<string>;
+  /**
+   * The pool to draw from. Defaults to the whole bank.
+   *
+   * Exists so the empty-bank path stays testable now that every skill in the
+   * outline has questions. It also gives a future exam mode somewhere to pass
+   * a restricted set without the presenter needing to know why.
+   */
+  readonly questions?: readonly Question[];
 }
 
 /**
@@ -116,13 +124,15 @@ export function createQuestionPresenter(
   options: PresenterOptions = {},
 ): (request: ChallengeRequest) => Promise<ChallengeOutcome> {
   const asked = options.asked ?? new Set<string>();
+  const { questions: pool, ...selectOptions } = options;
 
   return async function present(
     request: ChallengeRequest,
   ): Promise<ChallengeOutcome> {
     const question = selectQuestion(
       request.topicId,
-      { tier: request.tier, exclude: asked, ...options },
+      { tier: request.tier, exclude: asked, ...selectOptions },
+      pool,
     );
 
     if (!question) {

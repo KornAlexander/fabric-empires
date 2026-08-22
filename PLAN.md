@@ -97,6 +97,8 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D66 | Wrecks outlive their units | The engine removes a destroyed unit on the frame the blow lands. The renderer keeps the object alive while a combat pose exists, so the death animation has something to play |
 | D67 | **Citations are retrieved, not recalled** | **Every `sourceLearnUrl` and `learnUrl` is fetched from Microsoft Learn while authoring, and `tools/content/check-links.py` verifies the whole set resolves. A study aid that cites a dead page is worse than one that cites nothing, because the learner assumes the fault is theirs** |
 | D68 | Link checking is out of `verify` | It needs the network. An offline build must not fail for a reason unrelated to the code, so it is run after authoring rather than on every commit |
+| D69 | **Bank complete at 3 questions per skill** | **123 questions covering all 41 skills, breadth before depth. A learner who meets every skill once is better served than one who meets half the exam three times as often. Depth is the next thing to add, not a gap in the design** |
+| D70 | The empty-topic path stays tested | With every skill covered there is no longer a gap to borrow for the test, so `PresenterOptions.questions` lets a test pass an empty pool. An outline update can add a skill at any time and the game must carry on rather than throw |
 
 ### 16.1 What "realistic" does and does not mean in this build
 
@@ -217,7 +219,6 @@ hard dark ribbons of self-shadowing down every slope. Normal bias is the
 setting that fixes that; depth bias alone just moves the artefact.
 
 ### 16.6 The lighting bug hunt, and the lesson
-
 Five separate faults stacked up, and every one of them produced the same
 symptom, a dull grey-blue landmass, which is why they were so slow to
 separate:
@@ -1078,6 +1079,7 @@ Accepted knowingly. Partial mitigations in place:
 
 ## 16. Deliverables checklist
 
+- [x] Question bank covering all 41 skills of the outline: 123 items, minimum 3 per skill, every citation link-checked
 - [ ] Live URL on `prdsweden` (primary submitted link)
 - [ ] Static GitHub Pages build as the guaranteed-alive fallback link (D37)
 - [ ] Shareable result image working and pasteable into Discord (D40)
