@@ -136,6 +136,17 @@ export interface Terrain {
   /** Height of the smooth control surface anywhere, for overlays. */
   surfaceAt(x: number, z: number): number;
   /**
+   * The highest point of the finished mesh inside a hex.
+   *
+   * ⚠️ **The only safe height for anything that must OCCLUDE the ground.**
+   * `surfaceAt` reads the coarse control lattice between vertices, which on a
+   * displaced and eroded surface sits well below what is actually drawn, so a
+   * lid built from it disappears inside the nearest hill. Measured from the
+   * finished vertices instead, so a plane at this height is guaranteed to be
+   * above every triangle of that hex.
+   */
+  peakAt(h: Hex): number;
+  /**
    * Ground height at an arbitrary point, by barycentric interpolation.
    *
    * Needed to scatter props, which land between vertices. A downward
@@ -549,13 +560,32 @@ export function buildTerrain(map: GameMap, subdivisions = 2): Terrain {
    * a screenshot and invisible in a test.
    */
   const surfaceHeights = new Map<string, number>();
+  /**
+   * The highest point of the finished mesh inside each hex.
+   *
+   * ⚠️ **Needed because `surfaceAt` only knows the exact vertex positions.**
+   * It looks a point up in `surfaceHeights` and falls back to the coarse
+   * control lattice for anything in between, which on a displaced and eroded
+   * surface is well BELOW the ground actually drawn. Sampling nineteen points
+   * across a hex and taking the highest therefore underestimated hills badly:
+   * the fog lids built from it sat inside the terrain and the whole layer was
+   * invisible except along the flat coast.
+   *
+   * Measured here instead, in the one pass that already walks every vertex.
+   */
+  const hexPeaks = new Map<string, number>();
   {
     const position = welded.getAttribute('position') as BufferAttribute;
     for (let i = 0; i < position.count; i++) {
-      surfaceHeights.set(
-        cornerKey(position.getX(i), position.getZ(i)),
-        position.getY(i),
-      );
+      const px = position.getX(i);
+      const py = position.getY(i);
+      const pz = position.getZ(i);
+      surfaceHeights.set(cornerKey(px, pz), py);
+
+      const axial = worldToAxial(px, pz);
+      const key = hexKey(hexRound(axial.q, axial.r));
+      const known = hexPeaks.get(key);
+      if (known === undefined || py > known) hexPeaks.set(key, py);
     }
   }
   const finishedHeight = (x: number, z: number, fallback: number): number =>
@@ -873,6 +903,16 @@ export function buildTerrain(map: GameMap, subdivisions = 2): Terrain {
       return finishedHeight(x, z, cornerHeight(x, z));
     },
 
+    peakAt(h) {
+      const key = hexKey(h);
+      const peak = hexPeaks.get(key);
+      if (peak !== undefined) return peak;
+      // A hex with no vertices of its own is off the mesh; its centre height
+      // is the best answer available and is never used to occlude anything.
+      const { x, z } = hexToWorld(h);
+      return finishedHeight(x, z, centreHeight.get(key) ?? 0);
+    },
+
     sampleHeight(x, z) {
       const axial = worldToAxial(x, z);
       const h = hexRound(axial.q, axial.r);
@@ -960,6 +1000,60 @@ export function overlayMaterial(colour: string, opacity: number): MeshStandardMa
     emissiveIntensity: 1,
     envMapIntensity: 0,
   });
+}
+
+/**
+ * A flat hex lid that sits above everything inside the hex.
+ *
+ * ⚠️ **`hexPatch` is not usable for anything that must OCCLUDE**, and this is
+ * why. That builds a six-triangle fan from the hex centre to its corners, but
+ * the surface in between is subdivided four ways, displaced by detail noise and
+ * then eroded, so a flat triangle spanning a bulge passes straight through it.
+ * It is the same chord-versus-curve error the hex grid had (D167), and for a
+ * translucent highlight it only flickers. Fog of war has to hide the ground, so
+ * a patch buried inside a hill hides nothing: measured, the fog layer changed
+ * the picture by under two percent and was effectively invisible.
+ *
+ * Conforming honestly would mean subdividing each patch the way the terrain is
+ * subdivided, which is 288 vertices per hex, or roughly 786,000 for a fogged
+ * map. So this uses the peak the terrain measured from its own finished
+ * vertices and lays a flat lid above it: eighteen vertices per hex, and nothing
+ * inside can poke through.
+ *
+ * ⚠️ It uses `peakAt`, not `surfaceAt`. Sampling `surfaceAt` across the hex was
+ * the first attempt and it failed for a subtle reason: that function knows the
+ * exact vertex positions and falls back to the coarse control lattice for
+ * everything in between, so on a hill every sample read low and the lid still
+ * sank into the ground. Only the mesh knows how tall the mesh is.
+ */
+export function hexLid(h: Hex, terrain: Terrain, lift: number): BufferGeometry {
+  const { x, z } = hexToWorld(h);
+  const y = terrain.peakAt(h) + lift;
+
+  const verts: number[] = [];
+  for (let i = 0; i < 6; i++) {
+    const o1 = cornerOffset(i);
+    const o2 = cornerOffset((i + 1) % 6);
+    /*
+     * ⚠️ **Wound so the face points UP**, corner i+1 before corner i.
+     *
+     * The obvious order (centre, corner i, corner i+1) walks the hexagon
+     * clockwise seen from above, which gives every triangle a normal of
+     * -0.866 on Y: the lid is a back face to any camera looking down, and
+     * `FrontSide` culls the entire layer. It cost a long hunt, because the
+     * layer was provably present, opaque, above the terrain and passing the
+     * depth test, and still drew nothing. `hexPatch` gets away with the same
+     * winding only because its overlay material is double-sided.
+     *
+     * No inset: fog tiles must meet, or the map is covered in bright seams.
+     */
+    verts.push(x, y, z, x + o2.x, y, z + o2.z, x + o1.x, y, z + o1.z);
+  }
+
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new BufferAttribute(new Float32Array(verts), 3));
+  geometry.computeVertexNormals();
+  return geometry;
 }
 
 /** A hex-shaped patch that follows the ground, for range and selection. */

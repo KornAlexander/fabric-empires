@@ -12,6 +12,7 @@ import {
   ruinAt,
   cityAt,
   recordCheat,
+  sightOf,
   DEFAULT_WORLD_CHOICE,
   WORLD_SHAPES,
   WORLD_SIZES,
@@ -883,6 +884,7 @@ async function playAttack(
   }
 
   refreshCorruption();
+  refreshFog();
   refreshCities();
   refreshReadiness();
   refreshThreats();
@@ -956,6 +958,7 @@ function doFound(): void {
     );
   }
   refreshCorruption();
+  refreshFog();
   refreshCities();
   refreshReadiness();
   refreshThreats();
@@ -1229,6 +1232,7 @@ async function doEndTurn(): Promise<void> {
   refreshSelection();
   refreshResearch();
   refreshCorruption();
+  refreshFog();
   refreshCities();
   refreshReadiness();
   refreshThreats();
@@ -2002,6 +2006,7 @@ function adopt(next: GameState, message: string): void {
   refreshHud();
   refreshResearch();
   refreshCorruption();
+  refreshFog();
   refreshCities();
   refreshReadiness();
   refreshThreats();
@@ -2174,8 +2179,45 @@ let lastFrameAt = performance.now();
  */
 let corrupted: ReadonlySet<string> = new Set();
 
-function refreshCorruption(): void {
-  const next = new Set<string>();
+/**
+ * What the player can see this instant.
+ *
+ * Held here and recomputed only when the world changes, because `sync` runs
+ * every frame and walking every unit's sight radius per frame would be a
+ * measurable cost for an answer that only moves when something moves.
+ */
+let currentSight: ReadonlySet<string> = new Set();
+
+/**
+ * Rebuild the fog.
+ *
+ * ⚠️ **Only when the ground actually changed.** Merging six thousand hex
+ * patches is the most expensive thing in this file, and the explored set only
+ * grows, so the signature is its size plus the current sight. Rebuilding on
+ * every sync would have made selecting a unit cost more than ending a turn.
+ */
+let fogSignature = '';
+
+function refreshFog(): void {
+  currentSight = sightOf(state, PLAYER_FACTION_ID);
+
+  const signature = `${state.explored.size}:${currentSight.size}:${state.seed}`;
+  if (signature === fogSignature) return;
+  fogSignature = signature;
+
+  const unseen: Hex[] = [];
+  const remembered: Hex[] = [];
+  for (const [key, tile] of state.map.tiles) {
+    if (currentSight.has(key)) continue;
+    if (state.explored.has(key)) remembered.push(tile.hex);
+    else unseen.push(tile.hex);
+  }
+
+  scene.setFog(unseen, remembered);
+  dirty = true;
+}
+
+function refreshCorruption(): void {  const next = new Set<string>();
   const hexes: Hex[] = [];
 
   /*
@@ -2277,6 +2319,7 @@ function frame(now: number): void {
       hover,
       unitOffset: unitWorldOffset,
       unitOpacity: (id) => effects.opacityOf(id),
+      visibleHexes: currentSight,
     });
     dirty = false;
     refreshHud();
@@ -2366,7 +2409,14 @@ declare global {
         { id: string; isOpen: boolean; options: number; accepted: number[] } | undefined
       >;
       terrainProbe: () => unknown;
+      vision: () => {
+        total: number;
+        explored: number;
+        visible: number;
+        hidden: number;
+      };
       cheatsUsed: () => string[];
+      exploredCount: () => number;
       drownedLand: () => { land: number; below: number; share: number };
       /**
        * The live three.js objects.
@@ -2489,7 +2539,21 @@ window.__fabricEmpires = {
     refreshHud();
   },
   terrainProbe: () => ({ ...scene.probe(), ...scene.stats() }),
+  /**
+   * What the player can currently see, and what they remember.
+   *
+   * ⚠️ Fog is the one feature whose whole point is that things are NOT drawn,
+   * so "it looks right" is not evidence and a screenshot cannot count. These
+   * are the numbers a test can assert on.
+   */
+  vision: () => ({
+    total: state.map.tiles.size,
+    explored: state.explored.size,
+    visible: currentSight.size,
+    hidden: state.map.tiles.size - state.explored.size,
+  }),
   cheatsUsed: () => [...state.cheatsUsed],
+  exploredCount: () => state.explored.size,
   /*
    * How much of the land is drawn under the sea.
    *

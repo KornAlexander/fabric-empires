@@ -47,6 +47,14 @@ export interface UnitType {
   readonly range: number;
   /** Recon units slip past enemy lines instead of being pinned by them. */
   readonly ignoresZoneOfControl: boolean;
+  /**
+   * How far this unit can see, in hexes.
+   *
+   * ⚠️ **This is what makes a scout a scout.** With the whole map visible from
+   * turn one the Profiler was just a faster soldier: its entire purpose is a
+   * sight radius, and there was nothing for it to reveal.
+   */
+  readonly sight: number;
   /** Leaf skill index that unlocks this unit, or null if available at start. */
   readonly unlockedBySkill: number | null;
 }
@@ -70,6 +78,9 @@ function unit(
     domain: 'land',
     range: 0,
     ignoresZoneOfControl: false,
+    // Two hexes is enough to see who is next to you and no more. Scouts and
+    // ranged units override it; a siege train sees less than a horseman.
+    sight: 2,
     unlockedBySkill,
     ...extra,
   };
@@ -78,18 +89,27 @@ function unit(
 export const UNIT_TYPES: Readonly<Record<UnitTypeId, UnitType>> = Object.freeze({
   architect: unit('architect', 'Architect', 'settler', 0, 2, null),
   engineer: unit('engineer', 'Engineer', 'worker', 0, 2, null),
-  profiler: unit('profiler', 'Profiler', 'scout', 8, 3, null),
+  profiler: unit('profiler', 'Profiler', 'scout', 8, 3, null, { sight: 4 }),
   pipelineRunner: unit('pipelineRunner', 'Pipeline Runner', 'melee', 20, 2, 14),
   querySlinger: unit('querySlinger', 'Query Slinger', 'ranged', 18, 2, 27, {
     range: 2,
+    // A unit that strikes at two hexes has to be able to see two hexes.
+    sight: 3,
   }),
-  notebookCannon: unit('notebookCannon', 'Notebook Cannon', 'siege', 25, 1, 17),
-  rlsSentinel: unit('rlsSentinel', 'RLS Sentinel', 'defensive', 22, 2, 3),
+  notebookCannon: unit('notebookCannon', 'Notebook Cannon', 'siege', 25, 1, 17, {
+    sight: 1,
+  }),
+  rlsSentinel: unit('rlsSentinel', 'RLS Sentinel', 'defensive', 22, 2, 3, {
+    // It is a sentinel. Watching is the job.
+    sight: 3,
+  }),
   shortcutSkiff: unit('shortcutSkiff', 'Shortcut Skiff', 'transport', 12, 4, 16, {
     domain: 'water',
+    sight: 3,
   }),
   lineageHawk: unit('lineageHawk', 'Lineage Hawk', 'scout', 14, 4, 9, {
     ignoresZoneOfControl: true,
+    sight: 5,
   }),
   refreshGuard: unit('refreshGuard', 'Refresh Guard', 'support', 16, 2, 41),
   semanticColossus: unit('semanticColossus', 'Semantic Colossus', 'melee', 45, 1, 36),

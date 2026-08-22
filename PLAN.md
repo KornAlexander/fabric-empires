@@ -254,6 +254,15 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D223 | ⚠️ A raider's strike position is replayed, not read | A unit may move up to three times and then attack in the same turn, so the hex it started the turn on is not the hex it swung from, and its position after the turn may be the defender's tile it just took. The strike hex is reconstructed by replaying that unit's own move events. A lunge that starts in the wrong place is worse than no lunge |
 | D224 | ⚠️ Input is locked while the world on screen is a turn behind | The direct consequence of holding the result back: for those few seconds `state` is deliberately stale, and a click would move a unit in the old world and have the move silently overwritten on adoption. Guarded in `actOn` and in the key handler, released in a `finally` so a failed presentation cannot leave the game locked |
 | D225 | ⚠️ Research resolution moved after adoption | `resolveResearch` asks a question and then writes to `state`. Left where it was, it would have started while the result was still held back and had its work overwritten a moment later. The hazard was created by this change and had to be found by reading it, because no test covers a research completion landing in the same turn as a raid |
+| D226 | Fog of war: the map starts dark except the ground your soldiers stand on | Requested directly, and phase 3b of the delivery plan. `explored` is a set of hex keys on the state, seeded at creation from the starting units' sight, grown after every move and every turn. Measured on a standard map: **61 of 6,211 hexes** known at turn one, 99% hidden, and **0 of 7 enemy villages drawn** |
+| D227 | ⚠️ The antagonists do not use fog, on purpose | Section 21 said so and it still holds. Fog is a device for the player's experience of discovery, not a difficulty setting, and an AI that had to scout would arrive later and less reliably, quietly undoing the leash tuning measured in section 16.7. Asymmetry here is honest: the opponent is a study planner, not a rival explorer |
+| D228 | Explored ground is remembered but not live | Two layers: unseen is opaque, remembered is 62% translucent. You keep the shape of the coastline you walked, and you do not keep the army that has since marched onto it. Entities are hidden on any hex not currently in sight, which is why a village you found can disappear again |
+| D229 | ⚠️ `hexPatch` cannot occlude, so fog needed `hexLid` | `hexPatch` fans six flat triangles from the hex centre to its corners while the surface between is subdivided, displaced and eroded: the same chord-versus-curve error as D167. For a translucent highlight it only flickers; for fog it means a patch buried inside a hill hides nothing. Conforming honestly would be 288 vertices per hex, about 786,000 for a fogged map, so the lid is flat and sits above the hex's true peak: 18 vertices |
+| D230 | ⚠️ `surfaceAt` is not the height of the ground | It reads exact mesh vertices and falls back to the coarse control lattice in between, which on a displaced surface is well below what is drawn. Sampling nineteen points of it across a hex still underestimated every hill. `peakAt` is measured from the finished vertices in the pass that already walks them, and is the only safe height for anything that must sit on top |
+| D231 | ⚠️ Fog must hide the forest, not merely cover the ground | Every one of 6,150 lids had positive clearance over its terrain and the map still looked unfogged, because 4,199 trees and 1,652 rocks were standing straight through a lid a tenth of a unit high. Raising the lid above the canopy would leave fog visibly floating at low camera angles, so the scatter collapses hidden instances to zero scale instead: one pass over 6,000 matrices, no rebuild |
+| D232 | ⚠️ **The lid was wound upside down, and that was the whole bug** | Every triangle's normal was **-0.866 on Y**, so from a camera looking down the entire layer was a back face and `FrontSide` culled it. It cost a long hunt because the layer was provably present, opaque, above the terrain, unculled by frustum, and passing the depth test, and still drew nothing. `hexPatch` had the same winding all along and got away with it only because its overlay material is double-sided |
+| D233 | ⚠️ Two measurements that agreed and were both wrong | A per-hex clearance check bucketed the lid and the ground with the same rounding `peakAt` uses, so it could only agree with itself: it reported zero buried lids on a visibly unfogged map. And a "ground" probe selecting a mesh by `vertices > 100000` matched the **fog** (110,700), so a bounding-box comparison was the fog against itself. A measurement that cannot fail is not evidence |
+| D234 | ⚠️ `turn() >= 1` is not a signal that a game has started | `state` is initialised with a placeholder game at module load, so `turn()` returns 1 while the setup screen is still open, with seed FABRIC and a world nobody chose. Every browser test that waited on it was measuring the placeholder. Wait on `seed()` matching the seed that was typed |
 
 ### 28. Cheat codes
 
@@ -1703,7 +1712,7 @@ is allowed to block on it.
 | 1 | 22 Aug | **Publish.** Private repo, push, branch normalised | Done |
 | 2 | 22 to 25 Aug | **Art pipeline.** Azure OpenAI resource, prompt manifest, style lock, generation script, first coherent batch | Resource decision (17) |
 | 3 | 23 to 24 Aug | **Sound.** Code-generated effects plus the ambient bed, verified through `OfflineAudioContext` | |
-| 3b | 23 Aug | **Fog of war** (D149). Per-faction visibility and memory, revealed by unit and city sight | |
+| 3b | 23 Aug | **Fog of war** (D149). Per-faction visibility and memory, revealed by unit and city sight | **Done 22 Aug**, save v6 |
 | 3c | 23 to 26 Aug | **Units at 1600** (D148). Pike, shot, horse and cannon, replacing the tracked hulls | |
 | 4 | 24 to 28 Aug | **The siege** (19). Walls, siege state, the assault set piece, the four defender options | Fog of war, for what a besieger can see |
 | 4b | 28 to 30 Aug | **Ships and islands** (23). Embark, cargo, AI crossings, coastal production, then flip `islands` on | |
@@ -1885,6 +1894,42 @@ stated here rather than left as an accident of implementation, because the
 alternative is seven factions wandering a dark map looking for someone. They
 are a besieging pressure on a learner, not an opponent in a fair match, and
 the leash (D92) is what keeps that fair rather than mutual blindness.
+
+### 21.4 Built, 22 Aug
+
+Save version **6**, not 5: cheat codes took 5 first. An older save migrates to
+fully explored, because blanking a map somebody has already uncovered would be
+a worse answer than admitting the save predates the feature.
+
+| Measured, standard map, turn one | |
+|---|---|
+| Hexes known | **61 of 6,211** |
+| Hidden | **99%** |
+| Enemy villages drawn | **0 of 7** |
+| Fogged frame vs unfogged, as PNG | 200 kB vs 493 kB |
+
+The last row is the honest test: an occluded frame is mostly flat colour and
+compresses to less than half. While the fog was broken it was *larger* than the
+unfogged frame, which is what a layer that adds detail instead of hiding it
+looks like.
+
+⚠️ **Three of the four things that went wrong were measurement, not rendering.**
+The layer was provably present, opaque, above the terrain, unculled and passing
+the depth test, and drew nothing. What actually happened:
+
+1. `hexPatch` cannot occlude (D229): flat chords across a subdivided surface,
+   the same error as D167. Needed `hexLid`.
+2. `surfaceAt` is not the height of the ground (D230). Needed `peakAt`,
+   measured from the finished vertices.
+3. Fog covered the ground and not the forest (D231): 4,199 trees standing
+   through a lid a tenth of a unit high.
+4. **The lid was wound upside down** (D232), so every triangle was a back face
+   from above and `FrontSide` culled the lot.
+
+And two measurements agreed with themselves and were both wrong (D233): a
+per-hex clearance check that bucketed lid and ground with the same rounding
+`peakAt` uses, and a "ground" probe that selected the fog by vertex count.
+
 
 ---
 

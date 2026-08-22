@@ -16,7 +16,7 @@ import { GENERIC_TOPIC_GRAPH, type TopicGraph } from '../challenge/index.js';
 import { EMPTY_RESEARCH, type ResearchState } from '../rules/research.js';
 import type { Difficulty, GameState } from '../state/index.js';
 
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
 export interface SaveFile {
   readonly version: number;
@@ -37,6 +37,14 @@ export interface SaveFile {
   readonly activeFactionId: string;
   readonly nextEntityId: number;
   readonly cheatsUsed: readonly string[];
+  /**
+   * Hex keys the player has uncovered.
+   *
+   * An array because JSON has no Set, and the only transformation on the way
+   * out. On a radius-45 map fully explored this is about 6,200 short strings,
+   * which is the largest thing in the file by some way and still small.
+   */
+  readonly explored: readonly string[];
 }
 
 export function toSaveFile(state: GameState): SaveFile {
@@ -54,6 +62,7 @@ export function toSaveFile(state: GameState): SaveFile {
     activeFactionId: state.activeFactionId,
     nextEntityId: state.nextEntityId,
     cheatsUsed: state.cheatsUsed,
+    explored: [...state.explored],
   };
 }
 
@@ -144,6 +153,24 @@ const MIGRATIONS: Readonly<Record<number, (save: SaveFile) => SaveFile>> =
       version: 5,
       cheatsUsed: [],
     }),
+
+    /**
+     * 5 -> 6: fog of war.
+     *
+     * ⚠️ **Migrated to FULLY explored, not to darkness.** An older save was
+     * played on a map with no fog, so the player has already seen all of it.
+     * Blanking it would take back ground they genuinely uncovered and hide
+     * their own cities behind a fog that arrived after the fact.
+     *
+     * The empty array is a signal rather than a value: `fromSaveFile` fills it
+     * from the map, which is the only place that knows how many hexes there
+     * are.
+     */
+    5: (save) => ({
+      ...save,
+      version: 6,
+      explored: [],
+    }),
   });
 
 export function migrate(save: SaveFile): SaveFile {
@@ -176,6 +203,16 @@ export function fromSaveFile(
   const migrated = migrate(save);
   const map = generateMap(migrated.seed, migrated.mapOverrides ?? {});
 
+  /*
+   * An empty explored set on a save that has a turn behind it means the save
+   * predates fog of war, so the whole map is remembered. A genuinely new game
+   * never reaches here: `createGameState` seeds its own sight.
+   */
+  const explored =
+    (migrated.explored?.length ?? 0) > 0
+      ? new Set(migrated.explored)
+      : new Set(map.tiles.keys());
+
   return {
     seed: migrated.seed,
     difficulty: migrated.difficulty,
@@ -191,6 +228,7 @@ export function fromSaveFile(
     activeFactionId: migrated.activeFactionId,
     nextEntityId: migrated.nextEntityId,
     cheatsUsed: migrated.cheatsUsed ?? [],
+    explored,
   };
 }
 

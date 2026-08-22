@@ -88,6 +88,20 @@ function rockGeometry(): BufferGeometry {
 export interface Scatter {
   readonly group: Group;
   readonly counts: { trees: number; rocks: number };
+  /**
+   * Collapse every prop standing on a hex in `hidden`.
+   *
+   * ⚠️ **Fog cannot hide a forest by lying on the ground.** The fog lid sits
+   * a tenth of a unit above the tallest terrain vertex in its hex, which is
+   * enough to cover the ground and nothing like enough to cover a tree: trees
+   * here are up to about two units tall. Measured, every one of 6,150 lids had
+   * positive clearance over the terrain and the map still looked unfogged,
+   * because what was showing through was 4,199 trees and 1,652 rocks.
+   *
+   * Raising the lid above the canopy instead would have left the fog visibly
+   * floating at any low camera angle. Collapsing the instances is exact.
+   */
+  setHidden(hidden: ReadonlySet<string>): void;
   dispose(): void;
 }
 
@@ -109,6 +123,9 @@ export function buildScatter(map: GameMap, terrain: Terrain): Scatter {
   const treeTints: Color[] = [];
   const rockSlots: Matrix4[] = [];
   const rockTints: Color[] = [];
+  /** The hex each prop stands on, parallel to the slot arrays. */
+  const treeHexes: string[] = [];
+  const rockHexes: string[] = [];
 
   // Two ends of a plausible conifer range, plus a sickly tone for the swamp.
   const darkNeedle = new Color('#33482c');
@@ -134,13 +151,13 @@ export function buildScatter(map: GameMap, terrain: Terrain): Scatter {
 
     const centre = hexToWorld(tile.hex);
     const key = hexKey(tile.hex);
-    void key;
 
     // A slow noise field modulates density, so woodland forms patches rather
     // than an even sprinkle at exactly the tile rate.
     const clump = fbm2(centre.x * 0.09, centre.z * 0.09, { octaves: 3, seed: 77 });
 
     const place = (count: number, slots: Matrix4[], tints: Color[], salt: number, isTree: boolean) => {
+      const homes = isTree ? treeHexes : rockHexes;
       const scaled = count * (isTree ? 0.35 + clump * 1.5 : 0.6 + clump * 0.8);
       const whole = Math.floor(scaled);
       const extra = rand(tile.hex.q, tile.hex.r, salt) < scaled - whole ? 1 : 0;
@@ -164,6 +181,8 @@ export function buildScatter(map: GameMap, terrain: Terrain): Scatter {
         const size = isTree ? 0.55 + c * 1.5 : 0.5 + c * 1.3;
         scale.set(size, isTree ? size * (0.8 + a * 0.85) : size * (0.7 + a * 0.6), size);
         slots.push(new Matrix4().compose(position, quaternion, scale));
+        // Which hex this prop belongs to, so fog can collapse it later.
+        homes.push(key);
 
         if (isTree) {
           const base = tile.terrain === 'legacySwamp' ? sourNeedle : darkNeedle;
@@ -180,6 +199,8 @@ export function buildScatter(map: GameMap, terrain: Terrain): Scatter {
 
   const treeGeo = treeGeometry();
   const rockGeo = rockGeometry();
+  let treeMesh: InstancedMesh | undefined;
+  let rockMesh: InstancedMesh | undefined;
 
   if (treeSlots.length > 0) {
     const trees = new InstancedMesh(treeGeo, trunkMaterial, treeSlots.length);
@@ -196,6 +217,7 @@ export function buildScatter(map: GameMap, terrain: Terrain): Scatter {
     // leaves the frustum: the forest vanishes when the camera pans.
     trees.computeBoundingSphere();
     group.add(trees);
+    treeMesh = trees;
   }
 
   if (rockSlots.length > 0) {
@@ -210,11 +232,40 @@ export function buildScatter(map: GameMap, terrain: Terrain): Scatter {
     if (rocks.instanceColor) rocks.instanceColor.needsUpdate = true;
     rocks.computeBoundingSphere();
     group.add(rocks);
+    rockMesh = rocks;
+  }
+
+  /*
+   * Collapsing rather than removing.
+   *
+   * An instanced batch is one draw call over a fixed count, so a prop is
+   * hidden by writing it a zero scale: it still runs through the vertex
+   * shader and occupies no pixels. Rebuilding the batch per fog change would
+   * mean re-running the noise and the placement for six thousand props every
+   * time a unit takes a step.
+   */
+  const collapsed = new Matrix4().makeScale(0, 0, 0);
+
+  function applyHidden(
+    mesh: InstancedMesh | undefined,
+    slots: readonly Matrix4[],
+    homes: readonly string[],
+    hidden: ReadonlySet<string>,
+  ): void {
+    if (!mesh) return;
+    for (let i = 0; i < slots.length; i++) {
+      mesh.setMatrixAt(i, hidden.has(homes[i]!) ? collapsed : slots[i]!);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
   }
 
   return {
     group,
     counts: { trees: treeSlots.length, rocks: rockSlots.length },
+    setHidden(hidden) {
+      applyHidden(treeMesh, treeSlots, treeHexes, hidden);
+      applyHidden(rockMesh, rockSlots, rockHexes, hidden);
+    },
     dispose() {
       treeGeo.dispose();
       rockGeo.dispose();

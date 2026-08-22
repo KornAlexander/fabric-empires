@@ -34,6 +34,7 @@ import {
 } from '../entities/index.js';
 import { GENERIC_TOPIC_GRAPH, type TopicGraph } from '../challenge/index.js';
 import { EMPTY_RESEARCH, type ResearchState } from '../rules/research.js';
+import { rememberVisible } from '../rules/vision.js';
 
 export type Difficulty = 'apprentice' | 'analyst' | 'architect';
 
@@ -79,6 +80,13 @@ export interface GameState {
    * nothing about the certification, the Proctor, or the Great Library.
    */
   readonly cheatsUsed: readonly string[];
+  /**
+   * Every hex the player has ever seen, by key.
+   *
+   * ⚠️ The player's only. The antagonists do not use fog (section 21.3), so
+   * storing a set per faction would leave six of the seven permanently empty.
+   */
+  readonly explored: ReadonlySet<string>;
 }
 
 export const PLAYER_FACTION_ID = 'player';
@@ -554,7 +562,7 @@ export function createGameState(
     });
   }
 
-  return {
+  const world: GameState = {
     seed: map.seed,
     difficulty: options.difficulty ?? 'analyst',
     turn: 1,
@@ -569,7 +577,17 @@ export function createGameState(
     activeFactionId: PLAYER_FACTION_ID,
     nextEntityId: nextId,
     cheatsUsed: [],
+    explored: new Set<string>(),
   };
+
+  /*
+   * The world starts dark apart from what the player brought with them.
+   *
+   * ⚠️ Seeded here rather than on the first turn, because the very first thing
+   * that happens is a render, and a map that flashes fully lit before the fog
+   * arrives has already given away every camp it was meant to hide.
+   */
+  return rememberVisible(world, PLAYER_FACTION_ID);
 }
 
 /**

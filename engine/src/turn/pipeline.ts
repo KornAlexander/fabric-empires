@@ -16,6 +16,7 @@ import { addResources, empireIncome, growthThreshold } from '../rules/yields.js'
 import { fundResearch, researchReady } from '../rules/research.js';
 import { reviewOpportunities, reviewPhase, type ReviewOpportunity } from '../rules/review.js';
 import { runFactionTurn, garrisonPhase, type AiEvent } from '../rules/ai.js';
+import { rememberVisible } from '../rules/vision.js';
 import { productionPhase, type ProductionEvent } from '../rules/production.js';
 import { checkOutcome, type Outcome } from '../rules/victory.js';
 import type { GameState } from '../state/index.js';
@@ -246,8 +247,18 @@ export function endTurn(state: GameState, options: TurnOptions = {}): TurnResult
     enemyEvents.push(...played.events);
   }
 
-  const next: GameState = { ...world, turn: world.turn + 1 };
-
+  /*
+   * Sight is folded in last, after everything has moved and been built.
+   *
+   * A unit mustered this turn watches from where it stands, and a city taken
+   * this turn lights up its new surroundings immediately. Doing it earlier
+   * would leave both blind until the following turn for no reason a player
+   * could work out.
+   */
+  const next: GameState = rememberVisible(
+    { ...world, turn: world.turn + 1 },
+    factionId,
+  );
   return {
     state: next,
     report: {

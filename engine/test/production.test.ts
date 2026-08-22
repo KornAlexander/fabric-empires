@@ -252,10 +252,14 @@ describe('saves', () => {
     expect(capital(loaded).productionProgress).toBe(0);
     expect(capital(loaded).producing).toBeUndefined();
     // 2 -> 3 added production, 3 -> 4 added ruins and the raid cooldown,
-    // 4 -> 5 added the cheat log.
+    // 4 -> 5 added the cheat log, 5 -> 6 added fog of war.
     expect(capital(loaded).lastRaidedTurn).toBe(-1);
     expect(loaded.ruins.size).toBe(0);
     expect(loaded.cheatsUsed).toEqual([]);
-    expect(SAVE_VERSION).toBe(5);
+    // ⚠️ A save from before fog was played on a fully visible map, so the
+    // player has already seen all of it. Blanking it would take back ground
+    // they genuinely uncovered.
+    expect(loaded.explored.size).toBe(loaded.map.tiles.size);
+    expect(SAVE_VERSION).toBe(6);
   });
 });

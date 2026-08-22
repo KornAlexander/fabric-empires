@@ -25,6 +25,7 @@ import {
   hexKey,
   hexRound,
   unitType,
+  PLAYER_FACTION_ID,
   type GameMap,
   type GameState,
   type Hex,
@@ -48,6 +49,7 @@ import { buildCity, buildRuin, buildUnit, disposeEntityMaterials } from './entit
 import { createFlyControls, type FlyTelemetry } from './flyControls.js';
 import type { CinematicShot } from './cinematic.js';
 import { createCorruption } from './corruption.js';
+import { createFog } from './fog.js';
 
 export interface Scene3DView {
   readonly selectedUnitId?: string | undefined;
@@ -58,6 +60,15 @@ export interface Scene3DView {
   readonly unitOffset?: ((unitId: string) => { x: number; z: number } | undefined) | undefined;
   /** 0 while a destroyed unit fades out. */
   readonly unitOpacity?: ((unitId: string) => number) | undefined;
+  /**
+   * Hexes the player can currently see, if fog is on.
+   *
+   * ⚠️ Units and cities outside it are not drawn at all, rather than drawn
+   * dimmed. Remembered ground shows the hill; it must not show who is standing
+   * on the hill now, or scouting would be pointless after the first look.
+   * Undefined means no fog, which is what every test and the map editor use.
+   */
+  readonly visibleHexes?: ReadonlySet<string> | undefined;
 }
 
 export interface Scene3D {
@@ -129,6 +140,14 @@ export interface Scene3D {
    * antagonist holds. Drawn as torn scanlines rather than a border tint (D56).
    */
   setCorrupted(hexes: readonly Hex[]): void;
+  /**
+   * Replace the fog.
+   *
+   * `unseen` has never been visited; `remembered` has been seen before but is
+   * not currently watched. Both are hex lists rather than sets, because the
+   * renderer only ever iterates them.
+   */
+  setFog(unseen: readonly Hex[], remembered: readonly Hex[]): void;
   /**
    * Draw one frame. The shake is applied to the camera for this frame only
    * and then undone, so it can never accumulate into the orbit state.
@@ -207,6 +226,23 @@ export function createScene3D(
       mesh.userData.corruption = true;
       overlayGroup.add(mesh);
     }
+  });
+
+  /*
+   * Fog lives in its own group, not in `overlayGroup`.
+   *
+   * ⚠️ The overlay group is cleared and rebuilt on every sync, which is right
+   * for reachable-tile highlights and wrong for fog: rebuilding six thousand
+   * merged patches every time a unit is selected would be the most expensive
+   * thing in the frame, for a layer that only changes when ground is uncovered.
+   */
+  const fogGroup = new Group();
+  fogGroup.name = 'fog';
+  scene.add(fogGroup);
+
+  const fog = createFog((added, removed) => {
+    for (const mesh of removed) fogGroup.remove(mesh);
+    for (const mesh of added) fogGroup.add(mesh);
   });
 
   let terrain: Terrain | undefined;
@@ -435,9 +471,24 @@ export function createScene3D(
     sync(state, view) {
       if (!terrain) return;
 
+      /*
+       * What the player can see right now.
+       *
+       * ⚠️ Own units and cities are ALWAYS drawn, whatever the fog says. They
+       * are what generates sight in the first place, so hiding one would be a
+       * self-inflicted blindness the player could do nothing about, and a
+       * rounding error in the sight radius would make a unit vanish.
+       */
+      const canSee = (hex: Hex, factionId: string): boolean => {
+        if (!view.visibleHexes) return true;
+        if (factionId === PLAYER_FACTION_ID) return true;
+        return view.visibleHexes.has(hexKey(hex));
+      };
+
       // Units ------------------------------------------------------------
       const liveUnits = new Set<string>();
       for (const unit of state.units.values()) {
+        if (!canSee(unit.hex, unit.factionId)) continue;
         liveUnits.add(unit.id);
         let object = unitObjects.get(unit.id);
         if (!object) {
@@ -517,7 +568,19 @@ export function createScene3D(
       }
 
       // Cities -----------------------------------------------------------
+      const liveCities = new Set<string>();
       for (const city of state.cities.values()) {
+        /*
+         * ⚠️ A remembered village is NOT drawn.
+         *
+         * Tempting to keep it on screen once seen, and wrong: the player would
+         * have a permanent live readout of a place they walked past once,
+         * including whether it still stands after somebody else took it.
+         * Remembered ground shows terrain, never occupants.
+         */
+        if (!canSee(city.hex, city.factionId)) continue;
+        liveCities.add(city.id);
+
         const existing = cityObjects.get(city.id);
         const colour = state.factions.get(city.factionId)?.colour ?? '#888888';
         // Population and ownership both change the model, so those two are
@@ -535,7 +598,7 @@ export function createScene3D(
         placeOnGround(object, city.hex);
       }
       for (const [id, object] of cityObjects) {
-        if (state.cities.has(id)) continue;
+        if (liveCities.has(id)) continue;
         entityGroup.remove(object);
         cityObjects.delete(id);
       }
@@ -646,6 +709,20 @@ export function createScene3D(
 
     setCorrupted(hexes) {
       if (terrain) corruption.set(hexes, terrain);
+    },
+
+    setFog(unseen, remembered) {
+      if (terrain) fog.set(unseen, remembered, terrain);
+      /*
+       * ⚠️ Props have to be hidden too, not just covered.
+       *
+       * The fog lid clears the tallest terrain vertex in its hex by a tenth
+       * of a unit, which covers the ground and does not come close to
+       * covering a two-unit tree. Measured: every one of 6,150 lids sat above
+       * its terrain and the map still looked unfogged, because the forest was
+       * standing straight through it.
+       */
+      scatter?.setHidden(new Set(unseen.map((h) => hexKey(h))));
     },
 
     render(delta, shake) {
@@ -783,6 +860,7 @@ export function createScene3D(
     dispose() {
       endShot();
       corruption.dispose();
+      fog.dispose();
       fly.dispose();
       controls.dispose();
       clearOverlays();

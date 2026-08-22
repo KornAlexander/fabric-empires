@@ -11,6 +11,7 @@ import { terrain } from '../map/index.js';
 import { cityKind, unitType, type City, type CityKind, type Unit } from '../entities/index.js';
 import { tileAt, unitAt, type GameState } from '../state/index.js';
 import { canFoundCity, pathTo, reachable } from './movement.js';
+import { rememberVisible } from './vision.js';
 
 export type ActionResult =
   | { readonly ok: true; readonly state: GameState }
@@ -59,15 +60,22 @@ export function moveUnit(
   // had left. That is the whole point of a zone of control.
   const movesLeft = destination.stops ? 0 : unit.movesLeft - destination.cost;
 
-  return {
-    ok: true,
-    state: replaceUnit(state, {
-      ...unit,
-      hex: target,
-      movesLeft: Math.max(0, movesLeft),
-      fortified: false,
-    }),
-  };
+  const moved = replaceUnit(state, {
+    ...unit,
+    hex: target,
+    movesLeft: Math.max(0, movesLeft),
+    fortified: false,
+  });
+
+  /*
+   * Reveal as you go, not at the end of the turn.
+   *
+   * ⚠️ A scout that walked six hexes and only lit up the last one would be
+   * useless, and worse, would show a corridor of ground it never passed
+   * through. Folding sight in after each move is also what makes the fog
+   * respond while the player is still deciding where to stop.
+   */
+  return { ok: true, state: rememberVisible(moved, unit.factionId) };
 }
 
 /** Terrain decides what kind of settlement an Architect can raise. */
