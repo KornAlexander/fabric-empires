@@ -1,5 +1,8 @@
 import {
   ANTAGONIST_FACTION_ID,
+  ANTAGONISTS,
+  aggroRadius,
+  hexDistance,
   BASE_HEX_SIZE,
   PLAYER_FACTION_ID,
   canAttack,
@@ -275,6 +278,7 @@ const el = {
   citiesList: document.querySelector<HTMLElement>('#cities-list')!,
   readiness: document.querySelector<HTMLElement>('#readiness')!,
   faceProctor: document.querySelector<HTMLButtonElement>('#face-proctor')!,
+  threatsList: document.querySelector<HTMLElement>('#threats-list')!,
 };
 
 let state: GameState = createGameState('FABRIC', { topics: provider.topics() });
@@ -648,6 +652,7 @@ async function playAttack(
   refreshCorruption();
   refreshCities();
   refreshReadiness();
+  refreshThreats();
   refreshSelection();
   dirty = true;
 }
@@ -720,6 +725,7 @@ function doFound(): void {
   refreshCorruption();
   refreshCities();
   refreshReadiness();
+  refreshThreats();
   select(undefined);
 }
 
@@ -902,6 +908,7 @@ async function doEndTurn(): Promise<void> {
   refreshCorruption();
   refreshCities();
   refreshReadiness();
+  refreshThreats();
   dirty = true;
 
   const presentedEnemyTurn = presentEnemyTurn(report.enemyEvents, defenderChallengeScore);
@@ -1189,12 +1196,14 @@ function refreshCities(): void {
         log(result.reason, 'bad');
         refreshCities();
   refreshReadiness();
+  refreshThreats();
         return;
       }
       state = result.state;
       log(chosen ? `${city.name} begins ${unitType(chosen as UnitTypeId).label}.` : `${city.name} downs tools.`);
       refreshCities();
   refreshReadiness();
+  refreshThreats();
       dirty = true;
     });
 
@@ -1347,6 +1356,7 @@ async function faceTheProctor(): Promise<void> {
       'bad',
     );
     refreshReadiness();
+  refreshThreats();
     return;
   }
 
@@ -1364,6 +1374,100 @@ async function faceTheProctor(): Promise<void> {
       cities: [...state.cities.values()].filter((c) => c.factionId === PLAYER_FACTION_ID).length,
     },
   );
+}
+
+/**
+ * Who is coming, and what they will ask about.
+ *
+ * ⚠️ **This panel is what makes the central mechanic legible.** Each faction
+ * quizzes one cluster of the outline, so who is marching on you tells you what
+ * you are about to be tested on. That has been true in the code for a while
+ * and completely invisible on screen: a player could be raided by the Scan
+ * Wraiths four times without ever learning that the Scan Wraiths mean B3, or
+ * that B3 is the branch they have not revised.
+ *
+ * It joins the two halves of the game in one row: where a faction is, from the
+ * engine, and how ready you are for it, from the learning layer.
+ */
+function refreshThreats(): void {
+  const model = libraryModel();
+
+  // Retention per cluster, which is the number that makes a distance mean
+  // something. Six hexes away is fine if you know the material.
+  const readiness = new Map<string, { label: string; retained: number; total: number }>();
+  for (const branch of model.branches) {
+    for (const cluster of branch.clusters) {
+      const retained = cluster.skills.filter(
+        (s) => s.band === 'familiar' || s.band === 'strong',
+      ).length;
+      readiness.set(cluster.id, {
+        label: cluster.label,
+        retained,
+        total: cluster.skills.length,
+      });
+    }
+  }
+
+  const mine = [
+    ...unitsOf(state, PLAYER_FACTION_ID).map((u) => u.hex),
+    ...[...state.cities.values()].filter((c) => c.factionId === PLAYER_FACTION_ID).map((c) => c.hex),
+  ];
+  const limit = aggroRadius(state.turn);
+
+  const rows = ANTAGONISTS.map((antagonist) => {
+    const units = unitsOf(state, antagonist.id);
+    let distance = Number.POSITIVE_INFINITY;
+    for (const unit of units) {
+      for (const hex of mine) distance = Math.min(distance, hexDistance(unit.hex, hex));
+    }
+    return { antagonist, alive: units.length > 0, distance };
+  }).sort((a, b) => a.distance - b.distance);
+
+  el.threatsList.replaceChildren();
+
+  for (const row of rows) {
+    const cluster = readiness.get(row.antagonist.topicCluster);
+    const share = cluster && cluster.total > 0 ? cluster.retained / cluster.total : 0;
+
+    const node = document.createElement('div');
+    node.className = 'foe';
+    if (!row.alive) node.classList.add('gone');
+    else if (Number.isFinite(row.distance) && row.distance <= limit) node.classList.add('closing');
+
+    const swatch = document.createElement('div');
+    swatch.className = 'swatch';
+    swatch.style.background = row.antagonist.colour;
+
+    const middle = document.createElement('div');
+    const name = document.createElement('b');
+    name.textContent = row.antagonist.label;
+    const what = document.createElement('span');
+    what.className = 'cluster';
+    what.textContent = cluster
+      ? `${row.antagonist.topicCluster} ${cluster.label}`
+      : row.antagonist.topicCluster;
+    middle.append(name, what);
+
+    const right = document.createElement('div');
+    right.className = 'range';
+    right.textContent = !row.alive
+      ? 'broken'
+      : !Number.isFinite(row.distance)
+        ? '-'
+        : row.distance <= limit
+          ? `${row.distance} closing`
+          : `${row.distance} hexes`;
+
+    if (cluster) {
+      const ready = document.createElement('span');
+      ready.className = `ready ${share >= 0.6 ? 'solid' : share < 0.3 ? 'weak' : ''}`;
+      ready.textContent = `${cluster.retained}/${cluster.total} known`;
+      right.append(ready);
+    }
+
+    node.append(swatch, middle, right);
+    el.threatsList.append(node);
+  }
 }
 
 function refreshHud(): void {
@@ -1445,6 +1549,7 @@ function adopt(next: GameState, message: string): void {
   refreshCorruption();
   refreshCities();
   refreshReadiness();
+  refreshThreats();
   dirty = true;
 }
 
@@ -1811,6 +1916,7 @@ window.__fabricEmpires = {
       for (const node of state.topics.nodes) mastery.record(node.id, 1, false);
     }
     refreshReadiness();
+  refreshThreats();
   },
   factionUnits: (factionId: string) =>
     unitsOf(state, factionId).map((u) => ({

@@ -94,6 +94,26 @@
       #tile { bottom: 14px; left: 50%; transform: translateX(-50%); text-align: center; min-width: 240px; }
       #help { top: 62px; right: 14px; color: var(--muted); text-align: right; font-size: 12px; }
 
+      #threats { top: 124px; right: 14px; width: 272px; max-height: 42vh; overflow-y: auto; }
+      #threats h2 { margin: 0 0 4px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+      #threats .foe {
+        display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 8px;
+        align-items: start; padding: 5px 0;
+        border-top: 1px solid rgba(255, 255, 255, 0.06);
+      }
+      #threats .foe:first-of-type { border-top: none; }
+      #threats .swatch { width: 8px; height: 8px; border-radius: 2px; margin-top: 4px; }
+      #threats .foe b { font-size: 12px; font-weight: 600; }
+      #threats .cluster { display: block; color: var(--muted); font-size: 11px; line-height: 1.25; overflow-wrap: anywhere; }
+      #threats .range { text-align: right; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--muted); }
+      #threats .ready { display: block; font-size: 11px; font-variant-numeric: tabular-nums; }
+      #threats .foe.closing .range { color: #ffb64d; }
+      #threats .foe.closing b { color: #ffd7a1; }
+      #threats .foe.gone { opacity: 0.45; }
+      #threats .foe.gone .range { color: #8fd694; }
+      #threats .ready.weak { color: #ff9b91; }
+      #threats .ready.solid { color: #8fd694; }
+
       /*
         Under the research panel, because the two are the same decision seen
         twice: both spend Compute, and a player choosing what to build should
@@ -112,8 +132,7 @@
       #cities .status { color: var(--muted); font-size: 11px; }
       #cities .status.blocked { color: #ff9b91; }
 
-      #readiness { color: var(--muted); font-variant-numeric: tabular-nums; }
-      #face-proctor {
+      #readiness { color: var(--muted); font-variant-numeric: tabular-nums; }      #face-proctor {
         background: #6b4ea8; border-color: #8a6fd0; color: #f2ecff; font-weight: 600;
         animation: proctor 2.2s ease-in-out infinite;
       }
@@ -153,6 +172,19 @@
     <div class="panel" id="help">
       click a unit to select &middot; click to move or attack<br />
       drag to pan &middot; wheel to zoom &middot; space ends turn
+    </div>
+
+    <!--
+      Who is coming, and what they will ask about.
+
+      The seven antagonists each quiz one cluster of the outline, which is the
+      whole design: who is marching on you tells you what you are about to be
+      tested on. That was completely unreadable until this panel existed - the
+      mechanic worked and nothing on screen said so.
+    -->
+    <div class="panel" id="threats">
+      <h2>Who is coming</h2>
+      <div id="threats-list"></div>
     </div>
 
     <div class="panel" id="tile">

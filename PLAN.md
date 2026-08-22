@@ -155,6 +155,8 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D124 | Once per run, first time only | The whole value of an establishing shot is that it marks something as new. The fourth city is not news, and a game that stopped to admire every one would be unplayable by turn twenty. Reset on a new empire, not carried in the save: these mark the beats of a run |
 | D125 | Skippable from the first frame, and it says so | These fire exactly where a replaying player has already been. ⚠️ The skip key handling has to stop the event reaching the map: **space ends the turn**, and ending a turn because someone skipped a cutscene would be a nasty surprise |
 | D126 | The interface leaves the frame | The first version composed the shot behind the research panel and the unit card, which is the difference between a cinematic and a screenshot of a game with black bars drawn on it |
+| D127 | **"Who is coming": the study planner made readable** | The central mechanic was working and invisible. A player could be raided by the Scan Wraiths four times without ever learning that the Scan Wraiths mean B3, or that B3 is the branch they have not revised. The panel puts the two halves of the game in one row: where a faction is, from the engine, and how ready you are for its cluster, from the learning layer |
+| D128 | Sorted by distance, not by name | It is a priority list rather than a roster. The nearest faction is the one whose cluster to revise tonight, and a row turns amber the moment its distance falls inside the current leash |
 
 ### 16.1 What "realistic" does and does not mean in this build
 
@@ -1154,6 +1156,7 @@ Accepted knowingly. Partial mitigations in place:
 - [x] All seven antagonists on the map, one per cluster, so the whole outline can come for you
 - [x] The Exam victory: readiness in the HUD, the Proctor at 80 percent, and a weighted 40-question siege
 - [x] Cinematics at the four first-time beats: first blood, the first workspace, walls changing hands, the Proctor
+- [x] "Who is coming": every antagonist, its cluster, its distance and your readiness for it
 - [ ] Live URL on `prdsweden` (primary submitted link)
 - [ ] Static GitHub Pages build as the guaranteed-alive fallback link (D37)
 - [ ] Shareable result image working and pasteable into Discord (D40)
