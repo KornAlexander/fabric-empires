@@ -164,6 +164,32 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
   'Learn Fabric. Learn as a family.': 'Lerne Fabric. Lernt als Familie.',
   'Esc to skip': 'Esc zum Überspringen',
 
+  // Bringing your own questions.
+  'Your own questions': 'Deine eigenen Fragen',
+  'Download the sample, replace the rows with your own, and upload it. Any subject works.':
+    'Lade die Vorlage herunter, ersetze die Zeilen durch eigene und lade sie hoch. Jedes Fach geht.',
+  'Download sample': 'Vorlage herunterladen',
+  'Upload a file': 'Datei hochladen',
+  'Use these questions': 'Diese Fragen verwenden',
+  'Reading {file}…': 'Lese {file}…',
+  '{questions} questions across {topics} topics, from {file}.':
+    '{questions} Fragen aus {topics} Themen, aus {file}.',
+  'Rows that could not be used': 'Zeilen, die nicht verwendet werden konnten',
+  'Worth a look': 'Einen Blick wert',
+  'Row {row}: {message}': 'Zeile {row}: {message}',
+  'and {n} more': 'und {n} weitere',
+  'Ignored columns: {columns}': 'Ignorierte Spalten: {columns}',
+  'Nothing in this file can be played yet.':
+    'Aus dieser Datei lässt sich noch nichts spielen.',
+  '{title} is ready. Pick it as a course below.':
+    '{title} ist bereit. Wähle es unten als Kurs aus.',
+  'Those questions could not be prepared.':
+    'Diese Fragen konnten nicht vorbereitet werden.',
+  'That file could not be read. Excel and CSV both work.':
+    'Diese Datei konnte nicht gelesen werden. Excel und CSV funktionieren beide.',
+  'The sample could not be saved.': 'Die Vorlage konnte nicht gespeichert werden.',
+  'My questions': 'Meine Fragen',
+
   // Endings ---------------------------------------------------------------
   Victory: 'Sieg',
   Defeat: 'Niederlage',

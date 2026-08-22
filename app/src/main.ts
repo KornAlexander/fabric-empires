@@ -107,6 +107,17 @@ import { approachShot, descendShot, orbitShot } from './three/cinematic.js';
 import { introShots } from './intro.js';
 import { createAnthem } from './audio.js';
 import { applyStaticTranslations, lang, onLangChange, plural, t, toggleLang } from './i18n.js';
+import { allCampaigns } from './courses.js';
+
+/**
+ * Find a course by id, shipped or imported.
+ *
+ * ⚠️ Not `campaignById`, which only knows what was compiled in. A player who
+ * uploaded a spreadsheet and picked it would otherwise be handed silence: the
+ * seat would build with no questions and no error, because a missing campaign
+ * looks exactly like a single-player game.
+ */
+const courseById = (id: string) => allCampaigns().find((c) => c.id === id);
 import { loadGame, localSlot, saveGame } from './persist.js';
 import { createBattleBanner, type BattleSide } from './ui/battleBanner.js';
 
@@ -171,10 +182,10 @@ function buildSecondSeat(): void {
   duo.hide();
   if (lastSetup.players !== 2) return;
 
-  const campaign = campaignById(lastSetup.courseP2);
+  const campaign = courseById(lastSetup.courseP2);
   if (!campaign) return;
 
-  const own = campaignById(lastSetup.courseP1);
+  const own = courseById(lastSetup.courseP1);
   seatOnePresenter = createQuestionPresenter(
     duo.ui({ seat: 1, who: 'Player 1', course: own?.course ?? 'Fabric Empires' }),
     { asked: askedThisSession },

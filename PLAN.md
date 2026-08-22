@@ -270,6 +270,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D269–D272 | The clock was grading reading speed, not knowledge | Recorded in full in section 34.4 |
 | D273–D277 | Ritter: the elite melee units ride | Recorded in full in section 35.3 |
 | D278–D283 | Two languages, one switch | Recorded in full in section 36.4 |
+| D284–D290 | Bring your own questions, from a spreadsheet | Recorded in full in section 37.3 |
 
 ### 28. Cheat codes
 
@@ -2854,6 +2855,107 @@ to redraw from state, so nothing has to be hunted down individually.
   been checked for overflow in narrow panels at the smallest window size.
 - A stale English edit orphans its German silently. Worth a check that compares
   the catalogue against the source on every build, which does not exist yet.
+
+---
+
+### 37. Bring your own questions
+
+Asked for: a way to customise the learning experience with a sample file to
+download and a file to upload, "maybe one Excel file", and a pointer at
+Campus-Scheduler. Built 22 Aug.
+
+This is the change that makes the project a study aid **that happens to ship
+with DP-600 in it**, rather than a DP-600 study aid. Download the sample,
+replace the rows, upload it, and it becomes a playable course.
+
+#### 37.1 What was taken from Campus-Scheduler
+
+Its availability panel does the same shape of thing, and two lessons came
+across. One is the flow: **upload, then look, then decide.** The file is never
+applied on being chosen. The other is written in its own source and is the
+better half:
+
+> *"The preview used to report only how many cells differ. Measured on the live
+> app, a sheet blocking four slots the lecturer teaches in previewed as
+> '4 changes' and said nothing about the four lectures it was about to
+> invalidate. **A count of edits is not a description of consequences.**"*
+
+So the preview here says how many questions, across which topics, which rows
+could not be used and why, which rows are worth a second look, and which
+columns were ignored, each with **the row number Excel shows**.
+
+⚠️ What could not be taken is the implementation: Campus-Scheduler parses the
+workbook server-side at `POST /api/availability/import`, and this game is a
+static page with no backend. All of it happens in the browser.
+
+#### 37.2 The columns
+
+`topic · question · answer · wrong1 · wrong2 · wrong3 · explanation`
+
+Only `topic`, `question`, `answer` and one wrong answer are required. Two
+options is a real question, and demanding four would reject a true/false bank,
+which is the likeliest thing a teacher brings first.
+
+The sample is **filled in, not blank**, because a template of bare headers
+makes somebody guess what belongs in a cell. Its examples are capital cities
+and times tables, deliberately nothing to do with Fabric, so nobody mistakes
+them for exam content and revises them.
+
+#### 37.3 Decisions
+
+| ID | Decision | Why |
+|---|---|---|
+| D284 | Real `.xlsx`, both directions, and `.csv` accepted too | Measured before committing: `read-excel-file` plus `write-excel-file` cost **145 KB raw, 43 KB gzipped** on a 383 KB gzipped bundle. Paid because a customisation feature that only accepts a format people cannot easily produce is not customisation. CSV is accepted as well so a phone, Sheets, Numbers or a text editor can write a course |
+| D285 | ⚠️ **`xlsx` (SheetJS) rejected on security grounds** | Its npm package is frozen at 0.18.5 because the maintainers moved distribution to their own CDN, and that version carries CVE-2023-30533, a prototype pollution flaw. Not something to put in a repository about to be made public |
+| D286 | ⚠️ **An imported question goes through the same hashing and encryption as a shipped one** | There is nothing to protect in somebody's own file, so this looks like pointless work. It means an imported question is the same shape as a built one, so `checkAnswer`, `revealCorrectAnswer` and `decryptExplanation` need no idea where it came from and there is no second code path to keep correct |
+| D287 | An upload is a `role: 'questions'` campaign | The same exemption that lets a 24-skill Year 1 curriculum sit opposite a 41-topic certification (D236, D237). A file with nine questions in it is as valid as one with nine hundred, and the world still comes from a world-capable course |
+| D288 | The whole course is persisted, questions included | The alternative is remembering a file name and asking for the file again, which is what most import features do and is why most of them get used once. A reload should not lose somebody's curriculum |
+| D289 | The parser takes a grid, not a file | What a row MEANS is worth testing and has nothing to do with `.xlsx` or `.csv`. `previewBank` takes `string[][]`, so 22 tests cover the rules without a browser, and the file formats are a thin adapter |
+| D290 | Semicolons are separators too | A German Excel writes CSV with semicolons, because the comma is its decimal separator. A file that opens perfectly on the machine that made it would otherwise arrive as one enormous single column |
+
+#### 37.4 ⚠️ Two silent failures, both from a library's version 4
+
+Neither threw anything, and that is what made them expensive.
+
+**The writer.** Version 3 took a `fileName` option and saved the file itself.
+Version 4 ignores that and returns `{ toBlob, toFile }` instead. The version 3
+call therefore resolved successfully, returned an object that is not a Blob,
+and downloaded nothing. The button was clicked, the handler ran, the promise
+resolved, and the browser did nothing at all. It was only found by calling the
+function directly from the page and reading the exception from
+`URL.createObjectURL`.
+
+**The reader.** It resolves to rows with no options and to `{ sheet, data }[]`
+with some, and the code assumed the first. That one surfaced as "that file
+could not be read", which is a message that describes the symptom perfectly
+and the cause not at all.
+
+The panel now logs the underlying error to the console while showing the plain
+message, so the next one is diagnosable without a debugger.
+
+#### 37.5 Verified
+
+- 813 tests, 22 new, all on the grid rather than on files: row numbers match
+  what Excel shows, an answer duplicated as a wrong answer is caught, a missing
+  explanation warns rather than rejects, unknown columns are reported, and an
+  imported question's answer verifies against the same `checkAnswer` the
+  shipped bank uses.
+- **Round-tripped in a real browser**: the sample was downloaded (3,149 bytes),
+  uploaded back, previewed as 3 questions across 2 topics with no problems,
+  applied, persisted, and then played. In the two-player game seat one was
+  asked a DP-600 question about a nightly load while seat two was asked
+  "What is 7 times 8?" from the uploaded file.
+
+#### 37.6 Open
+
+- Every imported question is tier 1 and type `mcq`. There is no way yet to
+  bring a multi-select or a harder question, and the columns have no room for
+  either.
+- Nothing limits the size of an upload. A very large file would be parsed on
+  the main thread and would block it.
+- The importer trusts the file's own topic names as skill labels, so a typo
+  makes a second topic. The preview lists the topics it found, which is the
+  only defence and is probably enough.
 
 ---
 

@@ -21,7 +21,8 @@ import {
   type WorldShapeId,
   type WorldSizeId,
 } from '@fabric-empires/engine';
-import { CAMPAIGNS } from '@fabric-empires/learn';
+import { addImportedCampaign, allCampaigns } from '../courses.js';
+import { createCoursePanel } from './coursePanel.js';
 import { t } from '../i18n.js';
 
 export interface SetupResult extends WorldChoice {
@@ -206,32 +207,58 @@ export function createSetupScreen(): SetupScreen {
 
       const courseGroup = document.createElement('div');
       courseGroup.className = 'fe-setup-seats';
-      courseGroup.append(
-        optionList(
-          t('Player 1 answers with 1 2 3 4'),
-          CAMPAIGNS.filter((c) => c.role === 'world').map((c) => ({
-            id: c.id,
-            label: c.course,
-            detail: c.blurb,
-          })),
-          courseP1,
-          (id) => {
-            courseP1 = id;
-          },
-        ),
-      );
-      // ⚠️ Only player one's course may build the world, so the second seat is
-      // offered every course including the question-only ones.
-      courseGroup.append(
-        optionList(
-          t('Player 2 answers with A B C D'),
-          CAMPAIGNS.map((c) => ({ id: c.id, label: c.course, detail: c.blurb })),
-          courseP2,
-          (id) => {
-            courseP2 = id;
-          },
-        ),
-      );
+
+      const repaintCourses = (): void => {
+        courseGroup.replaceChildren();
+        courseGroup.append(
+          optionList(
+            t('Player 1 answers with 1 2 3 4'),
+            allCampaigns()
+              .filter((c) => c.role === 'world')
+              .map((c) => ({ id: c.id, label: c.course, detail: c.blurb })),
+            courseP1,
+            (id) => {
+              courseP1 = id;
+            },
+          ),
+        );
+        // ⚠️ Only player one's course may build the world, so the second seat
+        // is offered every course including the question-only ones, which is
+        // what every imported file is.
+        courseGroup.append(
+          optionList(
+            t('Player 2 answers with A B C D'),
+            allCampaigns().map((c) => ({ id: c.id, label: c.course, detail: c.blurb })),
+            courseP2,
+            (id) => {
+              courseP2 = id;
+            },
+          ),
+        );
+      };
+
+      /*
+       * Bring your own questions.
+       *
+       * ⚠️ Above the course pickers rather than below them, because it is the
+       * thing that CHANGES what those pickers contain. Offered whether one or
+       * two people are playing: a single player revising their own material is
+       * the more obvious use of it, and hiding it inside the two-player section
+       * would have made it look like a family feature.
+       */
+      const courses = createCoursePanel();
+      courses.onImported((campaign) => {
+        addImportedCampaign(campaign);
+        // The new course is almost certainly why they came, so select it for
+        // the second seat and switch to two players if they had not already.
+        courseP2 = campaign.id;
+        players = 2;
+        repaintCourses();
+        paintSeats();
+      });
+      card.append(courses.root);
+
+      repaintCourses();
       card.append(courseGroup);
 
       const paintSeats = (): void => {
