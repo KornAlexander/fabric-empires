@@ -93,6 +93,24 @@
 
       #tile { bottom: 14px; left: 50%; transform: translateX(-50%); text-align: center; min-width: 240px; }
       #help { top: 62px; right: 14px; color: var(--muted); text-align: right; font-size: 12px; }
+
+      /*
+        Under the research panel, because the two are the same decision seen
+        twice: both spend Compute, and a player choosing what to build should
+        be able to see what that costs them in study without moving their eyes.
+      */
+      #cities { top: 62px; left: 348px; width: 300px; max-height: 60vh; overflow-y: auto; }
+      #cities .city { padding: 7px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.07); }
+      #cities .city:last-child { border-bottom: none; }
+      #cities .city-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+      #cities .city-head b { font-size: 13px; }
+      #cities .city-head span { color: var(--muted); font-size: 11px; }
+      #cities .bar { height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.1); margin: 5px 0; overflow: hidden; }
+      #cities .bar > div { height: 100%; background: #8fd694; width: 0%; }
+      #cities .build { display: flex; gap: 5px; align-items: center; margin-top: 4px; }
+      #cities select { flex: 1; font: inherit; font-size: 12px; padding: 3px 4px; background: #131a25; color: var(--text); border: 1px solid var(--border); border-radius: 4px; }
+      #cities .status { color: var(--muted); font-size: 11px; }
+      #cities .status.blocked { color: #ff9b91; }
     </style>
   </head>
   <body>
@@ -139,6 +157,19 @@
       <div class="bar"><div id="res-bar"></div></div>
       <div class="muted" id="res-status">Choose what to study.</div>
       <div class="options" id="res-options"></div>
+    </div>
+
+    <!--
+      Cities and what they are building.
+
+      A panel of its own rather than part of the selection panel: a player
+      wants to see what is being built while they are moving a unit, and
+      routing city orders through unit selection would have meant clicking
+      away from the thing they were commanding to check.
+    -->
+    <div class="panel" id="cities" hidden>
+      <h2 id="cities-title">Cities</h2>
+      <div id="cities-list"></div>
     </div>
 
     <div class="panel" id="log"><div class="entry muted">Your empire begins.</div></div>

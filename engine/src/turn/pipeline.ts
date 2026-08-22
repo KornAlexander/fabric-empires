@@ -16,6 +16,7 @@ import { addResources, empireIncome, growthThreshold } from '../rules/yields.js'
 import { fundResearch, researchReady } from '../rules/research.js';
 import { reviewOpportunities, reviewPhase, type ReviewOpportunity } from '../rules/review.js';
 import { runFactionTurn, type AiEvent } from '../rules/ai.js';
+import { productionPhase, type ProductionEvent } from '../rules/production.js';
 import type { GameState } from '../state/index.js';
 
 export interface TurnOptions {
@@ -81,6 +82,12 @@ export interface TurnReport {
    * one tells the player where to look.
    */
   readonly enemyEvents: readonly AiEvent[];
+  /** Compute moved into production this turn. */
+  readonly productionSpent: number;
+  /** Units that finished building and are standing in the world. */
+  readonly unitsBuilt: readonly ProductionEvent[];
+  /** Cities that finished something with nowhere to put it. */
+  readonly citiesBlocked: readonly string[];
 }
 
 export interface TurnResult {
@@ -155,6 +162,9 @@ function upkeepPhase(state: GameState, factionId: string): TurnResult {
       reviewsIgnored: [],
       citiesUnsettled: [],
       enemyEvents: [],
+      productionSpent: 0,
+      unitsBuilt: [],
+      citiesBlocked: [],
     },
   };
 }
@@ -192,7 +202,16 @@ export function endTurn(state: GameState, options: TurnOptions = {}): TurnResult
   const due = options.dueTopics ?? [];
   const reviewed = reviewPhase(afterUpkeep.state, due, factionId);
 
-  const funded = fundResearch(reviewed.state, factionId);
+  /*
+   * PRODUCTION before RESEARCH, both drawing on Compute.
+   *
+   * Production is capped per city per turn and research is not, so running
+   * production first lets a queued unit take its slice while research still
+   * sweeps up everything left. The other order would starve production
+   * completely whenever a topic was being studied, which is most of the game.
+   */
+  const produced = productionPhase(reviewed.state, factionId);
+  const funded = fundResearch(produced.state, factionId);
   const refreshed = refreshPhase(funded.state, factionId);
 
   /*
@@ -228,6 +247,9 @@ export function endTurn(state: GameState, options: TurnOptions = {}): TurnResult
       reviewsIgnored: reviewed.ignored,
       citiesUnsettled: reviewed.unsettled,
       enemyEvents,
+      productionSpent: produced.spent,
+      unitsBuilt: produced.built,
+      citiesBlocked: produced.blocked,
     },
   };
 }

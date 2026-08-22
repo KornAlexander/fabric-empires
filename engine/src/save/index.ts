@@ -16,7 +16,7 @@ import { GENERIC_TOPIC_GRAPH, type TopicGraph } from '../challenge/index.js';
 import { EMPTY_RESEARCH, type ResearchState } from '../rules/research.js';
 import type { Difficulty, GameState } from '../state/index.js';
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 export interface SaveFile {
   readonly version: number;
@@ -88,6 +88,22 @@ const MIGRATIONS: Readonly<Record<number, (save: SaveFile) => SaveFile>> =
         ignoredReviews: 0,
         reviewBonusUntilTurn: 0,
         lastReviewTurn: -1,
+      })),
+    }),
+
+    /**
+     * 2 -> 3: cities can build things.
+     *
+     * `producing` is deliberately left absent rather than set to undefined:
+     * with `exactOptionalPropertyTypes` those are different, and an absent key
+     * is what "this city has no orders" means everywhere else.
+     */
+    2: (save) => ({
+      ...save,
+      version: 3,
+      cities: save.cities.map((city) => ({
+        ...city,
+        productionProgress: 0,
       })),
     }),
   });

@@ -634,6 +634,7 @@ describe('founding cities', () => {
       ignoredReviews: 0,
       reviewBonusUntilTurn: 0,
       lastReviewTurn: -1,
+      productionProgress: 0,
     });
     expect(canFoundCity({ ...state, cities }, architect)).toBe(false);
   });

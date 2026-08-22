@@ -9,6 +9,11 @@ import {
   completeResearch,
   createGameState,
   createRng,
+  buildableUnits,
+  cancelProduction,
+  setProduction,
+  unitCost,
+  PRODUCTION_CAP_PER_TURN,
   endTurn,
   fortifyUnit,
   foundCity,
@@ -37,6 +42,7 @@ import {
   type GameState,
   type Hex,
   type ReachableTile,
+  type UnitTypeId,
 } from '@fabric-empires/engine';
 import {
   DAY_MS,
@@ -206,6 +212,8 @@ const el = {
   resBar: document.querySelector<HTMLElement>('#res-bar')!,
   resStatus: document.querySelector<HTMLElement>('#res-status')!,
   resOptions: document.querySelector<HTMLElement>('#res-options')!,
+  cities: document.querySelector<HTMLElement>('#cities')!,
+  citiesList: document.querySelector<HTMLElement>('#cities-list')!,
 };
 
 let state: GameState = createGameState('FABRIC', { topics: provider.topics() });
@@ -552,6 +560,7 @@ async function playAttack(
   if (battle.cityCaptured) log('City captured.', 'good');
 
   refreshCorruption();
+  refreshCities();
   refreshSelection();
   dirty = true;
 }
@@ -581,6 +590,7 @@ function doFound(): void {
     effects.floatingText(city.hex, city.name, '#cfe6ff', 1.2);
   }
   refreshCorruption();
+  refreshCities();
   select(undefined);
 }
 
@@ -723,6 +733,19 @@ async function doEndTurn(): Promise<void> {
   if (report.researchSpent > 0) {
     log(`${report.researchSpent} Compute into research.`);
   }
+  for (const made of report.unitsBuilt) {
+    const label = unitType(made.typeId).label;
+    log(
+      `${state.cities.get(made.cityId)?.name ?? 'A city'} mustered ${article(label)} ${label}.`,
+      'good',
+    );
+  }
+  for (const cityId of report.citiesBlocked) {
+    log(
+      `${state.cities.get(cityId)?.name ?? 'A city'} finished a unit but has nowhere to put it.`,
+      'bad',
+    );
+  }
   if (report.researchReadyTopicId) {
     void resolveResearch(report.researchReadyTopicId);
   }
@@ -745,6 +768,7 @@ async function doEndTurn(): Promise<void> {
   refreshSelection();
   refreshResearch();
   refreshCorruption();
+  refreshCities();
   dirty = true;
 
   void presentEnemyTurn(report.enemyEvents, defenderChallengeScore);
@@ -956,6 +980,107 @@ function describeTile(h: Hex | undefined): void {
   el.tileDetail.textContent = parts.length > 0 ? parts.join('  ') : 'No yield';
 }
 
+/**
+ * The cities panel: what each city is, and what it is building.
+ *
+ * Rebuilt wholesale on every refresh. There are rarely more than a handful of
+ * cities and each row is a few nodes, so the simplest correct thing is also
+ * fast enough, and a diffing scheme here would be an invitation to leave a
+ * stale progress bar on screen.
+ */
+function refreshCities(): void {
+  const mine = [...state.cities.values()].filter((c) => c.factionId === PLAYER_FACTION_ID);
+  el.cities.hidden = mine.length === 0;
+  if (mine.length === 0) return;
+
+  const buildable = buildableUnits(state);
+  el.citiesList.replaceChildren();
+
+  for (const city of mine) {
+    const row = document.createElement('div');
+    row.className = 'city';
+
+    const head = document.createElement('div');
+    head.className = 'city-head';
+    const name = document.createElement('b');
+    name.textContent = city.name;
+    const meta = document.createElement('span');
+    meta.textContent = `pop ${city.population}${city.unrest > 0 ? ` · unrest ${city.unrest}` : ''}`;
+    head.append(name, meta);
+    row.append(head);
+
+    if (city.producing) {
+      const type = unitType(city.producing);
+      const cost = unitCost(type);
+      const bar = document.createElement('div');
+      bar.className = 'bar';
+      const fill = document.createElement('div');
+      fill.style.width = `${Math.min(100, (city.productionProgress / cost) * 100)}%`;
+      bar.append(fill);
+
+      const status = document.createElement('div');
+      status.className = 'status';
+      const left = Math.max(0, cost - city.productionProgress);
+      const turns = Math.ceil(left / PRODUCTION_CAP_PER_TURN);
+      status.textContent = `${type.label}: ${city.productionProgress}/${cost} Compute${
+        left > 0 ? ` · ${turns} turn${turns === 1 ? '' : 's'}` : ' · ready'
+      }`;
+      row.append(bar, status);
+    }
+
+    const build = document.createElement('div');
+    build.className = 'build';
+
+    const picker = document.createElement('select');
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = city.producing ? 'Stop building' : 'Build nothing';
+    picker.append(none);
+    for (const id of buildable) {
+      const option = document.createElement('option');
+      option.value = id;
+      option.textContent = `${unitType(id).label} (${unitCost(unitType(id))})`;
+      option.selected = city.producing === id;
+      picker.append(option);
+    }
+    picker.addEventListener('change', () => {
+      const chosen = picker.value;
+      const result = chosen
+        ? setProduction(state, city.id, chosen as UnitTypeId)
+        : cancelProduction(state, city.id);
+      if (!result.ok) {
+        log(result.reason, 'bad');
+        refreshCities();
+        return;
+      }
+      state = result.state;
+      log(chosen ? `${city.name} begins ${unitType(chosen as UnitTypeId).label}.` : `${city.name} downs tools.`);
+      refreshCities();
+      dirty = true;
+    });
+
+    build.append(picker);
+    row.append(build);
+    el.citiesList.append(row);
+  }
+}
+
+/**
+ * "a Profiler", but "an Engineer" and "an RLS Sentinel".
+ *
+ * The vowel test alone gets Architect and Engineer right and RLS Sentinel
+ * wrong, because the article follows how a name is *said* and an initialism
+ * starting with R is said "ar". There is exactly one of those in the unit
+ * table, so the rule is a vowel check plus the letters whose names begin with
+ * a vowel sound.
+ */
+function article(label: string): string {
+  const first = label[0] ?? '';
+  const initialism = /^[A-Z]{2,}\b/.test(label);
+  const spoken = initialism ? 'AEFHILMNORSX' : 'AEIOU';
+  return spoken.includes(first) ? 'an' : 'a';
+}
+
 function refreshHud(): void {
   const resources = state.factions.get(PLAYER_FACTION_ID)!.resources;
   el.turn.textContent = `Turn ${state.turn}`;
@@ -1025,6 +1150,7 @@ function adopt(next: GameState, message: string): void {
   refreshHud();
   refreshResearch();
   refreshCorruption();
+  refreshCities();
   dirty = true;
 }
 
@@ -1273,7 +1399,9 @@ declare global {
       turn: () => number;
       lastFrameMs: () => number;
       unitCount: (factionId: string) => number;
-      factionUnits: (factionId: string) => { id: string; q: number; r: number; hp: number }[];
+      factionUnits: (
+        factionId: string,
+      ) => { id: string; typeId: string; q: number; r: number; hp: number }[];
       cityCount: () => number;
       resources: () => Record<string, number>;
       selected: () => string | undefined;
@@ -1367,7 +1495,13 @@ window.__fabricEmpires = {
   },
   faceNorth: () => scene.drone.faceNorth(),
   factionUnits: (factionId: string) =>
-    unitsOf(state, factionId).map((u) => ({ id: u.id, q: u.hex.q, r: u.hex.r, hp: u.hp })),
+    unitsOf(state, factionId).map((u) => ({
+      id: u.id,
+      typeId: u.typeId,
+      q: u.hex.q,
+      r: u.hex.r,
+      hp: u.hp,
+    })),
   saveNow: () => saveGame(slot, state),
   savedBytes: () => slot.read()?.length ?? 0,
   wipeSave: () => slot.clear(),

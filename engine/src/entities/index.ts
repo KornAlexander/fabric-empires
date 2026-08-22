@@ -106,6 +106,15 @@ export interface City {
   readonly reviewBonusUntilTurn: number;
   /** Last turn a council was held here, so it is one per city per turn. */
   readonly lastReviewTurn: number;
+  /**
+   * What this city is building, if anything.
+   *
+   * Optional rather than a null, because `exactOptionalPropertyTypes` makes
+   * the difference between "not building" and "building undefined" a real one.
+   */
+  readonly producing?: UnitTypeId;
+  /** Compute already sunk into the current build. Kept when orders change. */
+  readonly productionProgress: number;
 }
 
 export function cityKind(kind: CityKind): CityKindInfo {

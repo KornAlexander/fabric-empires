@@ -124,6 +124,7 @@ export function foundCity(
     ignoredReviews: 0,
     reviewBonusUntilTurn: 0,
     lastReviewTurn: -1,
+    productionProgress: 0,
   };
 
   const cities = new Map(state.cities);
