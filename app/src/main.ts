@@ -54,6 +54,7 @@ import { HEX_RADIUS, hexToWorld } from './three/terrain.js';
 import { HIGH_QUALITY, LOW_QUALITY } from './three/world.js';
 import { createQuestionModal } from './ui/questionModal.js';
 import { createGreatLibrary } from './ui/greatLibrary.js';
+import { createDroneHud } from './ui/droneHud.js';
 import { createBattleBanner, type BattleSide } from './ui/battleBanner.js';
 
 /**
@@ -112,6 +113,34 @@ const library = createGreatLibrary(() => {
   });
   return { model, summary: summarise(model), now };
 });
+
+/** The free camera's instrument panel. Hidden until the drone has the camera. */
+const droneHud = createDroneHud();
+
+/*
+ * Keep the drone on the ground while an overlay is up.
+ *
+ * `flyControls` binds keydown on `window` and only declines to fly when the
+ * event came from an input, which is the right rule for a twin whose whole
+ * page is the map. Here a question modal or the library can be covering the
+ * screen, and W A S D behind them would quietly take off: the camera would be
+ * somewhere else by the time the player closed the overlay.
+ *
+ * Capture phase on `window` runs before the module's own bubble-phase listener,
+ * so stopping the event here means the latch never sees it. Only the eight
+ * movement keys are swallowed, deliberately: Escape still has to reach the
+ * library to close it, and the arrows only look, which needs an engaged drone
+ * that these keys are now preventing.
+ */
+const DRONE_KEYS = new Set(['w', 'a', 's', 'd', 'q', 'e', 'r', 'f']);
+window.addEventListener(
+  'keydown',
+  (e) => {
+    if (!modal.isOpen() && !library.isOpen()) return;
+    if (DRONE_KEYS.has(e.key.toLowerCase())) e.stopImmediatePropagation();
+  },
+  { capture: true },
+);
 
 /**
  * Battles are choreographed at two lengths.
@@ -873,9 +902,9 @@ window.addEventListener('keydown', (e) => {
     selectNextIdle();
   } else if (e.key === 'b') {
     doFound();
-  } else if (e.key === 'f') {
+  } else if (e.key === 'h') {
     doFortify();
-  } else if (e.key === 's') {
+  } else if (e.key === 'x') {
     doSkip();
   } else if (e.key === 'c') {
     void doCouncil();
@@ -886,8 +915,7 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-window.addEventListener('resize', fitCanvas);
-el.endTurn.addEventListener('click', doEndTurn);
+window.addEventListener('resize', fitCanvas);el.endTurn.addEventListener('click', doEndTurn);
 el.openLibrary.addEventListener('click', () => library.toggle());
 el.actFound.addEventListener('click', doFound);
 el.actFortify.addEventListener('click', doFortify);
@@ -989,6 +1017,7 @@ function frame(now: number): void {
   }
 
   scene.render(delta, effects.shakeOffset());
+  droneHud.update(scene.drone.telemetry());
 
   ctx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
   if (animating) effects.draw(ctx, projection);
@@ -1018,6 +1047,17 @@ declare global {
       screenOf: (hex: Hex) => { x: number; y: number };
       reachableCount: () => number;
       reachableHexes: () => { q: number; r: number; cost: number }[];
+      drone: () => {
+        engaged: boolean;
+        camera: { x: number; y: number; z: number };
+        target: { x: number; y: number; z: number };
+        speedMs: number;
+        altitudeM: number;
+        aglM: number | null;
+        headingDeg: number;
+        cruiseMs: number;
+      };
+      faceNorth: () => void;
       unitHex: (unitId: string) => Hex | undefined;
       research: () => {
         known: number;
@@ -1069,6 +1109,22 @@ window.__fabricEmpires = {
       r: entry.hex.r,
       cost: entry.cost,
     })),
+  drone: () => {
+    const t = scene.drone.telemetry();
+    const cam = scene.world.camera.position;
+    const target = scene.drone.orbitTarget();
+    return {
+      engaged: t.engaged,
+      camera: { x: cam.x, y: cam.y, z: cam.z },
+      target: { x: target.x, y: target.y, z: target.z },
+      speedMs: t.speedMs,
+      altitudeM: t.altitudeM,
+      aglM: t.aglM,
+      headingDeg: t.headingDeg,
+      cruiseMs: t.cruiseMs,
+    };
+  },
+  faceNorth: () => scene.drone.faceNorth(),
   unitHex: (unitId: string) => state.units.get(unitId)?.hex,
   research: () => {
     const current = state.research.current;

@@ -45,6 +45,7 @@ import { createWater, type WaterSurface } from './water.js';
 import { buildScatter, type Scatter } from './scatter.js';
 import { createCombatFx, type CombatFx } from './combatFx.js';
 import { buildCity, buildUnit, disposeEntityMaterials } from './entities.js';
+import { createFlyControls, type FlyTelemetry } from './flyControls.js';
 
 export interface Scene3DView {
   readonly selectedUnitId?: string | undefined;
@@ -61,6 +62,32 @@ export interface Scene3D {
   readonly world: World;
   /** Sparks, dust, tracers and per-unit pose overrides. */
   readonly fx: CombatFx;
+  /**
+   * The free camera, shared verbatim with the digital twins.
+   *
+   * There is no toggle to find: pressing W A S D Q E R F takes the camera, and
+   * it hands itself back a second after the keys come up. See `flyControls.ts`
+   * for why that latch replaced a button.
+   */
+  readonly drone: {
+    readonly engaged: boolean;
+    /** Speed, altitude, height above ground, heading and throttle. */
+    telemetry(): FlyTelemetry;
+    /** Take or release the camera explicitly, for a button. */
+    setEngaged(on: boolean): void;
+    /** Swing the view round to due north without moving the camera. */
+    faceNorth(): void;
+    /**
+     * Where the orbit camera is currently centred.
+     *
+     * Exposed for the hand-back check: the interesting question when the drone
+     * lets go is not whether a target exists but whether it is one the orbit
+     * camera will accept without snapping.
+     */
+    orbitTarget(): Vector3;
+    /** Subscribe to the latch. Returns an unsubscribe. */
+    onEngagedChange(listener: (engaged: boolean) => void): () => void;
+  };
   /** Rebuild the ground for a new map. Slow, and only called on a new game. */
   loadMap(map: GameMap): void;
   /** Reconcile units, cities and overlays against the current state. */
@@ -149,6 +176,71 @@ export function createScene3D(
   let groundMesh: Mesh | undefined;
   let mapRadius = 0;
 
+  // Drone camera --------------------------------------------------------
+  /*
+   * The free camera, ported unchanged from the digital twins. Every number it
+   * takes is an option precisely so a host at a different scale does not have
+   * to edit the module, and this host is at a *very* different scale: the
+   * twins fly over tens of kilometres, this world is about 86 units across
+   * with a couple of units of relief. Left on its defaults the drone would
+   * cross the entire empire in a fifth of a second and hand the camera back
+   * 1200 units away, which is eight times the orbit limit.
+   *
+   * So the units below are hexes, not metres. One hex radius is 1.
+   */
+  const droneListeners = new Set<(engaged: boolean) => void>();
+
+  /**
+   * Ground height for the drone, or null past the edge of the map.
+   *
+   * Returning null rather than sea level matters: the altimeter then reads
+   * "off the map" instead of confidently reporting a height above water that
+   * does not exist, and the speed scaling stops pretending it knows how close
+   * the ground is.
+   */
+  function droneGroundAt(x: number, z: number): number | null {
+    if (!terrain) return null;
+    const reach = (mapRadius + 1) * HEX_RADIUS * 1.9;
+    if (Math.hypot(x, z) > reach) return null;
+    return terrain.surfaceAt(x, z);
+  }
+
+  const fly = createFlyControls({
+    camera,
+    domElement: canvas,
+    controls,
+    groundAt: droneGroundAt,
+    // Crossing the map takes about eight seconds at the default setting, and
+    // the slowest step is a walking pace along a ridge line.
+    cruiseMinMs: 1.5,
+    cruiseMaxMs: 45,
+    cruiseDefaultMs: 9,
+    boost: 3,
+    // The orbit camera is bounded at 150, so the old 1200 would have been
+    // clamped on the first frame after the hand-back: a visible jump.
+    handoffDistanceM: 28,
+    // Roughly the height a city looks right from. Below it the camera slows
+    // down, which is what makes flying between trees feel controllable
+    // without anyone touching the throttle.
+    referenceAglM: 5,
+    // Mass and a gimbal. Both are what separates a camera that flies from one
+    // that teleports, and this scene is the one place in the game where the
+    // player is meant to just look at the thing.
+    accelerateTauS: 0.45,
+    brakeTauS: 0.22,
+    lookTauS: 0.07,
+    onEngagedChange: (engaged) => {
+      // A scripted flight and the player cannot both own the camera. The
+      // player wins; a duel that framed itself mid-takeoff simply stops.
+      if (engaged) {
+        flightFrom = undefined;
+        flightTo = undefined;
+        flightDistance = undefined;
+      }
+      for (const listener of droneListeners) listener(engaged);
+    },
+  });
+
   const raycaster = new Raycaster();
   const pointer = new Vector2();
   const shakeRight = new Vector3();
@@ -193,6 +285,20 @@ export function createScene3D(
   return {
     world,
     fx,
+
+    drone: {
+      get engaged() {
+        return fly.engaged;
+      },
+      telemetry: () => fly.telemetry(),
+      setEngaged: (on) => fly.setEngaged(on),
+      faceNorth: () => fly.faceNorth(),
+      orbitTarget: () => controls.target.clone(),
+      onEngagedChange(listener) {
+        droneListeners.add(listener);
+        return () => droneListeners.delete(listener);
+      },
+    },
 
     loadMap(map) {
       if (terrain) {
@@ -434,30 +540,42 @@ export function createScene3D(
     },
 
     render(delta, shake) {
-      if (flightFrom && flightTo) {
-        const t = Math.min(1, (performance.now() - flightStart) / FLIGHT_MS);
-        const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-        const next = flightFrom.clone().lerp(flightTo, eased);
-        const move = next.clone().sub(controls.target);
-        controls.target.copy(next);
-        camera.position.add(move);
+      /*
+       * Exactly one thing may drive the camera per frame. While the drone is
+       * latched, `controls.update()` must not run: it re-applies the orbit
+       * pose every call whether anything moved or not, so leaving it in would
+       * silently drag the camera back towards the orbit centre and the drone
+       * would feel like it was flying through treacle.
+       */
+      if (fly.engaged) {
+        fly.update(delta);
+      } else {
+        if (flightFrom && flightTo) {
+          const t = Math.min(1, (performance.now() - flightStart) / FLIGHT_MS);
+          const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+          const next = flightFrom.clone().lerp(flightTo, eased);
+          const move = next.clone().sub(controls.target);
+          controls.target.copy(next);
+          camera.position.add(move);
 
-        // Dolly along the existing view direction rather than teleporting,
-        // so the approach keeps whatever angle the player had chosen.
-        if (flightDistance !== undefined) {
-          const wanted = flightFromDistance + (flightDistance - flightFromDistance) * eased;
-          const direction = camera.position.clone().sub(controls.target).normalize();
-          camera.position.copy(controls.target).addScaledVector(direction, wanted);
+          // Dolly along the existing view direction rather than teleporting,
+          // so the approach keeps whatever angle the player had chosen.
+          if (flightDistance !== undefined) {
+            const wanted = flightFromDistance + (flightDistance - flightFromDistance) * eased;
+            const direction = camera.position.clone().sub(controls.target).normalize();
+            camera.position.copy(controls.target).addScaledVector(direction, wanted);
+          }
+
+          if (t >= 1) {
+            flightFrom = undefined;
+            flightTo = undefined;
+            flightDistance = undefined;
+          }
         }
 
-        if (t >= 1) {
-          flightFrom = undefined;
-          flightTo = undefined;
-          flightDistance = undefined;
-        }
+        controls.update();
       }
 
-      controls.update();
       water?.update(delta * 0.35);
       fx.update(delta);
 
@@ -546,6 +664,7 @@ export function createScene3D(
     },
 
     dispose() {
+      fly.dispose();
       controls.dispose();
       clearOverlays();
       fx.dispose();
