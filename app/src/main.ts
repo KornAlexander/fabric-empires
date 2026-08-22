@@ -8,6 +8,7 @@ import {
   cityTerritory,
   completeResearch,
   createGameState,
+  createRng,
   endTurn,
   fortifyUnit,
   foundCity,
@@ -297,11 +298,31 @@ function selectNextIdle(): void {
 // Actions --------------------------------------------------------------
 
 /**
+ * Whether the player is what is standing on this tile.
+ *
+ * Used to decide if an incoming raid is the player's problem. With one
+ * antagonist every raid is, but the moment a second faction exists they will
+ * fight each other too, and the player should not be asked to defend a
+ * skirmish they are not in.
+ */
+function defends(hex: Hex): boolean {
+  const unit = unitAt(state, hex);
+  if (unit) return unit.factionId === PLAYER_FACTION_ID;
+  return cityAt(state, hex)?.factionId === PLAYER_FACTION_ID;
+}
+
+/**
  * Which topic a battle against this faction asks about.
  *
  * Each antagonist is bound to a cluster of the outline, so who is attacking
  * tells the player what they are about to be tested on. That is the whole
  * design: the opposition is a study planner wearing a helmet.
+ *
+ * ⚠️ **Drawn from the seed, not from `Math.random`.** It used to be random,
+ * which meant two players sharing a seed (D39) fought identical battles and
+ * were asked different questions, and replaying your own game asked different
+ * questions too. Keying the stream on the turn and the faction keeps a given
+ * battle's question fixed while still varying it from fight to fight.
  */
 function battleTopicFor(defenderFactionId: string): string | undefined {
   const cluster = state.factions.get(defenderFactionId)?.topicCluster;
@@ -312,7 +333,8 @@ function battleTopicFor(defenderFactionId: string): string | undefined {
   // testing material the player has not reached yet.
   const known = inCluster.filter((n) => state.research.known.includes(n.id));
   const pool = known.length > 0 ? known : inCluster;
-  return pool[Math.floor(Math.random() * pool.length)]!.id;
+  const rng = createRng(state.seed, `battle:${state.turn}:${defenderFactionId}`);
+  return pool[rng.int(0, pool.length - 1)]!.id;
 }
 
 async function actOn(target: Hex): Promise<void> {
@@ -642,8 +664,49 @@ async function doCouncil(): Promise<void> {
   dirty = true;
 }
 
-function doEndTurn(): void {
-  const result = endTurn(state, { dueTopics: provider.dueTopics(Date.now()) });
+/**
+ * End the turn, defending yourself if anyone is coming.
+ *
+ * ⚠️ **The turn is played twice, and that is the design, not an accident.**
+ * `endTurn` is a pure function, so running it once on a throwaway copy costs
+ * nothing but the work and answers the one question that has to be answered
+ * *before* the fight: is anybody about to raid me, and who. Only then can the
+ * player be asked the question that decides how well they hold.
+ *
+ * The alternative was to make the engine's AI loop async so it could stop and
+ * ask mid-turn. That would have put a promise, and therefore the app, inside
+ * the rules (D35), to buy a look-ahead that a pure function already gives away
+ * for free.
+ *
+ * The two runs agree on whether a raid happens, because nothing about the
+ * decision to attack depends on the defender's answer. They disagree on the
+ * damage, which is exactly the point.
+ */
+async function doEndTurn(): Promise<void> {
+  const dueTopics = provider.dueTopics(Date.now());
+
+  const preview = endTurn(state, { dueTopics });
+  const incoming = preview.report.enemyEvents.find(
+    (e) => e.intent.kind === 'raid' && defends(e.intent.target),
+  );
+
+  let defenderChallengeScore = 0;
+  if (incoming) {
+    const who = state.factions.get(incoming.factionId)?.label ?? 'The enemy';
+    const topicId = battleTopicFor(incoming.factionId);
+    if (topicId) {
+      log(`${who} is at your gates. Hold them.`, 'bad');
+      const outcome = await provider.present({
+        kind: 'battle',
+        topicId,
+        tier: 2,
+        timeLimitMs: BATTLE_TIME_MS,
+      });
+      defenderChallengeScore = outcome.score;
+    }
+  }
+
+  const result = endTurn(state, { dueTopics, defenderChallengeScore });
   state = result.state;
   const { report } = result;
   const gains: string[] = [];
@@ -684,7 +747,7 @@ function doEndTurn(): void {
   refreshCorruption();
   dirty = true;
 
-  void presentEnemyTurn(report.enemyEvents);
+  void presentEnemyTurn(report.enemyEvents, defenderChallengeScore);
 
   /*
    * The autosave point.
@@ -712,7 +775,10 @@ function doEndTurn(): void {
  * move the camera to the place they just lost health, or the first they will
  * know of it is a missing unit.
  */
-async function presentEnemyTurn(events: readonly AiEvent[]): Promise<void> {
+async function presentEnemyTurn(
+  events: readonly AiEvent[],
+  defenceScore = 0,
+): Promise<void> {
   if (events.length === 0) return;
 
   const raids = events.filter((e) => e.intent.kind === 'raid');
@@ -756,6 +822,18 @@ async function presentEnemyTurn(events: readonly AiEvent[]): Promise<void> {
       log(`You held. A raider from ${who} was destroyed.`, 'good');
     } else {
       log(`${who} raided you for ${battle?.damageToDefender ?? 0}.`, 'bad');
+    }
+
+    // Say what the answer bought, once, on the first raid of the turn. The
+    // player should be able to connect knowing the material to taking less
+    // damage, and that connection is invisible if it is never stated.
+    if (event === raids[0] && defenceScore !== 0) {
+      log(
+        defenceScore > 0
+          ? 'Your defenders knew the ground. The blow was softened.'
+          : 'Your defenders were unsure, and it cost you.',
+        defenceScore > 0 ? 'good' : 'bad',
+      );
     }
 
     dirty = true;
@@ -1039,7 +1117,7 @@ window.addEventListener('keydown', (e) => {
 
   if (e.key === ' ') {
     e.preventDefault();
-    doEndTurn();
+    void doEndTurn();
   } else if (e.key === 'n' || e.key === 'Tab') {
     e.preventDefault();
     selectNextIdle();
@@ -1058,7 +1136,8 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-window.addEventListener('resize', fitCanvas);el.endTurn.addEventListener('click', doEndTurn);
+window.addEventListener('resize', fitCanvas);
+el.endTurn.addEventListener('click', doEndTurn);
 el.openLibrary.addEventListener('click', () => library.toggle());
 el.actFound.addEventListener('click', doFound);
 el.actFortify.addEventListener('click', doFortify);
@@ -1248,7 +1327,7 @@ declare global {
       quality: (level: 'high' | 'low') => void;
       spawnEnemyAdjacent: (unitId: string) => Hex | undefined;
       clickHex: (hex: Hex) => void;
-      endTurn: () => void;
+      endTurn: () => Promise<void>;
     };
   }
 }
