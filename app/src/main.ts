@@ -108,6 +108,7 @@ import { introShots } from './intro.js';
 import { createAnthem } from './audio.js';
 import { applyStaticTranslations, lang, onLangChange, plural, t, toggleLang } from './i18n.js';
 import { allCampaigns } from './courses.js';
+import { probeEdition } from './coach.js';
 
 /**
  * Find a course by id, shipped or imported.
@@ -449,6 +450,17 @@ const seenCinematics = new Set<string>();
  * fresh clone. See `audio.ts` for why the file is kept out of the repository.
  */
 const anthem = createAnthem();
+
+/*
+ * Which edition is this?
+ *
+ * ⚠️ Asked once, in the background, and nothing waits for the answer. The game
+ * is fully playable while this is in flight; all it decides is whether the
+ * Great Library shows a chat box next to the advice it already computes. A
+ * boot that blocked on a network probe would make the capacity edition slower
+ * to start than the free one, which is precisely backwards.
+ */
+void probeEdition();
 
 async function playOnce(shot: ReturnType<typeof orbitShot>): Promise<void> {
   if (seenCinematics.has(shot.id) || finished) return;

@@ -13,6 +13,7 @@
  */
 
 import type { LibraryModel, LibrarySkillEntry, MasteryBand } from '@fabric-empires/learn';
+import { createCoachPanel } from './coachPanel.js';
 
 const STYLE = `
 .fe-library {
@@ -183,6 +184,16 @@ export function createGreatLibrary(
   root.hidden = true;
   document.body.append(root);
 
+  /*
+   * The coach lives here rather than on the map.
+   *
+   * This is the screen a player already opens to ask "how am I doing", so the
+   * answer to "what should I do about it" belongs on the same sheet. Built
+   * once and updated, not rebuilt per render, so a conversation survives the
+   * Library being closed and reopened.
+   */
+  const coach = createCoachPanel();
+
   let open = false;
 
   function bandBar(bands: Record<MasteryBand, number>, total: number): HTMLElement {
@@ -213,6 +224,9 @@ export function createGreatLibrary(
     sheet.append(head);
 
     sheet.append(el('p', 'fe-lib-summary', summary));
+
+    coach.update(model);
+    sheet.append(coach.root);
 
     const metrics = el('div', 'fe-lib-metrics');
     const metric = (value: string, label: string) => {

@@ -190,6 +190,19 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
   'The sample could not be saved.': 'Die Vorlage konnte nicht gespeichert werden.',
   'My questions': 'Meine Fragen',
 
+  // The study coach.
+  'Ask about your progress…': 'Frag nach deinem Fortschritt…',
+  Ask: 'Fragen',
+  'Thinking…': 'Denkt nach…',
+  due: 'fällig',
+  unseen: 'ungesehen',
+  learning: 'am Lernen',
+  'Answer a few questions and this will fill in.':
+    'Beantworte ein paar Fragen, dann füllt sich das hier.',
+  'Ask me what to study, or how close you are. I read your progress, not your answers.':
+    'Frag mich, was du lernen sollst oder wie nah du bist. Ich sehe deinen Fortschritt, nicht deine Antworten.',
+  'What should I work on next?': 'Was soll ich als Nächstes lernen?',
+
   // Endings ---------------------------------------------------------------
   Victory: 'Sieg',
   Defeat: 'Niederlage',

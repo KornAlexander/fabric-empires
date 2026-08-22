@@ -271,6 +271,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D273–D277 | Ritter: the elite melee units ride | Recorded in full in section 35.3 |
 | D278–D283 | Two languages, one switch | Recorded in full in section 36.4 |
 | D284–D290 | Bring your own questions, from a spreadsheet | Recorded in full in section 37.3 |
+| D291–D298 | Two editions, and a coach that reads your progress | Recorded in full in section 38.5 |
 
 ### 28. Cheat codes
 
@@ -2956,6 +2957,126 @@ message, so the next one is diagnosable without a debugger.
 - The importer trusts the file's own topic names as skill labels, so a typo
   makes a second topic. The preview lists the topics it found, which is the
   only defence and is probably enough.
+
+---
+
+### 38. Two editions, and a coach that reads your progress
+
+Asked for: two versions, one playable on Fabric capacity and one without, and
+the capacity one to have a Foundry chat window for asking how the learning is
+going and what still needs work. Built 22 Aug.
+
+The two editions were already the plan. D37 promised "a static GitHub Pages
+build ships alongside the Fabric App, so the game is playable even when the
+capacity is paused", and D38 put the Fabric App first with Pages as the
+fallback. What did not exist was any difference in the code, or the coach.
+
+#### 38.1 One bundle, two hosts
+
+There is no build flag and no second bundle. The app asks the host, once, in
+the background, whether `api/coach` exists:
+
+| | Host | Advice | Chat |
+|---|---|---|---|
+| **Standalone** | any static server, Pages | yes | no |
+| **Capacity** | `tools/coach/server.mjs`, a Fabric App, a Container App | yes | yes |
+
+`npm run serve:standalone` and `npm run serve:capacity` are the same `app/dist`.
+Nothing waits for the probe: the game is fully playable while it is in flight,
+and a boot that blocked on a network call would make the capacity edition
+slower to start than the free one, which is backwards.
+
+#### 38.2 ⚠️ There is no API key in the browser, and there cannot be
+
+A static page cannot hold a secret. Anything in the bundle is readable by
+anyone who opens the app, so an Azure AI Foundry key placed there would be a
+published key, and this repository is headed for public.
+
+So the browser calls a **same-origin route** and the host holds the credential.
+`tools/coach/server.mjs` is the reference host: it serves the built game and
+answers `api/coach`. It prefers a managed-identity token over a key when both
+are present, caps the request body, and logs upstream errors rather than
+returning them, because an Azure error body can name the resource.
+
+With nothing configured it still runs and still serves the game; the probe
+answers `{ coach: false }` and the app stays in its standalone shape. A
+misconfigured deployment degrades to the working game rather than to an error.
+
+#### 38.3 ⚠️ The advice is arithmetic, not a model
+
+The obvious way to build a study coach is to hand a model the raw records and
+let it decide. Then nothing can check what it says, it can invent a topic that
+is not on the exam, and the free edition has no advice at all.
+
+So the ranking lives in `learn/src/coach.ts`, in arithmetic:
+
+```
+priority = exam weight of the branch  ×  how far the band is from safe  ×  1.6 if due
+```
+
+Weighted by the **published exam weighting**, not by skill count: twelve
+unlearned skills in a branch worth 20 percent of the paper matter less than
+five in a branch worth 45, and a coach that counts skills sends a candidate to
+spend their last evening in the wrong place. Being due is worth more than being
+merely weak, because a decaying topic is work already done that is being lost.
+And `strong` is not worth zero, because a coach that reports a subject as
+finished is teaching the wrong lesson about memory in a game that *is* the
+lesson.
+
+Every suggestion carries a sentence saying why, so it can be argued with.
+
+The chat is then a conversational interface over exactly that digest. Both
+editions give the same answer to "what should I work on"; only one lets you ask
+follow-up questions about it.
+
+#### 38.4 What leaves the machine
+
+Only aggregates and published outline labels: how well each exam skill is held,
+what is due, and the ranking. No question text, no answers, no ciphertext,
+nothing about the person. Sent as prose rather than JSON so a human can read
+exactly what was sent, and tested.
+
+#### 38.5 Decisions
+
+| ID | Decision | Why |
+|---|---|---|
+| D291 | ⚠️ **One bundle; the edition is discovered at runtime, not built in** | Two builds means two things to test and one of them being stale. Probing a route means the same artefact is the Pages fallback and the Fabric App, which is what D37 and D38 already promised |
+| D292 | ⚠️ **Brokered through a same-origin route; no key in the browser, ever** | A static page cannot keep a secret. The alternative, a key pasted into localStorage, is fine on one machine and wrong the moment a URL is shared, and this repository is going public |
+| D293 | ⚠️ **The ranking is deterministic and shipped in both editions** | So it can be tested, so the free edition is the same game without a chat rather than a worse game, and so the model has something to be grounded in instead of an opinion to invent |
+| D294 | Weighted by published exam weight, never by skill count | The difference between a useful last evening and a wasted one |
+| D295 | Due beats equally weak but not due | Recovering something slipping is cheaper than learning something new: the work is done and is what is being lost |
+| D296 | ⚠️ **The model is told it may not claim the learner is ready** | D205 in a new place. A model saying "you are ready to sit DP-600" would be acted on, and only the readiness figure is entitled to make that claim. It is also told not to substitute its own ranking, so the chat and the list on screen cannot disagree |
+| D297 | The probe requires a JSON body, not just a 200 | Static hosts answer 200 for unknown paths by serving `index.html`, so "the route replied" is not evidence the route exists |
+| D298 | The system prompt is duplicated in the server, deliberately | The host must run against a built `dist` with no workspace around it. A server that cannot start because a TypeScript package moved is a worse failure than a prompt that has to be copied when it changes |
+
+#### 38.6 Verified
+
+- 830 tests, 17 new, all on the ranking rather than on a model: exam weight
+  beats skill count, due beats not-due **within the same branch**, a solid
+  topic stops being recommended, nothing is ever priority zero, and the digest
+  contains no stem, no answer hash and no ciphertext.
+- Both editions driven in a real browser against the **same `app/dist`**. The
+  advice and its reasons are identical in both; the chat is hidden in the
+  standalone one and answered a question in the capacity one.
+- A stub standing in for Foundry confirmed what actually arrives: the correct
+  Azure OpenAI URL and api-version, credentials present, the system prompt and
+  the digest as two system messages, the ranking included, the question, and
+  2,027 characters in total.
+
+#### 38.7 Open
+
+- ⚠️ **The two failing tests I wrote first were both my own mistakes**, and one
+  is worth keeping in mind: comparing a due topic in a 28 percent branch
+  against an unseen one in a 48 percent branch, and expecting due to win. It
+  did not, correctly. Weight dominates, which is the whole design.
+- The leak test cannot check answer options. Some options are phrased exactly
+  like the outline bullet they were written from, so "Real-Time hub" appears in
+  the digest as a published skill label and in a question as a distractor. That
+  is an overlap in the source material, not a leak, and a test that cannot tell
+  them apart would have to be weakened until it caught nothing.
+- No real Foundry deployment has been called. Everything above is against a
+  stub that speaks the same shape.
+- The conversation is not persisted and is lost on reload.
 
 ---
 

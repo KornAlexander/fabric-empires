@@ -347,6 +347,32 @@
       .fe-course-issues b { display: block; margin-bottom: 3px; color: var(--text); font-size: 11px; }
       .fe-course-use { font: inherit; font-size: 12px; margin-top: 8px; padding: 7px 13px; border-radius: 6px; border: 1px solid #3f7a4b; background: #24462c; color: #d8f0dc; cursor: pointer; }
       .fe-course-use:hover { background: #2c5636; }
+
+      /* The study coach, inside the Great Library. */
+      .fe-coach { margin: 12px 0 16px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; background: rgba(255,255,255,0.02); }
+      .fe-coach-headline { font-size: 13px; margin-bottom: 9px; }
+      .fe-coach-list { display: flex; flex-direction: column; gap: 7px; }
+      .fe-coach-item { display: flex; gap: 9px; align-items: baseline; font-size: 12px; }
+      .fe-coach-item b { font-weight: 600; }
+      .fe-coach-why { color: var(--muted); font-size: 11px; margin-top: 1px; }
+      .fe-coach-band { flex: 0 0 62px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--muted); }
+      .fe-coach-band.unseen { color: #8b93a1; }
+      .fe-coach-band.learning { color: #e0b552; }
+      .fe-coach-band.familiar { color: #6fb4e0; }
+      .fe-coach-band.strong { color: #8fd694; }
+      .fe-coach-due { margin-left: auto; font-size: 10px; color: #e0b552; text-transform: uppercase; }
+      .fe-coach-empty { color: var(--muted); font-size: 12px; }
+      .fe-coach-chat { margin-top: 13px; border-top: 1px solid var(--border); padding-top: 11px; }
+      .fe-coach-thread { max-height: 190px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin-bottom: 9px; }
+      .fe-coach-msg { font-size: 12px; line-height: 1.45; padding: 6px 9px; border-radius: 7px; max-width: 88%; white-space: pre-wrap; }
+      .fe-coach-msg.you { align-self: flex-end; background: #22364d; }
+      .fe-coach-msg.coach { align-self: flex-start; background: #1a2230; color: #cfd6e0; }
+      .fe-coach-msg.waiting { opacity: 0.6; font-style: italic; }
+      .fe-coach-msg.bad { color: #ff9b91; }
+      .fe-coach-ask { display: flex; gap: 7px; }
+      .fe-coach-ask input { flex: 1; font: inherit; font-size: 12px; padding: 7px 9px; border-radius: 6px; border: 1px solid var(--border); background: #131a25; color: var(--text); }
+      .fe-coach-ask button { font: inherit; font-size: 12px; padding: 7px 14px; border-radius: 6px; border: 1px solid var(--border); background: #16202e; color: var(--text); cursor: pointer; }
+      .fe-coach-ask button:hover { background: #1d2a3c; }
       #cities .bar { height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.1); margin: 5px 0; overflow: hidden; }
       #cities .bar > div { height: 100%; background: #8fd694; width: 0%; }
       #cities .build { display: flex; gap: 5px; align-items: center; margin-top: 4px; }

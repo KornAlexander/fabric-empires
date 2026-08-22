@@ -19,7 +19,9 @@
     "content:build": "node tools/content/build-questions.mjs",
     "content:check": "node tools/content/build-questions.mjs --check",
     "verify": "npm run content:check && npm run typecheck && npm test",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "serve:capacity": "node tools/coach/server.mjs",
+    "serve:standalone": "npx vite preview --outDir dist --root app"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
