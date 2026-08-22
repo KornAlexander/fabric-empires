@@ -83,7 +83,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D52 | **Great Library** | **The reference screen is called the Great Library, reachable from the main menu without starting a campaign** (delegated, see 2.3) |
 | D53 | Magic moment | A scripted first-battle set piece showing combat and the question modifier together |
 | D54 | Scope stance | Ambitious plan retained. Risk is managed by the cut list in 15.1, which carries dated trigger conditions |
-| D55 | **Art direction** | **Data-dream: a night world lit from within. Land near-black, emissive terrain, rivers of light, cities as structures held above the ground under a beam** |
+| D55 | ~~Art direction~~ | ~~Data-dream: a night world lit from within~~ **SUPERSEDED by D145. The renderer went photoreal at D58 and the data-dream never happened; leaving it in the table was describing a game that does not exist** |
 | D56 | Corruption as a visual | The Ungoverned Wastes, and any tile the Silo Horde holds, are drawn with torn scanlines in clashing hues. The enemy advance is visible on the ground, not only in a border colour |
 | D57 | **Battle length** | **Two lengths. The full set piece is reserved for the first battle of a game and for any city assault; every other clash gets a short punchy version. Every battle follows a question, so a long sequence on all of them would be exhausting by the tenth** |
 | D58 | **Renderer** | **3D, three.js, replacing the 2D canvas renderer entirely. The engine is untouched: D35 already kept it renderer-agnostic, so only `app/src/render/*` was replaced by `app/src/three/*`** |
@@ -173,6 +173,11 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D142 | **Walls are built and upgraded** | The Stronghold staple, and the largest engine change on the list: new city fields, a production category competing for the same capped Compute, save version 4, and an AI that understands a wall. Without it a siege is an assault on a health bar with better staging |
 | D143 | The defender gets all four options | Hold, sally, reinforce, endure. Today the defender is a number; in Stronghold the defender is the more interesting side to play, and the AI picks by rule so an antagonist city defends itself the same way |
 | D144 | Multi-turn investment, with the assault inside it | The two answers that looked like a conflict are the design: the siege persists on the map, and each assault is the set piece |
+| D145 | **One period: around 1600** | The game had no era at all. Concrete-and-glass cities, tracked vehicles and a realistic landscape were three different centuries in one frame, which is most of why it looked wrong. 1600 is chosen because it is the last moment when fortifying a city was decisive, which makes the siege the centrepiece rather than a side mechanic. **Supersedes D55** |
+| D146 | The city is a bastioned town, not a keep | Around 1600 the *trace italienne* had made the tall curtain wall obsolete: cannon flattened stone, so ramparts went low, thick and earthen, and corners grew angled **bastions** covering each other by fire. Drawn as a glacis, a battered rampart, three arrowhead bastions, tiled houses and a church spire. It is also exactly the shape the siege (19) has to reduce |
+| D147 | Highlands recoloured to moorland | `#9d8464` was a pale pinkish tan and was the ugliest thing on the map: a warm beige third of the landmass with nothing growing on it. Now a dark olive that lets the slope-driven rock mix show through on the steep faces, which is where the shape is |
+| D148 | ⚠️ **The units are now the mismatch** | With the town at 1600, the roster is visibly wrong: tracked hulls, gun rings, emissive strips. Pike, shot, horse and cannon instead. This is the single largest remaining visual job and it is what the art programme should spend itself on first |
+| D149 | **Fog of war from the first turn** | The whole map is currently visible from turn one, which gives away every camp, removes any reason to scout, and makes the Profiler pointless. Only what a unit or city can see is revealed, and what has been seen stays remembered but not live |
 
 ### 16.1 What "realistic" does and does not mean in this build
 
@@ -1250,7 +1255,9 @@ is allowed to block on it.
 | 1 | 22 Aug | **Publish.** Private repo, push, branch normalised | Done |
 | 2 | 22 to 25 Aug | **Art pipeline.** Azure OpenAI resource, prompt manifest, style lock, generation script, first coherent batch | Resource decision (17) |
 | 3 | 23 to 24 Aug | **Sound.** Code-generated effects plus the ambient bed, verified through `OfflineAudioContext` | |
-| 4 | 24 to 28 Aug | **The siege** (19). Walls, siege state, the assault set piece, the four defender options | |
+| 3b | 23 Aug | **Fog of war** (D149). Per-faction visibility and memory, revealed by unit and city sight | |
+| 3c | 23 to 26 Aug | **Units at 1600** (D148). Pike, shot, horse and cannon, replacing the tracked hulls | |
+| 4 | 24 to 28 Aug | **The siege** (19). Walls, siege state, the assault set piece, the four defender options | Fog of war, for what a besieger can see |
 | 5 | 26 to 28 Aug | **Art integration.** Wire the generated set into the renderer and the interface | Phase 2 |
 | 6 | 28 to 29 Aug | **Docs.** README, `NOTICE.md` (art and audio provenance), `PREVIEW-FEEDBACK.md` | Phases 2 and 3 |
 | 7 | 29 Aug | **Share card** (D40) | |
@@ -1363,4 +1370,73 @@ the half that is mostly state management.
 
 ---
 
-*Last updated: 21 August 2026*
+## 20. The period, and what it costs
+
+**Everything is set around 1600** (D145). Not decoration: it is the last era in
+which fortifying a city decided campaigns, which is what makes the siege (19)
+the centre of the game rather than an extra.
+
+### 20.1 What that rules out
+
+Nothing metallic, nothing that glows, no plate glass. The old city was
+concrete, glass and an emissive beacon, which is why it read as science fiction
+parked in a landscape that was trying to look real. The palette is earth,
+rubble stone, lime plaster, oak, fired clay and slate.
+
+### 20.2 The units are the outstanding half
+
+⚠️ The town now looks like 1600 and **the army does not**. The roster is
+tracked hulls with gun rings and emissive strips, and parked beside a
+tiled-roof town it is the most obviously wrong thing on the screen.
+
+| Shape now | Becomes |
+|---|---|
+| Melee hull | Pike block |
+| Ranged hull | Musketeers, matchlock |
+| Siege hull | Cannon and its train |
+| Scout hull | Light horse |
+| Settler, worker | Cart and surveyor's party |
+
+The names do not change. A Pipeline Runner stays a Pipeline Runner, because
+the joke is the point and the tech tree is the exam. Only the shapes change.
+
+### 20.3 What stays exactly as it is
+
+Terrain, water, erosion and ground cover are period-neutral and already look
+right. **Corruption stays surreal on purpose** (D138): it is the one thing in
+the frame that belongs to no century at all, and that contrast is why it works.
+
+---
+
+## 21. Fog of war
+
+The whole map is visible from turn one. That gives away all seven camps before
+a single move, removes every reason to scout, and makes the Profiler, whose
+entire point is a sight radius, just a faster soldier.
+
+### 21.1 The rule
+
+- Every unit and city has a **sight radius**. A hex is **visible** if anything
+  of yours can see it this turn.
+- A hex that has ever been visible is **explored**: the ground is remembered,
+  but units and cities in it are not drawn live.
+- Everything else is **unseen**, and draws as nothing at all.
+
+### 21.2 Where it lives
+
+In the engine, as explored state per faction, because it is a rule rather than
+a presentation trick and the AI has to be able to respect it. It has to
+survive a reload, so **save version 5**, migrating an older save to fully
+explored rather than blanking a map the player already uncovered.
+
+### 21.3 The decision that has to be explicit
+
+⚠️ **The antagonists do not use fog.** They know where the player is. That is
+stated here rather than left as an accident of implementation, because the
+alternative is seven factions wandering a dark map looking for someone. They
+are a besieging pressure on a learner, not an opponent in a fair match, and
+the leash (D92) is what keeps that fair rather than mutual blindness.
+
+---
+
+*Last updated: 22 August 2026*

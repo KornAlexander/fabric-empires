@@ -113,6 +113,57 @@ function emissive(colour: string): MeshStandardMaterial {
   );
 }
 
+/*
+ * The 1600 palette.
+ *
+ * Nothing here is metallic and nothing glows. That is the whole point: the old
+ * city read as science fiction because it was concrete, glass and emission,
+ * and a fortified town of this period is earth, rubble stone, lime plaster,
+ * oak and fired clay.
+ */
+const stone = () =>
+  material(
+    'stone',
+    () =>
+      new MeshStandardMaterial({ color: new Color('#8d8578'), metalness: 0, roughness: 0.92 }),
+  );
+
+const earth = () =>
+  material(
+    'earth',
+    () =>
+      new MeshStandardMaterial({ color: new Color('#6b5c46'), metalness: 0, roughness: 1 }),
+  );
+
+const plaster = () =>
+  material(
+    'plaster',
+    () =>
+      new MeshStandardMaterial({ color: new Color('#cfc4ad'), metalness: 0, roughness: 0.88 }),
+  );
+
+const timber = () =>
+  material(
+    'timber',
+    () =>
+      new MeshStandardMaterial({ color: new Color('#59422e'), metalness: 0, roughness: 0.9 }),
+  );
+
+/** Fired clay roof tile, which is what carries the period from above. */
+const tile = () =>
+  material(
+    'tile',
+    () =>
+      new MeshStandardMaterial({ color: new Color('#8c4a33'), metalness: 0, roughness: 0.82 }),
+  );
+
+const slate = () =>
+  material(
+    'slate',
+    () =>
+      new MeshStandardMaterial({ color: new Color('#4a4f57'), metalness: 0, roughness: 0.7 }),
+  );
+
 function part(geometry: BufferGeometry, mat: MeshStandardMaterial): Mesh {
   const mesh = new Mesh(geometry, mat);
   mesh.castShadow = true;
@@ -202,47 +253,151 @@ export function buildUnit(unit: Unit, factionColour: string): Group {
  * Grows with population: the same city at size 1 and size 6 should not be
  * the same object with a different number painted on it.
  */
+/**
+ * A fortified town, around 1600.
+ *
+ * ⚠️ **This replaces concrete towers with glass windows and a glowing beacon.**
+ * The old city was science fiction standing in a landscape that aims at
+ * plausibility, next to units and terrain from no particular century, and it
+ * looked exactly as mixed up as that description sounds.
+ *
+ * The period is chosen, not decorative. Around 1600 is when the *trace
+ * italienne* had made the high medieval curtain wall obsolete: cannon flattened
+ * tall stone, so ramparts went low, thick and earthen, and corners grew angled
+ * **bastions** so that every face could be covered by fire from another. That
+ * is the shape being drawn here, and it is the same shape the siege is built
+ * to attack: a bastioned front is a thing you have to reduce, not climb.
+ *
+ * All geometry, no assets. A pyramid is a four-sided cone, a bastion is a
+ * three-sided cylinder, and a roof is the same trick at a different scale.
+ */
 export function buildCity(city: City, factionColour: string): Group {
   const group = new Group();
   const kind = cityKind(city.kind);
 
-  const platform = part(new CylinderGeometry(0.82, 0.9, 0.12, 6), concrete());
-  platform.position.y = 0.06;
-  platform.rotation.y = Math.PI / 6;
-  group.add(platform);
+  // Deterministic jitter, so a town looks built rather than stamped, and looks
+  // the same every time the same game is loaded.
+  const seed = city.hex.q * 73856093 + city.hex.r * 19349663;
+  const rand = (n: number): number => {
+    const x = Math.sin(seed + n * 127.1) * 43758.5453;
+    return x - Math.floor(x);
+  };
 
-  const towers = Math.min(9, 2 + city.population);
-  for (let i = 0; i < towers; i++) {
-    const angle = (i / towers) * Math.PI * 2 + city.hex.q * 0.7;
-    const ring = i === 0 ? 0 : 0.34 + (i % 3) * 0.13;
-    const height = 0.3 + ((i * 37) % 11) / 11 * 0.55 + city.population * 0.06;
-    const width = 0.17 + ((i * 53) % 7) / 7 * 0.1;
+  const RAMPART_RADIUS = 0.74;
+  const RAMPART_HEIGHT = 0.2;
 
-    const tower = part(new BoxGeometry(width, height, width), concrete());
-    tower.position.set(Math.cos(angle) * ring, 0.12 + height / 2, Math.sin(angle) * ring);
-    tower.rotation.y = angle;
-    group.add(tower);
+  /*
+   * The glacis: a broad, shallow earth slope leading up to the rampart.
+   *
+   * Historically the point was that attackers crossing it were exposed and
+   * had no cover; visually it is what stops the fort looking like a model
+   * dropped on the ground.
+   */
+  const glacis = part(new CylinderGeometry(0.94, 1.02, 0.07, 6), earth());
+  glacis.position.y = 0.035;
+  glacis.rotation.y = Math.PI / 6;
+  group.add(glacis);
 
-    // Lit windows, which is what says "inhabited" rather than "monument".
-    const windows = part(new BoxGeometry(width * 0.72, height * 0.5, width * 0.72), glass());
-    windows.position.copy(tower.position);
-    windows.rotation.y = angle;
-    group.add(windows);
+  // The rampart itself: low, thick, and battered (wider at the base).
+  const rampart = part(
+    new CylinderGeometry(RAMPART_RADIUS, RAMPART_RADIUS + 0.1, RAMPART_HEIGHT, 6),
+    stone(),
+  );
+  rampart.position.y = 0.07 + RAMPART_HEIGHT / 2;
+  rampart.rotation.y = Math.PI / 6;
+  group.add(rampart);
+
+  // The courtyard, slightly lower than the wall head, so the rampart reads as
+  // a wall rather than as a plinth.
+  const courtyard = part(new CylinderGeometry(RAMPART_RADIUS - 0.08, RAMPART_RADIUS - 0.08, 0.14, 6), earth());
+  courtyard.position.y = 0.07 + 0.07;
+  courtyard.rotation.y = Math.PI / 6;
+  group.add(courtyard);
+
+  /*
+   * Bastions on alternating corners: arrowhead platforms projecting from the
+   * wall so their flanks can sweep the face between them. Three, not six,
+   * because six on a hex reads as a cog rather than a fort.
+   */
+  for (let i = 0; i < 3; i++) {
+    const angle = (i / 3) * Math.PI * 2 + Math.PI / 6;
+    const bastion = part(new CylinderGeometry(0.2, 0.26, RAMPART_HEIGHT + 0.03, 3), stone());
+    bastion.position.set(
+      Math.cos(angle) * (RAMPART_RADIUS + 0.02),
+      0.07 + (RAMPART_HEIGHT + 0.03) / 2,
+      Math.sin(angle) * (RAMPART_RADIUS + 0.02),
+    );
+    // Point the arrowhead outwards, which is the whole idea of a bastion.
+    bastion.rotation.y = -angle + Math.PI / 2;
+    group.add(bastion);
   }
 
-  // The keep, painted in the faction colour.
-  const keepHeight = 0.5 + city.population * 0.1;
-  const keep = part(new CylinderGeometry(0.22, 0.28, keepHeight, 8), paint(factionColour));
-  keep.position.y = 0.12 + keepHeight / 2;
+  /*
+   * Houses: a huddle of steep-roofed blocks inside the walls. Steep because
+   * these are northern European tiled and thatched roofs, and because a steep
+   * roof still reads as a roof from a map camera looking down at it.
+   */
+  const houses = Math.min(11, 3 + city.population * 2);
+  for (let i = 0; i < houses; i++) {
+    const angle = rand(i) * Math.PI * 2;
+    const ring = 0.16 + rand(i + 40) * 0.4;
+    const w = 0.13 + rand(i + 80) * 0.07;
+    const d = 0.13 + rand(i + 120) * 0.06;
+    const h = 0.14 + rand(i + 160) * 0.1;
+    const x = Math.cos(angle) * ring;
+    const z = Math.sin(angle) * ring;
+    const lean = rand(i + 200) * Math.PI;
+
+    const walls = part(new BoxGeometry(w, h, d), rand(i + 240) > 0.55 ? plaster() : timber());
+    walls.position.set(x, 0.14 + h / 2, z);
+    walls.rotation.y = lean;
+    group.add(walls);
+
+    const roof = part(new ConeGeometry(Math.max(w, d) * 0.82, h * 0.85, 4), tile());
+    roof.position.set(x, 0.14 + h + h * 0.425, z);
+    roof.rotation.y = lean + Math.PI / 4;
+    group.add(roof);
+  }
+
+  /*
+   * The church tower, which is what a 1600 town is recognised by from a
+   * distance, and the keep in the faction's colours beside it.
+   */
+  const towerHeight = 0.42 + city.population * 0.05;
+  const tower = part(new BoxGeometry(0.16, towerHeight, 0.16), stone());
+  tower.position.set(-0.12, 0.14 + towerHeight / 2, 0.06);
+  group.add(tower);
+
+  const spire = part(new ConeGeometry(0.13, 0.28, 4), slate());
+  spire.position.set(-0.12, 0.14 + towerHeight + 0.14, 0.06);
+  spire.rotation.y = Math.PI / 4;
+  group.add(spire);
+
+  const keepHeight = 0.3 + city.population * 0.05;
+  const keep = part(new CylinderGeometry(0.15, 0.18, keepHeight, 8), stone());
+  keep.position.set(0.16, 0.14 + keepHeight / 2, -0.08);
   group.add(keep);
 
-  const beacon = part(new SphereGeometry(0.085, 14, 10), emissive(factionColour));
-  beacon.position.y = 0.12 + keepHeight + 0.09;
-  group.add(beacon);
+  const keepRoof = part(new ConeGeometry(0.2, 0.18, 8), tile());
+  keepRoof.position.set(0.16, 0.14 + keepHeight + 0.09, -0.08);
+  group.add(keepRoof);
 
-  // A blunt readability aid: the taller the keep, the bigger the city, and
-  // the kind is legible from the platform footprint.
-  const footprint = 0.9 + (kind.baseHp / 120) * 0.35;
+  /*
+   * The banner. It replaces an emissive sphere, which was the single most
+   * science-fiction thing on the map, and it does the same job: says whose
+   * town this is, from above, at a glance.
+   */
+  const pole = part(new CylinderGeometry(0.008, 0.008, 0.26, 6), timber());
+  pole.position.set(0.16, 0.14 + keepHeight + 0.3, -0.08);
+  group.add(pole);
+
+  const banner = part(new BoxGeometry(0.13, 0.08, 0.006), paint(factionColour));
+  banner.position.set(0.16 + 0.065, 0.14 + keepHeight + 0.36, -0.08);
+  group.add(banner);
+
+  // Bigger kinds sit on a broader footprint, which is the readability aid the
+  // old platform scale used to provide.
+  const footprint = 0.92 + (kind.baseHp / 120) * 0.3;
   group.scale.setScalar(footprint);
 
   group.userData.kind = 'city';

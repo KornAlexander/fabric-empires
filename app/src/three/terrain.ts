@@ -78,10 +78,20 @@ export interface TerrainProfile {
 export const TERRAIN_PROFILES: Readonly<Record<TerrainId, TerrainProfile>> = Object.freeze({
   onelake: { base: -1.9, range: 1.5, colour: '#59656b', roughness: 0.2 },
   rawFilePlains: { base: 0.14, range: 0.72, colour: '#6b7f4e', roughness: 0.28 },
-  deltaHighlands: { base: 0.45, range: 1.95, colour: '#9d8464', roughness: 0.5 },
+  /*
+   * ⚠️ Moorland, not bare dirt.
+   *
+   * This was `#9d8464`, a pale pinkish tan, and it made the highlands the
+   * ugliest thing on the map: a flat warm beige with nothing growing on it,
+   * reading as a quarry that had swallowed a third of the landmass. Upland
+   * grazing and heather in this part of the world is a dark olive that leans
+   * green in the flats and lets the slope-driven rock mix show through on the
+   * steep faces, which is where the shape actually is.
+   */
+  deltaHighlands: { base: 0.45, range: 1.95, colour: '#6e6a43', roughness: 0.64 },
   parquetQuarry: { base: 0.34, range: 1.35, colour: '#b0a894', roughness: 0.45 },
   legacySwamp: { base: 0.05, range: 0.3, colour: '#59603d', roughness: 0.14 },
-  semanticPeaks: { base: 1.55, range: 3.9, colour: '#7d7569', roughness: 0.8 },
+  semanticPeaks: { base: 1.55, range: 3.9, colour: '#77706a', roughness: 0.85 },
   geothermalVent: { base: 0.24, range: 0.85, colour: '#4a3b30', roughness: 0.45 },
   ungovernedWastes: { base: 0.2, range: 0.95, colour: '#8f7f66', roughness: 0.36 },
 });
