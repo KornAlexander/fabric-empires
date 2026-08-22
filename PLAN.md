@@ -104,6 +104,9 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D73 | **Neglect is a nudge, not a spiral** | **Two ignored councils are tolerated; unrest starts on the third, caps at 3, and costs at most a 36 percent yield dampening. It only ever accrues inside a turn, so a player who closes the tab overnight loses nothing (D49)** |
 | D74 | In-session day | A real SM-2 interval of one day would never fire inside a play session, so a compressed clock treats 75 seconds as a day. The real clock still applies across sessions, so a returning player meets a genuine schedule |
 | D75 | Save version 2 | Cities gained unrest, ignored reviews, a bonus expiry and a last-review turn, and `boundSkills` changed from skill numbers to topic ids. A migration table upgrades version 1 saves; a save newer than the build is refused rather than half-read |
+| D76 | **The Great Library reports exam weight, not skill count** | **Branch B is 18 of 41 skills but 45 to 50 percent of the exam. "29 of 41" and "ready to sit it" are different claims, so the headline figure is weighted and the skill count is secondary** |
+| D77 | Researched and retained are separate columns | Unlocking a tech node means one question was answered once. Retention is what the spaced repetition bands measure. Blending them into a single score would flatter the player at exactly the moment honesty is worth most |
+| D78 | Library reachable in play, not from a menu | D52 said main menu. There is no main menu yet and building one to host a screen would be the wrong order, so it is a button in the resource bar and the `l` key. Revisit if a menu ever exists |
 
 ### 16.1 What "realistic" does and does not mean in this build
 
@@ -1091,6 +1094,8 @@ Accepted knowingly. Partial mitigations in place:
 ## 16. Deliverables checklist
 
 - [x] Question bank covering all 41 skills of the outline: 123 items, minimum 3 per skill, every citation link-checked
+- [x] Spaced repetition wired into the economy: bound topics, council reviews, unrest as a nudge (5.10)
+- [x] The Great Library: weighted honest progress across all 41 skills, with documentation links per skill
 - [ ] Live URL on `prdsweden` (primary submitted link)
 - [ ] Static GitHub Pages build as the guaranteed-alive fallback link (D37)
 - [ ] Shareable result image working and pasteable into Discord (D40)

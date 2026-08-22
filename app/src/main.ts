@@ -38,11 +38,14 @@ import {
 } from '@fabric-empires/engine';
 import {
   DAY_MS,
+  DP600_QUESTIONS,
   Dp600ChallengeProvider,
+  buildLibraryModel,
   checkAnswer,
   createMasteryTracker,
   createQuestionPresenter,
   localStorageStore,
+  summarise,
 } from '@fabric-empires/learn';
 import { createEffects } from './render/effects.js';
 import { createScene3D } from './three/scene3d.js';
@@ -50,6 +53,7 @@ import { playDuel } from './three/duel.js';
 import { HEX_RADIUS, hexToWorld } from './three/terrain.js';
 import { HIGH_QUALITY, LOW_QUALITY } from './three/world.js';
 import { createQuestionModal } from './ui/questionModal.js';
+import { createGreatLibrary } from './ui/greatLibrary.js';
 import { createBattleBanner, type BattleSide } from './ui/battleBanner.js';
 
 /**
@@ -92,6 +96,24 @@ const effects = createEffects();
 const banner = createBattleBanner();
 
 /**
+ * The Great Library.
+ *
+ * Reads fresh on every open rather than being kept in sync, because it is a
+ * reference screen consulted occasionally, and a snapshot taken at the moment
+ * of opening cannot drift from the game the way a cached one would.
+ */
+const library = createGreatLibrary(() => {
+  const now = Date.now();
+  const model = buildLibraryModel({
+    records: new Map(state.topics.nodes.map((n) => [n.id, mastery.get(n.id)])),
+    researched: new Set(state.research.known),
+    questions: DP600_QUESTIONS,
+    due: new Set(provider.dueTopics(now)),
+  });
+  return { model, summary: summarise(model), now };
+});
+
+/**
  * Battles are choreographed at two lengths.
  *
  * Every fight is preceded by a question, so a long set piece on every single
@@ -132,6 +154,7 @@ const el = {
   cu: document.querySelector<HTMLElement>('#res-cu')!,
   trust: document.querySelector<HTMLElement>('#res-trust')!,
   endTurn: document.querySelector<HTMLButtonElement>('#end-turn')!,
+  openLibrary: document.querySelector<HTMLButtonElement>('#open-library')!,
   seedInput: document.querySelector<HTMLInputElement>('#seed-input')!,
   seedGo: document.querySelector<HTMLButtonElement>('#seed-go')!,
   tileName: document.querySelector<HTMLElement>('#tile-name')!,
@@ -833,6 +856,15 @@ window.addEventListener('keydown', (e) => {
   // While a question is on screen the modal owns the keyboard.
   if (modal.isOpen()) return;
 
+  // The library is a reference screen, so it may be opened at any time, but
+  // while it is up the map must not act on stray keys behind it.
+  if (e.key === 'l') {
+    e.preventDefault();
+    library.toggle();
+    return;
+  }
+  if (library.isOpen()) return;
+
   if (e.key === ' ') {
     e.preventDefault();
     doEndTurn();
@@ -856,6 +888,7 @@ window.addEventListener('keydown', (e) => {
 
 window.addEventListener('resize', fitCanvas);
 el.endTurn.addEventListener('click', doEndTurn);
+el.openLibrary.addEventListener('click', () => library.toggle());
 el.actFound.addEventListener('click', doFound);
 el.actFortify.addEventListener('click', doFortify);
 el.actSkip.addEventListener('click', doSkip);
