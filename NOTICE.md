@@ -37,6 +37,26 @@ in silence. Nothing breaks and nothing is logged as an error.
 
 To hear it, put your own `anthem.mp3` at that path.
 
+### The background score
+
+The game also has a soundtrack that runs under play: several orchestral tracks,
+shuffled, with a button in the resource bar to turn them off. Same story as the
+anthem, and the files are ignored by git for the same reason.
+
+- **Instrumental, deliberately.** Not a stylistic preference: sung words
+  interfere with reading comprehension, and this game is read under a clock.
+  The anthem sings because the title sequence has nothing to read. The score
+  that plays for the next two hours does not. Recorded as D299 in PLAN.md.
+- **Generated with [Suno](https://suno.com)** on the free plan, so
+  non-commercial terms again.
+- `app/src/soundtrack.ts` names the tracks it looks for in `app/public/audio/`
+  and probes each one at load. Whatever is missing is simply not in the
+  playlist, and a clone with none of them has no music and no mute button
+  rather than a broken one.
+
+To hear something, drop your own `.mp3` files at the paths listed in
+`SOUNDTRACK` in that file, or edit the list to name your own.
+
 ### The trailer
 
 `media/fabric-empires-intro.mp4` carries the anthem, so it inherits the same

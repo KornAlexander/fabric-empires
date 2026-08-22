@@ -106,6 +106,7 @@ import { CHEATS, findCheat } from './cheats.js';
 import { approachShot, descendShot, orbitShot } from './three/cinematic.js';
 import { introShots } from './intro.js';
 import { createAnthem } from './audio.js';
+import { createSoundtrack } from './soundtrack.js';
 import { applyStaticTranslations, lang, onLangChange, plural, t, toggleLang } from './i18n.js';
 import { allCampaigns } from './courses.js';
 import { probeEdition } from './coach.js';
@@ -438,6 +439,14 @@ cinemaOverlay.onSkip(() => scene.cinema.skip());
  * four times. Nobody reads that as "skip"; they read it as ignored.
  */
 let openingSkipped = false;
+/**
+ * Whether the opening film is on screen right now.
+ *
+ * ⚠️ Read by the first-click handler that starts the background score. The
+ * anthem owns the opening, and two pieces of orchestral music at once is not
+ * a richer soundtrack, it is a mess.
+ */
+let openingRunning = false;
 cinemaOverlay.onSkip(() => {
   openingSkipped = true;
 });
@@ -450,6 +459,15 @@ const seenCinematics = new Set<string>();
  * fresh clone. See `audio.ts` for why the file is kept out of the repository.
  */
 const anthem = createAnthem();
+
+/**
+ * The optional score for everything after the opening.
+ *
+ * Same contract as the anthem: silent and harmless when the files are absent.
+ * Started either at the end of the opening film or, for a resumed game that
+ * never plays one, on the first click. See `soundtrack.ts`.
+ */
+const music = createSoundtrack();
 
 /*
  * Which edition is this?
@@ -591,6 +609,7 @@ const el = {
   faceProctor: document.querySelector<HTMLButtonElement>('#face-proctor')!,
   threatsList: document.querySelector<HTMLElement>('#threats-list')!,
   langToggle: document.querySelector<HTMLButtonElement>('#lang-toggle')!,
+  musicToggle: document.querySelector<HTMLButtonElement>('#music-toggle')!,
 };
 
 /*
@@ -613,9 +632,53 @@ el.langToggle.addEventListener('click', () => {
   toggleLang();
 });
 
+/*
+ * The music switch.
+ *
+ * ⚠️ **Hidden until a track has actually been found.** A mute button in a
+ * build with no audio files is a control that does nothing, and a control
+ * that does nothing is worse than an absent one: the player presses it,
+ * hears no change, and now distrusts the rest of the interface. The probe in
+ * `soundtrack.ts` decides, and it decides after a round trip, so this repaints
+ * on change rather than once at load.
+ */
+function paintMusicToggle(): void {
+  el.musicToggle.hidden = !music.available;
+  el.musicToggle.classList.toggle('muted', music.muted);
+  el.musicToggle.title = music.muted ? t('Turn the music on') : t('Turn the music off');
+}
+
+el.musicToggle.addEventListener('click', () => {
+  music.toggle();
+  paintMusicToggle();
+});
+
+music.onChange(paintMusicToggle);
+paintMusicToggle();
+
+/*
+ * The first click of a resumed game is the gesture the browser wants.
+ *
+ * ⚠️ A resumed empire never plays the opening (see `boot`), so without this
+ * the score would only ever exist for players starting a new game. `start()`
+ * is idempotent and refuses while the film is running, so the two paths do
+ * not fight over the first track.
+ */
+window.addEventListener(
+  'pointerdown',
+  () => {
+    if (!openingRunning) music.start();
+  },
+  { once: true },
+);
+
 onLangChange(() => {
   applyStaticTranslations();
   paintLangToggle();
+  // ⚠️ Not a `data-i18n-title`, because the music button's title depends on
+  // whether it is muted as well as on the language. Two owners writing the
+  // same attribute is how one of them ends up stale.
+  paintMusicToggle();
   // Every panel rebuilds its contents from state, so switching language is
   // just "draw everything again" rather than a hunt for stray strings.
   refreshHud();
@@ -2299,6 +2362,7 @@ async function playOpening(): Promise<void> {
 
   anthem.start();
   openingSkipped = false;
+  openingRunning = true;
   revealingForOpening = true;
   refreshFog();
   try {
@@ -2320,10 +2384,21 @@ async function playOpening(): Promise<void> {
     }
   } finally {
     revealingForOpening = false;
+    openingRunning = false;
     fogSignature = '';
     refreshFog();
     cinemaOverlay.hide();
     anthem.fade();
+    /*
+     * The handover.
+     *
+     * ⚠️ **Delayed past the anthem's fade on purpose.** `fade()` returns
+     * immediately and takes 1.6 seconds to finish, so starting the score here
+     * would put the first background track underneath the last bar of the
+     * anthem. The wait is the fade plus a breath, which also gives the player
+     * a moment of the world in silence before the music comes back.
+     */
+    window.setTimeout(() => music.start(), 2_400);
   }
 }
 
@@ -2832,6 +2907,14 @@ declare global {
       look: (hex: Hex, distance?: number) => void;
       playOpening: () => Promise<void>;
       anthemReady: () => boolean;
+      /**
+       * What the background score is doing.
+       *
+       * ⚠️ The player builds detached `Audio` objects, so a check running in
+       * the page cannot find them with a DOM query and has no other way to
+       * tell music from silence. Reported here rather than inferred.
+       */
+      music: () => { available: boolean; muted: boolean; playing: string | undefined };
       setRank: (
         rank: string,
         population: number,
@@ -3109,6 +3192,7 @@ window.__fabricEmpires = {
   /** Replay the opening. Exists so the trailer can be recorded from the game. */
   playOpening: () => playOpening(),
   anthemReady: () => anthem.available,
+  music: () => ({ available: music.available, muted: music.muted, playing: music.nowPlaying }),
   /**
    * Force the player's first settlement to a rank.
    *

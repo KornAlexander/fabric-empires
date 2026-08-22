@@ -272,6 +272,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D278–D283 | Two languages, one switch | Recorded in full in section 36.4 |
 | D284–D290 | Bring your own questions, from a spreadsheet | Recorded in full in section 37.3 |
 | D291–D298 | Two editions, and a coach that reads your progress | Recorded in full in section 38.5 |
+| D299–D310 | A score that runs under the game | Recorded in full in section 39.6 |
 
 ### 28. Cheat codes
 
@@ -3077,6 +3078,163 @@ exactly what was sent, and tested.
 - No real Foundry deployment has been called. Everything above is against a
   stub that speaks the same shape.
 - The conversation is not persisted and is lost on reload.
+
+---
+
+### 39. A score that runs under the game
+
+The opening got an anthem in section 32, and then the game went back to
+silence for however many hours a player spends in it. This adds a background
+score: several tracks, shuffled, with a button to turn them off.
+
+#### 39.1 ⚠️ Instrumental, and that is a decision about studying
+
+The anthem sings. Everything added here does not, and the reason is not taste.
+
+This game asks the player to **read exam questions under a clock**. Speech and
+sung words interfere with reading comprehension even when the listener is
+ignoring them and even when the words are in a language they do not speak,
+which is why open-plan offices are measurably worse for text work than noisy
+ones. A soundtrack with a Latin chorus over it would therefore make this tool
+worse at the one job it has, while sounding more impressive in a demo.
+
+So the split is by what is on screen. The anthem plays over a title sequence
+with **nothing to read**, once, and it is the better piece for it. The score
+that runs for the next two hours sits under text, and it keeps its mouth shut.
+
+This is also the reading I made of "maybe a bit less text": fewer words in the
+music, not fewer tracks.
+
+#### 39.2 The playlist
+
+Shuffled, with seven seconds of silence between tracks, reshuffled at the end
+of each pass. Two things in that sentence were not free.
+
+The gap is not zero. An unbroken wall of orchestra for two hours is more
+tiring than the same music with air in it, and the gap is the only moment a
+player can tell that this is a playlist rather than one very long loop.
+
+⚠️ **A plain reshuffle repeats.** With three tracks, a fresh shuffle puts the
+track that just ended straight back on about a third of the time, and nobody
+hears that as chance: they hear it as a bug. `nextRotation` swaps the first
+entry away from whatever just played, and the test walks 200 seeds rather than
+trusting one.
+
+Every track carries a **mood** (`calm`, `tense`). Nothing reads it yet. It is
+recorded now because the alternative to writing it down while the track is
+being made is listening to six files in a fortnight and guessing, and because
+music that follows the game state becomes a scheduling change rather than a
+regeneration if the tags already exist.
+
+#### 39.3 ⚠️ Choosing between takes without listening to them
+
+Suno returns several takes per prompt. Picking by ear does not scale to eight
+tracks and does not leave a reason behind, so the four takes were measured
+with ffmpeg in ten second buckets: length, mean level, the spread of those
+buckets, and how the first and last three seconds compare to the body.
+
+| take | length | mean | spread | head | tail |
+| --- | --- | --- | --- | --- | --- |
+| ferrum-a | 194 s | −15.7 dB | 1.48 | −2.1 | **−3.2** |
+| ferrum-b | 260 s | −15.6 dB | 3.19 | −7.4 | −22.6 |
+| terra-a | 210 s | −14.7 dB | 1.78 | −1.3 | −26.3 |
+| terra-b | 232 s | −16.3 dB | 1.97 | −5.6 | −36.8 |
+
+The decisive column was the **tail**, which is not what I expected to matter.
+`ferrum-a` is the most even take of the four and would have been the obvious
+pick on level alone, but it is still at full volume when it ends: it stops
+dead, and a hard cut into seven seconds of silence sounds like the player
+crashed. `ferrum-b` fades in and out, runs a minute longer, and its wider
+spread is a build, which is what a tense cue is supposed to do.
+
+The two calm takes are, honestly, **the same take on every measure that
+matters**: 0.19 dB apart on spread, 0.5 dB on range, which is inaudible.
+Refusing to invent a difference there, the tie went to the one that is 22
+seconds longer and fades in as well as out.
+
+#### 39.4 Silent by default, and that is the tested state
+
+The files are not in the repository, for the reason the anthem's are not: they
+were generated on a free plan whose output is licensed for non-commercial use,
+which has no business attached to a public repo. See NOTICE.
+
+⚠️ So **the state every clone and every CI run is in is "no tracks found"**,
+and the feature has to be *absent* in that state rather than broken. A mute
+button that throws on a checkout with no audio is a defect nobody working on
+this machine would ever see, because this machine has the files. The button is
+hidden until the probe has actually found something: a control that visibly
+does nothing is worse than no control, because the player presses it, hears no
+change, and starts distrusting the rest of the interface.
+
+#### 39.5 The generation schedule
+
+Two constraints, and the second one is the one with a date on it. The free
+plan has a daily cap, and **Suno's terms change on 3 September** with new
+per-plan download limits. Anything wanted has to exist *and be downloaded*
+before then. The challenge closes 1 September.
+
+| day | tracks | mood | what it is for |
+| --- | --- | --- | --- |
+| 22 Aug | Terra Nostra, Ferrum et Ignis | calm, tense | **done** |
+| 23 Aug | Aqua Alta | calm | a second bed, so the calm state is not one loop |
+| 24 Aug | Turris | tense | siege, heavier than Ferrum |
+| 25 Aug | Semina | calm | early game, sparse |
+| 26 Aug | Corona | triumphal | promotions, the exam passed |
+| 27–31 Aug | slack | — | rejects, re-rolls, nothing |
+
+Six to eight tracks, one or two a day, with five days of slack for takes that
+come back wrong. **Every take is downloaded from the CDN the same day it is
+generated**, never left in the account to be fetched later, because the
+account is the thing whose terms are changing.
+
+Style prompts follow the pattern that worked, so the next run is paste and go:
+the 1600 orchestral palette from the anthem, an explicit `no vocals`, a BPM,
+and the word `loopable`. The Instrumental toggle is set in the UI as well as
+asked for in the prompt, and it is verified (`aria-checked="true"`, and the
+lyrics field disappears from the DOM) before pressing Create.
+
+#### 39.6 Decisions
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D299 | ⚠️ **Every background track is instrumental** | Sung words interfere with reading, and this game is read under a clock. A choral bed would demo better and study worse. The anthem sings because nothing is on screen to read |
+| D300 | Shuffled, with a gap, reshuffled each pass | A gap is what makes it a playlist rather than a two hour drone, and the only cue that more than one piece exists |
+| D301 | ⚠️ **The next pass never opens with the track that just ended** | With three tracks a plain reshuffle repeats on a coin flip, and a repeat reads as a broken player, not as chance |
+| D302 | A mood on every track, read by nothing | Written while the track is being made, when it is free. Guessing it later means listening to six files, and state-reactive music then costs a schedule change instead of a regeneration |
+| D303 | ⚠️ **Absent, not broken, when the files are missing** | The same contract as D258. It is also the only state CI ever sees, so it is the state that must be tested hardest |
+| D304 | The button is hidden until a track is found | A control that does nothing teaches the player that controls here do nothing |
+| D305 | Mute pauses; it does not set the volume to zero | A silent track at volume zero is still being decoded and still costs a metered connection, for no sound |
+| D306 | ⚠️ **Takes are chosen by measurement, not by ear** | It scales past two tracks and it leaves a reason behind. It also caught the thing an ear would have argued about: the most even take of the four ends dead and was unusable |
+| D307 | The score starts 2.4 s after the opening ends | `fade()` returns immediately and takes 1.6 s to finish, so starting on the same tick puts a background track under the last bar of the anthem |
+| D308 | A first-click fallback starts it for resumed games | A resumed empire never plays the opening, so without this the score would exist only for players starting a new game |
+| D309 | Music stops when the tab is hidden | The single most common complaint about audio on the web, and four lines to fix |
+| D310 | Everything is downloaded the day it is generated | Suno's terms change on 3 September. A track sitting in the account is not a track you have |
+
+#### 39.7 Verified
+
+- 848 tests, 18 new. The shuffle is seeded and checked over 200 seeds rather
+  than eyeballed; the no-audio case is tested harder than the audio case.
+- ⚠️ One test I wrote was wrong and the fix found a real hole: I asserted a
+  failed track is *never* played, when it was of course played once, because
+  being played is how the failure is discovered. Correcting the assertion
+  exposed that a dropped track could still be sitting in the **pending queue**
+  and would come back on the very next gap. Both lists are filtered now.
+- Driven in a real browser against the built bundle: both files found, the
+  score takes over from the anthem after the opening (`Ferrum et Ignis`), mute
+  pauses it, unmute resumes, the preference survives a reload, and the title
+  is translated when the language is switched.
+- ⚠️ Unmuting came back with **a different track** (`Terra Nostra`), which is
+  the no-repeat rotation visible in real behaviour rather than in a test.
+
+#### 39.8 Open
+
+- Four tracks still to generate, and the useful window closes on 3 September.
+- The moods are recorded and unused. Music that follows the game state, calm
+  while building and tense while besieged, is the obvious next thing and is
+  deliberately not in this change.
+- Volume is fixed at 0.28 with no slider. The button is on or off. If anyone
+  asks for a slider it is easy, and until someone does it is a control to
+  maintain and translate for nobody.
 
 ---
 

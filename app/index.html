@@ -380,7 +380,16 @@
       #cities .status { color: var(--muted); font-size: 11px; }
       #cities .status.blocked { color: #ff9b91; }
 
-      #readiness { color: var(--muted); font-variant-numeric: tabular-nums; }      #face-proctor {
+      #readiness { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+      /*
+        Muted music reads as a struck-through note. No second glyph, no icon
+        font, no image: one character and one rule, which is also the only
+        version of this that cannot fail to load.
+      */
+      #music-toggle { font-size: 15px; line-height: 1; padding: 4px 9px; }
+      #music-toggle.muted { color: var(--muted); text-decoration: line-through; }
+      #face-proctor {
         background: #6b4ea8; border-color: #8a6fd0; color: #f2ecff; font-weight: 600;
         animation: proctor 2.2s ease-in-out infinite;
       }
@@ -418,6 +427,15 @@
         the menu they would otherwise have to look in.
       -->
       <button id="lang-toggle" title="Deutsch / English">DE</button>
+      <!--
+        The music switch.
+
+        A glyph rather than a word, because it sits next to a language toggle
+        that is already two letters and because the one thing everybody
+        recognises without reading is a note with a line through it. The title
+        carries the sentence, and the title is translated.
+      -->
+      <button id="music-toggle" hidden title="Turn the music off">&#9834;</button>
     </div>
 
     <div class="panel" id="controls">

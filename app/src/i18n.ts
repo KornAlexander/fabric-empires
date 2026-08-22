@@ -46,6 +46,8 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
   'New game': 'Neues Spiel',
   Skip: 'Überspringen',
   'Face the Proctor': 'Der Prüfung stellen',
+  'Turn the music off': 'Musik ausschalten',
+  'Turn the music on': 'Musik einschalten',
   'Nothing selected': 'Nichts ausgewählt',
   'Click one of your units.': 'Wähle eine deiner Einheiten.',
   'Hover a tile': 'Zeige auf ein Feld',
