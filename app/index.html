@@ -167,6 +167,57 @@
       .fe-raid-target { font-size: 12px; color: var(--text); margin-top: 2px; }
       .fe-raid-topic { font-size: 11px; color: var(--muted); margin-top: 4px; }
 
+      /*
+        Two-player co-op: both questions on screen at once, one per seat.
+        Player 1 answers with 1-4, player 2 with A-D.
+      */
+      .fe-duo {
+        position: fixed; inset: 0; z-index: 52;
+        display: flex; align-items: center; justify-content: center; gap: 18px;
+        padding: 24px; flex-wrap: wrap;
+        background: rgba(4, 6, 10, 0.78); backdrop-filter: blur(3px);
+      }
+      .fe-duo[hidden] { display: none; }
+      .fe-duo-pane {
+        width: min(460px, 46vw); min-width: 300px;
+        background: #10141c; border: 1px solid rgba(255, 255, 255, 0.14);
+        border-top: 3px solid var(--seat, #4a9fe0);
+        border-radius: 12px; padding: 16px 18px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+      }
+      .fe-duo-pane.seat-1 { --seat: #4a9fe0; }
+      .fe-duo-pane.seat-2 { --seat: #f2b544; }
+      .fe-duo-head {
+        display: flex; justify-content: space-between; align-items: baseline;
+        gap: 10px; margin-bottom: 8px;
+      }
+      .fe-duo-head b { color: var(--seat); font-size: 13px; }
+      .fe-duo-head span { color: var(--muted); font-size: 11px; }
+      .fe-duo-stem { font-size: 16px; line-height: 1.45; margin-bottom: 12px; }
+      .fe-duo-pane.seat-2 .fe-duo-stem { font-size: 22px; font-weight: 600; }
+      .fe-duo-options { display: flex; flex-direction: column; gap: 7px; }
+      .fe-duo-option {
+        display: flex; align-items: center; gap: 10px; text-align: left;
+        padding: 9px 12px; cursor: pointer; font: inherit; color: inherit;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--border); border-radius: 8px;
+      }
+      .fe-duo-option:hover:not(:disabled) { background: rgba(255, 255, 255, 0.1); }
+      .fe-duo-option kbd {
+        flex: none; min-width: 26px; text-align: center;
+        font: 600 13px ui-monospace, Consolas, monospace;
+        padding: 3px 6px; border-radius: 5px;
+        background: var(--seat); color: #08101c;
+      }
+      .fe-duo-pane.seat-2 .fe-duo-option { padding: 13px 14px; font-size: 19px; }
+      .fe-duo-pane.seat-2 .fe-duo-option kbd { min-width: 34px; font-size: 17px; }
+      .fe-duo-option.picked { border-color: #ffffff; }
+      .fe-duo-option.right { background: rgba(143, 214, 148, 0.22); border-color: #8fd694; }
+      .fe-duo-option.wrong { background: rgba(255, 155, 145, 0.2); border-color: #ff9b91; }
+      .fe-duo-verdict { margin-top: 10px; font-size: 13px; }
+      .fe-duo-verdict.good { color: #8fd694; }
+      .fe-duo-verdict.bad { color: #ffcf7a; }
+
       /* The cheat console. Backtick opens it. */
       .fe-cheat {
         position: fixed; top: 0; left: 0; right: 0; z-index: 45;

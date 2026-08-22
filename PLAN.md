@@ -263,6 +263,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D232 | ⚠️ **The lid was wound upside down, and that was the whole bug** | Every triangle's normal was **-0.866 on Y**, so from a camera looking down the entire layer was a back face and `FrontSide` culled it. It cost a long hunt because the layer was provably present, opaque, above the terrain, unculled by frustum, and passing the depth test, and still drew nothing. `hexPatch` had the same winding all along and got away with it only because its overlay material is double-sided |
 | D233 | ⚠️ Two measurements that agreed and were both wrong | A per-hex clearance check bucketed the lid and the ground with the same rounding `peakAt` uses, so it could only agree with itself: it reported zero buried lids on a visibly unfogged map. And a "ground" probe selecting a mesh by `vertices > 100000` matched the **fog** (110,700), so a bounding-box comparison was the fog against itself. A measurement that cannot fail is not evidence |
 | D234 | ⚠️ `turn() >= 1` is not a signal that a game has started | `state` is initialised with a placeholder game at module load, so `turn()` returns 1 while the setup screen is still open, with seed FABRIC and a world nobody chose. Every browser test that waited on it was measuring the placeholder. Wait on `seed()` matching the seed that was typed |
+| D235–D242 | Two players on one screen | Recorded in full in section 30.3 |
 
 ### 28. Cheat codes
 
@@ -480,8 +481,14 @@ Domination ending and nothing to be tested by. A campaign that forgets to
 declare its factions now falls back to the built-in line-up. Asking for solitude
 deliberately is what `spawnAntagonists: false` has always been for.
 
-**Not built yet:** steps 2 through 7. Nothing German exists yet, and no
-interface string has been touched.
+**Not built yet:** steps 3, 4, 6 and 7. No interface string has been touched.
+
+Steps 2 and 5 landed later the same day, pulled forward by the co-op work in
+section 30: the content build now walks every campaign folder, and the Year 1
+curriculum exists as the second seat's question source. It is a
+`role: 'questions'` campaign, so it supplies questions without claiming to
+build a world, which is how a 24-skill curriculum sits opposite a 41-topic
+certification without either being bent to fit the other (D236, D237).
 
 
 #### 27.3 The full set of choices
@@ -1713,6 +1720,7 @@ is allowed to block on it.
 | 2 | 22 to 25 Aug | **Art pipeline.** Azure OpenAI resource, prompt manifest, style lock, generation script, first coherent batch | Resource decision (17) |
 | 3 | 23 to 24 Aug | **Sound.** Code-generated effects plus the ambient bed, verified through `OfflineAudioContext` | |
 | 3b | 23 Aug | **Fog of war** (D149). Per-faction visibility and memory, revealed by unit and city sight | **Done 22 Aug**, save v6 |
+| 3b+ | unplanned | **Two players, one screen** (section 30). A second seat answering `a b c d` from its own course, scores averaged | **Done 22 Aug** |
 | 3c | 23 to 26 Aug | **Units at 1600** (D148). Pike, shot, horse and cannon, replacing the tracked hulls | |
 | 4 | 24 to 28 Aug | **The siege** (19). Walls, siege state, the assault set piece, the four defender options | Fog of war, for what a besieger can see |
 | 4b | 28 to 30 Aug | **Ships and islands** (23). Embark, cargo, AI crossings, coastal production, then flip `islands` on | |
@@ -2140,6 +2148,88 @@ So it is staged, and the split is by leverage rather than by appetite:
 progressive pacing ships alone and the rest becomes the post-contest roadmap.
 Pacing is a handful of lines against a system that already exists; tiers touch
 the save format, the city panel and the AI's idea of what a city is worth.
+
+---
+
+### 30. Two players, one screen
+
+A parent revising DP-600 and a first grader, on one keyboard, in one empire.
+Built 22 Aug.
+
+The obvious design was two empires taking turns, and it is wrong for this pair.
+A six-year-old will not sit through an adult's turn, and an adult revising for a
+certification will not get through a syllabus at a child's pace. So there is
+**one empire and one turn**, and when a battle asks a question it asks **both
+seats at once**, each from their own course. They are on the same side. The
+child is not an opponent to be beaten, they are the other half of the answer.
+
+#### 30.1 How it plays
+
+Choose **Two players, together** on the setup screen, then a course per seat.
+
+| | Player 1 | Player 2 |
+|---|---|---|
+| Answers with | `1` `2` `3` `4` | `a` `b` `c` `d` |
+| Course | any campaign that can build a world | any campaign at all |
+| Default | DP-600: Fabric Analytics Engineer | 1. Klasse: Mathe und Deutsch |
+| Builds the world | yes | no |
+| Moves the readiness figure | yes | ⚠️ **never** |
+
+Both panes appear side by side, seat one on the left in blue, seat two on the
+right in amber and a size larger. One keypress is the whole answer: no Enter,
+no mouse, nothing to aim at. The battle's score is the **mean of the two**, so
+the child's answer genuinely decides fights, and the log says so out loud when
+they carry one their parent lost.
+
+The second seat's course supplies **questions only**. Player one's course is
+what the world is made of: the tech tree, the factions, the exam at the end.
+That asymmetry is what lets a 24-skill Year 1 curriculum sit opposite a 41-topic
+certification without either being bent to fit the other.
+
+#### 30.2 The German content
+
+`learn/content/klasse-1` holds a small first-year curriculum: two branches,
+seven clusters, 24 skills, 51 questions. Zahlen bis 20, Plus und Minus, Formen,
+Anlaute, Silben, Wörter schreiben, Lesen. Written short on purpose, because the
+player is still learning to read: `3 + 4 = ?`, `Womit fängt das Wort Sonne an?`.
+The content build now walks every campaign folder rather than only `dp-600`,
+and DP-600's built output was verified byte-identical after that change.
+
+#### 30.3 Decisions
+
+| ID | Decision | Why |
+|---|---|---|
+| D235 | Co-op is one empire, both seats asked at once, scores averaged | Alternating turns fails both players: a six-year-old will not wait through an adult's turn and an adult will not revise at a child's pace. Averaging is what makes the child load-bearing rather than decorative. Half a right answer still moves a battle |
+| D236 | Player one's course builds the world; player two's supplies questions only | A Year 1 curriculum has 24 skills where a world needs 41, and no business fielding armies. Making the second seat world-capable would mean either padding the curriculum or weakening the check that stops a short DP-600 outline shipping with dead unit unlocks |
+| D237 | `role: 'questions'` campaigns are exempt from the world rules | The exemption is the feature, and it is declared on the campaign rather than inferred from its size, so a campaign that *intends* to build a world and is too short still fails loudly |
+| D238 | ⚠️ **The second seat has no mastery tracker** | D205 in a second form. A six-year-old answering about Anlaute must not move the number that says whether a grown-up is ready to sit DP-600. Enforced by a test that reads the source, because the absence of an argument is what a later refactor puts back without noticing |
+| D239 | One keypress is the whole answer, and the two keypads never overlap | No Enter, no mouse, no target to hit. Digits for the reader and letters for the child, because A B C D is easier to find than the number row. If a key ever answered for both seats, one player would be answering the other's question for them |
+| D240 | ⚠️ The seat listener is capture-phase and stops propagation | `b` founds a city and `p` raids one, on a `window` listener in the bubble phase. Without this the child answering "b" builds something on their parent's turn. Every key is swallowed while any seat still owes an answer, including keys belonging to neither seat, and including the pause while a correction is on screen |
+| D241 | ⚠️ **Both seats must be panes of the same modal** | Seat one was left on the single-player modal at z-index 50 while the duo layer sits at 52, so player one's question rendered underneath it and was simply invisible. Found by a browser test reporting one pane where two were expected, which no unit test would have caught |
+| D242 | A campaign's `course` is separate from its `title` | They are read in different places and only one answers "what am I being asked about". DP-600's world is called Fabric Empires, which is a good name for a world and says nothing as a label beside "1. Klasse: Mathe und Deutsch" |
+
+#### 30.4 What was measured
+
+Browser test, `temp/coop.mjs`: two panes, seat one showing a DP-600 stem with
+keys `1 2 3 4`, seat two showing `3 + 4 = ?` with `A B C D`. Pressing `2`
+selected in seat one only, `c` in seat two only, and the map ended the run with
+zero cities founded, so neither answer had leaked through as an order.
+
+Unit tests, 13 in `app/test/duo.test.ts`, driving real `keydown` events at
+`document.body` in jsdom against a stand-in for the map's listener rather than
+grepping the source for `stopPropagation`: the source containing the word is
+not evidence that the event stopped. Suite total 721.
+
+#### 30.5 Open
+
+- ⚠️ `buildSecondSeat()` runs only when a game is started from the setup
+  screen. A **resumed** save comes back single-player, because the seat choice
+  is not in the save format. Acceptable for now: starting a fresh world is the
+  normal way this gets played, and putting seats in the save would need a
+  version bump for something two clicks can restore.
+- The second seat never sees a Great Library or a readiness figure of its own,
+  by D238. If the Year 1 course is ever to become a study tool in its own
+  right it needs a second, separate tracker, not a share of this one.
 
 ---
 

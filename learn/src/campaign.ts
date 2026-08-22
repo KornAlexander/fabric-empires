@@ -24,6 +24,7 @@ import {
 } from '@fabric-empires/engine';
 import { DP600_OUTLINE, buildTopicGraph, type Outline } from './outline.js';
 import { DP600_QUESTIONS } from './bank.js';
+import { KLASSE1_OUTLINE, KLASSE1_QUESTIONS } from './klasse1.js';
 import type { Question } from './questions.js';
 
 /** Interface language a campaign is written for. */
@@ -49,10 +50,31 @@ export interface CampaignExam {
 
 export interface Campaign {
   readonly id: string;
-  /** Shown on the setup screen. */
+  /** The name of the world this campaign builds. */
   readonly title: string;
+  /**
+   * The name of the subject being revised, which is not the same thing.
+   *
+   * ⚠️ Separate from `title` because the two are read in different places and
+   * only one of them answers "what am I being asked about". DP-600's world is
+   * called Fabric Empires, which is a fine name for a world and useless as a
+   * label beside "1. Klasse: Mathe und Deutsch" on a seat.
+   */
+  readonly course: string;
   readonly blurb: string;
   readonly language: CampaignLanguage;
+  /**
+   * What this campaign can be used for.
+   *
+   * ⚠️ **`questions` campaigns are exempt from the world requirements**, and
+   * that exemption is the whole reason a six-year-old can play along. Building
+   * a world needs at least `minimumTopicCount()` topics and one faction per
+   * cluster; a Year 1 curriculum has 24 skills and no business fielding
+   * armies. In co-op the empire comes from player one's course and player two
+   * simply answers alongside them, so their course only has to supply
+   * questions.
+   */
+  readonly role: 'world' | 'questions';
   readonly outline: Outline;
   readonly questions: readonly Question[];
   /**
@@ -60,7 +82,7 @@ export interface Campaign {
    *
    * Opaque cluster strings as far as the engine is concerned; the join between
    * these and the outline is checked by `validateCampaign`, because nothing
-   * else would catch a renamed cluster.
+   * else would catch a renamed cluster. Empty for a `questions` campaign.
    */
   readonly antagonists: readonly AntagonistDefinition[];
   readonly exam: CampaignExam;
@@ -69,16 +91,41 @@ export interface Campaign {
 export const DP600_CAMPAIGN: Campaign = Object.freeze({
   id: 'dp600',
   title: 'Fabric Empires',
+  course: 'DP-600: Fabric Analytics Engineer',
   blurb:
     'The DP-600 outline is the tech tree. Rival factions each hold one branch of it: beat them and take what they know, or burn it and stay ignorant.',
   language: 'en',
+  role: 'world',
   outline: DP600_OUTLINE,
   questions: DP600_QUESTIONS,
   antagonists: ANTAGONISTS,
   exam: { length: 40, passMark: 0.7, threshold: 0.8, questionMs: 45_000 },
 });
 
-export const CAMPAIGNS: readonly Campaign[] = Object.freeze([DP600_CAMPAIGN]);
+/**
+ * Klasse 1: Mathe und Deutsch.
+ *
+ * A question source for the second seat, not a world. Twenty-four skills and
+ * fifty-one questions, every stem short enough for somebody still learning to
+ * read.
+ */
+export const KLASSE1_CAMPAIGN: Campaign = Object.freeze({
+  id: 'klasse1',
+  title: '1. Klasse: Mathe und Deutsch',
+  course: '1. Klasse: Mathe und Deutsch',
+  blurb: 'Zahlen bis 20, Plus und Minus, Anlaute, Silben und erste Sätze.',
+  language: 'de',
+  role: 'questions',
+  outline: KLASSE1_OUTLINE,
+  questions: KLASSE1_QUESTIONS,
+  antagonists: [],
+  exam: { length: 10, passMark: 0.6, threshold: 0.6, questionMs: 60_000 },
+});
+
+export const CAMPAIGNS: readonly Campaign[] = Object.freeze([
+  DP600_CAMPAIGN,
+  KLASSE1_CAMPAIGN,
+]);
 
 export const DEFAULT_CAMPAIGN_ID = DP600_CAMPAIGN.id;
 
@@ -104,6 +151,36 @@ export function validateCampaign(campaign: Campaign): string[] {
 
   problems.push(...validateTopicGraph(graph));
 
+  // A cluster with no questions cannot test anybody, whatever the role.
+  const clusters = new Set(
+    campaign.outline.branches.flatMap((b) => b.clusters.map((c) => c.id)),
+  );
+  const asked = new Set(campaign.questions.map((q) => q.cluster));
+  for (const cluster of clusters) {
+    if (!asked.has(cluster)) {
+      problems.push(`${campaign.id}: cluster ${cluster} has no questions.`);
+    }
+  }
+
+  if (campaign.exam.length < 1) {
+    problems.push(`${campaign.id}: an exam of ${campaign.exam.length} questions is not an exam.`);
+  }
+  if (campaign.exam.passMark <= 0 || campaign.exam.passMark > 1) {
+    problems.push(`${campaign.id}: pass mark ${campaign.exam.passMark} is not a share of the paper.`);
+  }
+  if (campaign.exam.threshold <= 0 || campaign.exam.threshold > 1) {
+    problems.push(`${campaign.id}: threshold ${campaign.exam.threshold} is not a share of readiness.`);
+  }
+
+  /*
+   * Everything below is about running a WORLD, and a question source does not.
+   *
+   * ⚠️ Applying these to every campaign would make a Year 1 curriculum invalid
+   * for having 24 skills and no armies, which is exactly what a Year 1
+   * curriculum should have.
+   */
+  if (campaign.role !== 'world') return problems;
+
   /*
    * ⚠️ The floor nobody had hit.
    *
@@ -122,9 +199,6 @@ export function validateCampaign(campaign: Campaign): string[] {
   }
 
   // Every cluster in the outline needs a faction, and every faction a cluster.
-  const clusters = new Set(
-    campaign.outline.branches.flatMap((b) => b.clusters.map((c) => c.id)),
-  );
   const held = new Set(campaign.antagonists.map((a) => a.topicCluster));
 
   for (const antagonist of campaign.antagonists) {
@@ -138,24 +212,6 @@ export function validateCampaign(campaign: Campaign): string[] {
     if (!held.has(cluster)) {
       problems.push(`${campaign.id}: no faction holds cluster ${cluster}.`);
     }
-  }
-
-  // A cluster with no questions cannot test anybody.
-  const asked = new Set(campaign.questions.map((q) => q.cluster));
-  for (const cluster of clusters) {
-    if (!asked.has(cluster)) {
-      problems.push(`${campaign.id}: cluster ${cluster} has no questions.`);
-    }
-  }
-
-  if (campaign.exam.length < 1) {
-    problems.push(`${campaign.id}: an exam of ${campaign.exam.length} questions is not an exam.`);
-  }
-  if (campaign.exam.passMark <= 0 || campaign.exam.passMark > 1) {
-    problems.push(`${campaign.id}: pass mark ${campaign.exam.passMark} is not a share of the paper.`);
-  }
-  if (campaign.exam.threshold <= 0 || campaign.exam.threshold > 1) {
-    problems.push(`${campaign.id}: threshold ${campaign.exam.threshold} is not a share of readiness.`);
   }
 
   return problems;

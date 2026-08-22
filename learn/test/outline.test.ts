@@ -141,6 +141,19 @@ describe('the tech tree', () => {
     expect(skillIdFromTopic('nonsense')).toBeUndefined();
   });
 
+  it('⚠️ reads a skill out of any campaign prefix, not only dp600', () => {
+    /*
+     * This used to be anchored on `/^dp600-(\d+)$/`, which meant the second
+     * seat's topics parsed as undefined and every one of its questions came
+     * back empty. Any campaign owns the part before the number.
+     */
+    expect(skillIdFromTopic('klasse1-7')).toBe(7);
+    expect(skillIdFromTopic('dp600-7')).toBe(7);
+    // Still not a free-for-all: there has to be a number to read.
+    expect(skillIdFromTopic('klasse1-')).toBeUndefined();
+    expect(skillIdFromTopic('klasse1-x')).toBeUndefined();
+  });
+
   it('opens three branches at once, one per exam domain', () => {
     // Someone revising can start wherever they are weakest, which is how
     // people actually study. A single chain would forbid that.

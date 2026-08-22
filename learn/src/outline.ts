@@ -55,8 +55,21 @@ export function topicIdFor(skillId: number): string {
   return `dp600-${skillId}`;
 }
 
+/**
+ * The skill number inside a topic id.
+ *
+ * ⚠️ **Any campaign prefix, not just `dp600-`.** This was pinned to DP-600,
+ * which was correct while there was one curriculum and silently wrong the
+ * moment a second seat asked from another bank: `selectQuestion` would return
+ * undefined for every topic, the presenter would score it neutral, and a
+ * child would sit in front of a game that never asked them anything. Nothing
+ * would have thrown.
+ *
+ * The shape is `<campaign>-<number>`, so the number is what follows the last
+ * hyphen.
+ */
 export function skillIdFromTopic(topicId: string): number | undefined {
-  const match = /^dp600-(\d+)$/.exec(topicId);
+  const match = /-(\d+)$/.exec(topicId);
   return match ? Number(match[1]) : undefined;
 }
 

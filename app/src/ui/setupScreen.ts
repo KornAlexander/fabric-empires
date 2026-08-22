@@ -21,6 +21,7 @@ import {
   type WorldShapeId,
   type WorldSizeId,
 } from '@fabric-empires/engine';
+import { CAMPAIGNS } from '@fabric-empires/learn';
 
 export interface SetupResult extends WorldChoice {
   readonly seed: string;
@@ -106,6 +107,9 @@ export function createSetupScreen(): SetupScreen {
       let focus: FocusId = defaults.focus;
       let rivals: number = defaults.rivals;
       let pace: PaceId = defaults.pace;
+      let players: 1 | 2 = defaults.players;
+      let courseP1: string = defaults.courseP1;
+      let courseP2: string = defaults.courseP2;
 
       const card = document.createElement('div');
       card.className = 'fe-setup-card';
@@ -150,8 +154,7 @@ export function createSetupScreen(): SetupScreen {
         optionList('Focus', FOCUS_OPTIONS, focus, (id) => {
           focus = id;
         }),
-      );
-      card.append(
+      );      card.append(
         optionList(
           'Rivals',
           RIVAL_COUNTS.map((n) => ({
@@ -173,6 +176,67 @@ export function createSetupScreen(): SetupScreen {
           pace = id;
         }),
       );
+
+      // Players -----------------------------------------------------------
+      section('Who is playing');
+      card.append(
+        optionList(
+          'Seats',
+          [
+            {
+              id: '1',
+              label: 'One player',
+              detail: 'You answer every question yourself.',
+            },
+            {
+              id: '2',
+              label: 'Two players, together',
+              detail:
+                'One empire. Every battle asks you both at once, each from your own course.',
+            },
+          ],
+          String(players),
+          (id) => {
+            players = id === '2' ? 2 : 1;
+            paintSeats();
+          },
+        ),
+      );
+
+      const courseGroup = document.createElement('div');
+      courseGroup.className = 'fe-setup-seats';
+      courseGroup.append(
+        optionList(
+          'Player 1 answers with 1 2 3 4',
+          CAMPAIGNS.filter((c) => c.role === 'world').map((c) => ({
+            id: c.id,
+            label: c.course,
+            detail: c.blurb,
+          })),
+          courseP1,
+          (id) => {
+            courseP1 = id;
+          },
+        ),
+      );
+      // ⚠️ Only player one's course may build the world, so the second seat is
+      // offered every course including the question-only ones.
+      courseGroup.append(
+        optionList(
+          'Player 2 answers with A B C D',
+          CAMPAIGNS.map((c) => ({ id: c.id, label: c.course, detail: c.blurb })),
+          courseP2,
+          (id) => {
+            courseP2 = id;
+          },
+        ),
+      );
+      card.append(courseGroup);
+
+      const paintSeats = (): void => {
+        courseGroup.style.display = players === 2 ? '' : 'none';
+      };
+      paintSeats();
 
       // Seed --------------------------------------------------------------
       const seedGroup = document.createElement('div');
@@ -213,6 +277,9 @@ export function createSetupScreen(): SetupScreen {
           focus,
           rivals,
           pace,
+          players,
+          courseP1,
+          courseP2,
           seed: seedInput.value.trim() || defaults.seed,
         });
       };

@@ -94,6 +94,17 @@ export interface WorldChoice {
   readonly focus: FocusId;
   readonly rivals: number;
   readonly pace: PaceId;
+  /**
+   * How many people are playing on this screen.
+   *
+   * ⚠️ Two is CO-OP, not a rival. One empire, and a battle asks both seats at
+   * once so a parent and a child can play the same game at their own levels.
+   */
+  readonly players: 1 | 2;
+  /** Course the first seat answers from. This one also builds the world. */
+  readonly courseP1: string;
+  /** Course the second seat answers from. Questions only. */
+  readonly courseP2: string;
 }
 
 export const DEFAULT_WORLD_CHOICE: WorldChoice = Object.freeze({
@@ -103,6 +114,9 @@ export const DEFAULT_WORLD_CHOICE: WorldChoice = Object.freeze({
   focus: 'everything',
   rivals: 7,
   pace: 'standard',
+  players: 1,
+  courseP1: 'dp600',
+  courseP2: 'klasse1',
 });
 
 /**

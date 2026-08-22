@@ -1,15 +1,21 @@
 /**
- * Build the shipped question bank from the plaintext authoring sources.
+ * Build the shipped question banks from the plaintext authoring sources.
  *
  *   node tools/content/build-questions.mjs [--check]
  *
- * Reads learn/content/dp-600/questions/src/*.json, replaces each item's
- * `answer` and `explanation` with a hash and a ciphertext, and writes the
- * result alongside. With --check it verifies the built files are up to date
- * instead of writing, which is what CI runs.
+ * Walks every campaign under learn/content, reads `questions/src/*.json`,
+ * replaces each item's `answer` and `explanation` with a hash and a
+ * ciphertext, and writes the result to `questions/`. With --check it verifies
+ * the built files are up to date instead of writing, which is what CI runs.
  *
  * The crypto lives in learn/src/crypto.ts and is shared with the runtime, so
- * the bank is always built by exactly the code that reads it.
+ * a bank is always built by exactly the code that reads it.
+ *
+ * ⚠️ Every campaign shares one salt. It is not a secret and never was: the
+ * point of hashing here is that a shipped bundle contains no readable answer
+ * key, not that anybody could not derive one. Per-campaign salts would mean
+ * the runtime had to know which campaign a question came from before it could
+ * check it, for no gain.
  */
 
 import { readdir, readFile, writeFile } from 'node:fs/promises';
@@ -19,8 +25,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..', '..');
-const SRC_DIR = path.join(ROOT, 'learn', 'content', 'dp-600', 'questions', 'src');
-const OUT_DIR = path.join(ROOT, 'learn', 'content', 'dp-600', 'questions');
+const CONTENT = path.join(ROOT, 'learn', 'content');
 
 const ANSWER_SALT = 'fabric-empires:dp600:v1';
 const PBKDF2_ITERATIONS = 100_000;
@@ -118,9 +123,9 @@ async function encryptExplanation(questionId, answer, explanation) {
   return Buffer.from(packed).toString('base64');
 }
 
-async function buildFile(name, check) {
-  const source = JSON.parse(await readFile(path.join(SRC_DIR, name), 'utf8'));
-  const outPath = path.join(OUT_DIR, name);
+async function buildFile(dirs, name, check) {
+  const source = JSON.parse(await readFile(path.join(dirs.src, name), 'utf8'));
+  const outPath = path.join(dirs.out, name);
 
   const existing =
     existsSync(outPath) ? JSON.parse(await readFile(outPath, 'utf8')) : undefined;
@@ -195,16 +200,33 @@ async function decryptMatches(questionId, answer, cipher, expected) {
 }
 
 const check = process.argv.includes('--check');
-const files = (await readdir(SRC_DIR)).filter((f) => f.endsWith('.json')).sort();
+
+/** Every campaign folder that has an authoring source directory. */
+async function campaigns() {
+  const out = [];
+  for (const entry of (await readdir(CONTENT, { withFileTypes: true })).sort((a, b) =>
+    a.name.localeCompare(b.name),
+  )) {
+    if (!entry.isDirectory()) continue;
+    const src = path.join(CONTENT, entry.name, 'questions', 'src');
+    if (!existsSync(src)) continue;
+    out.push({ id: entry.name, src, out: path.join(CONTENT, entry.name, 'questions') });
+  }
+  return out;
+}
 
 let failed = false;
-for (const name of files) {
-  const result = await buildFile(name, check);
-  if (check && !result.upToDate) {
-    console.error(`STALE  ${name} (run: node tools/content/build-questions.mjs)`);
-    failed = true;
-  } else {
-    console.log(`${check ? 'ok    ' : 'built '} ${name}  ${result.count} questions`);
+for (const campaign of await campaigns()) {
+  const files = (await readdir(campaign.src)).filter((f) => f.endsWith('.json')).sort();
+  for (const name of files) {
+    const result = await buildFile(campaign, name, check);
+    const label = `${campaign.id}/${name}`;
+    if (check && !result.upToDate) {
+      console.error(`STALE  ${label} (run: node tools/content/build-questions.mjs)`);
+      failed = true;
+    } else {
+      console.log(`${check ? 'ok    ' : 'built '} ${label}  ${result.count} questions`);
+    }
   }
 }
 

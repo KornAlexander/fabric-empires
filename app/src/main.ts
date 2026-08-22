@@ -53,6 +53,8 @@ import {
   unitType,
   unitsOf,
   type AiEvent,
+  type ChallengeOutcome,
+  type ChallengeRequest,
   type GameState,
   type Hex,
   type ReachableTile,
@@ -66,6 +68,7 @@ import {
   SIEGE_QUESTION_MS,
   buildLibraryModel,
   buildSiege,
+  campaignById,
   checkAnswer,
   createMasteryTracker,
   createQuestionPresenter,
@@ -91,6 +94,7 @@ import { createChoiceModal } from './ui/choice.js';
 import { createSetupScreen, type SetupResult } from './ui/setupScreen.js';
 import { createCheatConsole } from './ui/cheatConsole.js';
 import { createRaidAlert } from './ui/raidAlert.js';
+import { createDuoModal } from './ui/duoModal.js';
 import { CHEATS, findCheat } from './cheats.js';
 import { approachShot, descendShot, orbitShot } from './three/cinematic.js';
 import { loadGame, localSlot, saveGame } from './persist.js';
@@ -117,10 +121,112 @@ const mastery = createMasteryTracker({
   sessionStart: Date.now(),
 });
 
+const soloPresenter = createQuestionPresenter(modal, { asked: askedThisSession });
+
+/**
+ * Player one's presenter, swapped when a second person joins.
+ *
+ * ⚠️ In co-op BOTH seats must be panes of the duo modal. Leaving player one on
+ * the full-screen single-player modal put their question underneath the duo
+ * layer, where it was invisible and unanswerable: measured, only the child's
+ * pane appeared. The provider is constructed once, so the swap has to happen
+ * behind a stable function rather than by rebuilding it.
+ */
+let seatOnePresenter: ((request: ChallengeRequest) => Promise<ChallengeOutcome>) | undefined;
+
 const provider = new Dp600ChallengeProvider({
-  presenter: createQuestionPresenter(modal, { asked: askedThisSession }),
+  presenter: (request) => (seatOnePresenter ?? soloPresenter)(request),
   mastery,
 });
+
+/**
+ * The second seat.
+ *
+ * ⚠️ **Its own presenter, its own bank, and deliberately NO mastery tracker.**
+ * The readiness figure and the Great Library describe one person's progress
+ * towards DP-600. Feeding a six-year-old's answers about Anlaute into that
+ * would corrupt the only number this product really produces, in exactly the
+ * way the cheat codes are forbidden from doing (D205).
+ *
+ * Rebuilt whenever a game starts, because the course can change.
+ */
+const duo = createDuoModal();
+let secondSeat: ((request: ChallengeRequest) => Promise<ChallengeOutcome>) | undefined;
+let secondSeatTopics: readonly string[] = [];
+
+function buildSecondSeat(): void {
+  secondSeat = undefined;
+  secondSeatTopics = [];
+  seatOnePresenter = undefined;
+  duo.hide();
+  if (lastSetup.players !== 2) return;
+
+  const campaign = campaignById(lastSetup.courseP2);
+  if (!campaign) return;
+
+  const own = campaignById(lastSetup.courseP1);
+  seatOnePresenter = createQuestionPresenter(
+    duo.ui({ seat: 1, who: 'Player 1', course: own?.course ?? 'Fabric Empires' }),
+    { asked: askedThisSession },
+  );
+
+  secondSeat = createQuestionPresenter(
+    duo.ui({ seat: 2, who: 'Player 2', course: campaign.course }),
+    { questions: campaign.questions },
+  );
+  // The topics this seat can be asked about, which are its own, not the
+  // world's. A Klasse 1 player is never asked about a lakehouse.
+  secondSeatTopics = [...new Set(campaign.questions.map((q) => q.skillId))].map(
+    (id) => `${campaign.id}-${id}`,
+  );
+}
+
+/**
+ * Ask a battle question, of everybody who is playing.
+ *
+ * ⚠️ **Both seats are asked concurrently, and the scores are averaged.** The
+ * engine takes one challenge score, so two answers have to become one number,
+ * and averaging is the only combination that makes it genuinely co-operative:
+ * the child's answer really moves the battle. Taking the better of the two
+ * would be kinder and would make them a spectator with a keyboard.
+ *
+ * `Promise.all` is what puts both questions on screen at once. Each provider
+ * calls its own seat's `ask`, the duo modal renders whatever is pending, and
+ * neither player waits for the other.
+ */
+async function askBattle(
+  topicId: string,
+  tier: 1 | 2 | 3,
+  timeLimitMs: number,
+): Promise<number> {
+  const first = provider.present({ kind: 'battle', topicId, tier, timeLimitMs });
+
+  if (!secondSeat || secondSeatTopics.length === 0) {
+    return (await first).score;
+  }
+
+  /*
+   * The second seat's topic comes from its own bank and its own seeded
+   * stream, so two players sharing a seed get the same pair of questions and
+   * a replay asks the same things (D39).
+   */
+  const pick = createRng(state.seed, `seat2:${state.turn}:${topicId}`);
+  const theirTopic =
+    secondSeatTopics[Math.floor(pick.float(0, 1) * secondSeatTopics.length)]!;
+
+  const [a, b] = await Promise.all([
+    first,
+    secondSeat({ kind: 'battle', topicId: theirTopic, tier: 1, timeLimitMs }),
+  ]);
+
+  const together = (a.score + b.score) / 2;
+  if (b.score > 0 && a.score <= 0) {
+    log('Player 2 held the line where you did not.', 'good');
+  } else if (b.score > 0) {
+    log('Both of you knew it. The walls hold.', 'good');
+  }
+  return together;
+}
 
 /** Timers from D50: tight, but every modal can be paused without penalty. */
 const BATTLE_TIME_MS = 20_000;
@@ -593,13 +699,7 @@ async function actOn(target: Hex): Promise<void> {
 
     let challengeScore = 0;
     if (topicId) {
-      const outcome = await provider.present({
-        kind: 'battle',
-        topicId,
-        tier: 2,
-        timeLimitMs: timeLimit(BATTLE_TIME_MS),
-      });
-      challengeScore = outcome.score;
+      challengeScore = await askBattle(topicId, 2, timeLimit(BATTLE_TIME_MS));
     }
 
     // The state can only have changed if something else ran while the modal
@@ -1122,13 +1222,7 @@ async function doEndTurn(): Promise<void> {
     await wait(1500);
 
     if (topicId) {
-      const outcome = await provider.present({
-        kind: 'battle',
-        topicId,
-        tier: 2,
-        timeLimitMs: timeLimit(BATTLE_TIME_MS),
-      });
-      defenderChallengeScore = outcome.score;
+      defenderChallengeScore = await askBattle(topicId, 2, timeLimit(BATTLE_TIME_MS));
     }
     raidAlert.hide();
   }
@@ -1958,6 +2052,7 @@ function newGame(rawSeed: string): void {
  */
 async function askAndStart(): Promise<void> {
   lastSetup = await setup.ask(lastSetup);
+  buildSecondSeat();
   newGame(lastSetup.seed);
 }
 

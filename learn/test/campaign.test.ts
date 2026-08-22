@@ -196,3 +196,79 @@ describe('⚠️ the engine takes a roster it knows nothing about', () => {
     expect([...state.factions.keys()].length).toBeGreaterThan(1);
   });
 });
+
+describe('⚠️ a course is not a world', () => {
+  /*
+   * Both names exist because they are read in different places and only one
+   * of them answers "what am I being asked about". DP-600's world is called
+   * Fabric Empires, which is a fine name for a world and tells a player
+   * nothing when it sits on a seat beside "1. Klasse: Mathe und Deutsch".
+   */
+  it('names the subject on every campaign', () => {
+    for (const campaign of CAMPAIGNS) {
+      expect(campaign.course.trim(), campaign.id).not.toBe('');
+    }
+  });
+
+  it('gives the two seats labels a player can tell apart', () => {
+    const courses = CAMPAIGNS.map((c) => c.course);
+    expect(new Set(courses).size).toBe(courses.length);
+  });
+
+  it('says which certification the DP-600 course is', () => {
+    // The submission is a DP-600 study aid, so the exam code has to appear.
+    expect(DP600_CAMPAIGN.course).toContain('DP-600');
+  });
+});
+
+describe('⚠️ the second seat', () => {
+  const klasse1 = campaignById('klasse1');
+
+  it('is registered', () => {
+    expect(klasse1).toBeDefined();
+  });
+
+  it('supplies questions without claiming to build a world', () => {
+    expect(klasse1?.role).toBe('questions');
+    expect(klasse1?.antagonists).toEqual([]);
+  });
+
+  it('⚠️ is exempt from the rules that would otherwise reject it', () => {
+    /*
+     * This exemption IS the feature. A Year 1 curriculum has 24 skills where
+     * a world needs 41, and no business fielding armies. Without `role`, the
+     * only way to let a six-year-old play would be to weaken the check that
+     * stops a short DP-600 outline shipping with dead unit unlocks.
+     */
+    expect(validateCampaign(klasse1!)).toEqual([]);
+    expect(topicsFor(klasse1!).nodes.length).toBeLessThan(minimumTopicCount());
+  });
+
+  it('still refuses a short campaign that does claim to build a world', () => {
+    const overreaching: Campaign = { ...klasse1!, id: 'overreach', role: 'world' };
+    expect(validateCampaign(overreaching).join(' ')).toContain('unit unlock');
+  });
+
+  it('asks in German', () => {
+    expect(klasse1?.language).toBe('de');
+  });
+
+  it('asks a six-year-old a shorter question than an exam candidate', () => {
+    // D216: a stem has to be readable by somebody still learning to read.
+    for (const question of klasse1!.questions) {
+      expect(question.stem.length, question.stem).toBeLessThanOrEqual(60);
+    }
+    const longest = Math.max(...DP600_CAMPAIGN.questions.map((q) => q.stem.length));
+    expect(longest).toBeGreaterThan(60);
+  });
+
+  it('gives them a gentler paper than the real certification', () => {
+    expect(klasse1!.exam.length).toBeLessThan(DP600_CAMPAIGN.exam.length);
+    expect(klasse1!.exam.questionMs).toBeGreaterThan(DP600_CAMPAIGN.exam.questionMs);
+  });
+
+  it('covers both subjects rather than only the maths', () => {
+    const branches = new Set(klasse1!.questions.map((q) => q.cluster[0]));
+    expect([...branches].sort()).toEqual(['D', 'M']);
+  });
+});
