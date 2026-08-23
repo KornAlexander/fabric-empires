@@ -144,7 +144,18 @@ export function reviewMastery(
   };
 }
 
-/** Epoch milliseconds at which this record next falls due, on the real clock. */
+/**
+ * Epoch milliseconds at which this record next falls due, on the real clock.
+ *
+ * ⚠️ **The real clock only.** This deliberately ignores the compressed session
+ * clock above, so an interval of one day reports as twenty four hours away
+ * rather than as seventy five seconds. Anything asking "is this due *now*, in
+ * this sitting" wants `isDue`, which takes `sessionStart` and honours both.
+ *
+ * Named because measuring the loop through this function makes a working
+ * feature look broken: an item that the game will re-ask two minutes into a
+ * session reports here as due tomorrow, and both numbers are correct.
+ */
 export function dueAt(record: MasteryRecord): number {
   if (record.lastReviewed === undefined) return 0;
   return record.lastReviewed + record.intervalDays * DAY_MS;

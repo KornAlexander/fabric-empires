@@ -307,6 +307,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D498–D502 | Fullscreen, and a skier | Recorded in full in section 71 |
 | D503–D510 | The defender stops being a number | Recorded in full in section 72 |
 | D511–D515 | The screen you look at most was in the wrong language | Recorded in full in section 73 |
+| D516–D519 | Auditing the learning loop, and finding it sound | Recorded in full in section 74 |
 
 ### 28. Cheat codes
 
@@ -6158,6 +6159,84 @@ Neues Reich
 
 ⚠️ And **40 questions answered through `answerOpen`** afterwards, which is the
 proof that the harness survived its own labels being translated.
+
+---
+
+## 74. Auditing the learning loop, and finding it sound
+
+Phase E of the backlog, and the part a certification-prep contest is actually
+judging. Ten sections went to the siege; this one goes to the premise.
+
+⚠️ **The verdict is that it works**, which is an uncomfortable thing to report
+after a day of finding faults, so everything below is a measurement rather than
+a reassurance.
+
+### 74.1 What was measured
+
+| question | result |
+| --- | --- |
+| Does every skill have questions? | **41 skills, 123 questions, exactly 3 each.** No uncovered skills, no singletons |
+| Is the difficulty spread? | tier 1: 47, tier 2: 42, tier 3: 34 |
+| Is readiness weighted by the exam? | Branch A 25-30% holding 27% of skills, B 45-50% holding 44%, C 25-30% holding 29% |
+| Do the endpoints hold? | 0.000 with nothing known, 1.000 with everything strong |
+| Does the SM-2 ladder climb? | 1d, 6d, 17d, 49d, 147d; familiar at two correct, strong at four |
+| Does a lapse cost? | 49d collapses to **1d**, easiness 2.9 to 2.36. A timeout is harsher still, 2.1 |
+| Does a review return inside one sitting? | Due **2 minutes** into the session, via the compressed clock |
+
+The lapse behaviour is the one I would have most expected to be soft, and it is
+not: a single wrong answer on an item at 49 days sends it back to one day and
+permanently lowers its easiness, which is SM-2 being properly unsentimental.
+
+### 74.2 ⚠️ Two things I got wrong while auditing
+
+Both are worth recording, because both are traps sitting in the code for the
+next person.
+
+**`dueAt` measures the real calendar, not the session.** Reading the loop
+through it says an item reviewed now is due *tomorrow*, which looks exactly
+like the compressed session clock not working. It is working; `dueAt` simply is
+not the function that knows about it. `isDue` takes `sessionStart` and honours
+both clocks. `dueAt` now says so in its own doc comment, because a working
+feature that measures as broken is how a correct thing gets "fixed".
+
+**Readiness ignoring research looked like the hollow victory of section 65.**
+The live game reports `readiness 1.0` with **1 of 41 topics researched**, which
+reads as a headline number that does not watch the game.
+
+⚠️ It is deliberate, and it is tested: `library.test.ts` has *"separates what
+was researched from what is retained"*, on the grounds that ten researched and
+nothing retained should be two numbers rather than one blended score. That is
+right. Unlocking a topic is not knowing it, and only answering questions moves
+retention.
+
+So the finding is narrower than it first appeared, and it is a question rather
+than a defect: **should the Proctor gate on research as well as readiness?**
+Today an empire that has built nothing can sit the exam. Section 65 recorded
+the same thing from the victory side and left it open on purpose (D472), and it
+stays open here for the same reason: adding a gate is a design decision, not a
+bug fix.
+
+### 74.3 Nothing was added, deliberately
+
+Every property measured above already has a test: coverage in
+`questions.test.ts`, the weighting and both endpoints in `library.test.ts`, the
+ladder and lapses in `sm2.test.ts`, and the compressed clock in
+`sm2.test.ts` under *"the compressed in-session clock"*.
+
+⚠️ Writing a second set would have been exactly the duplication this project
+spent the whole day removing: moods in two places, anthem timings in two
+places, an ask-and-reveal loop in two places, a translation file list in two
+places. An audit that ends by copying the tests it just read has understood
+nothing.
+
+### 74.4 Decisions
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D516 | The audit adds no tests, because the properties are already tested | Duplicating a passing assertion buys confidence in the auditor, not in the code |
+| D517 | ⚠️ **`dueAt` documents that it is the real clock only** | Measuring the loop through it makes a working feature look broken, which is the specific way a correct thing gets changed by someone being careful |
+| D518 | Research and retention stay separate numbers | Already the tested design, and right: unlocking a topic is not knowing it. Blending them would let an empire buy its way to a readiness figure |
+| D519 | ⚠️ **Whether the Proctor should require research stays open** | It is the same question as the hollow victory in 65 and has the same answer: gating the exam on empire progress changes what the game is about, and that is the author's call |
 
 ---
 
