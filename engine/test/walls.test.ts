@@ -205,7 +205,6 @@ describe('building a wall', () => {
 describe('what a wall is worth', () => {
   const walled = (level: number, hp: number): City =>
     city({ wallLevel: level, wallHp: hp });
-
   it('reads an unwalled city as zero, not as perfect', () => {
     expect(wallIntegrity(walled(0, 0))).toBe(0);
     expect(wallDefenceBonus(walled(0, 0))).toBe(0);

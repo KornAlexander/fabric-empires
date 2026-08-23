@@ -290,6 +290,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D412–D418 | Walls: the first piece of the siege | Recorded in full in section 54 |
 | D419–D423 | The walls were never actually being hit | Recorded in full in section 55 |
 | D424–D428 | Antagonists fortify, and a bug that was not one | Recorded in full in section 56 |
+| D429–D433 | The wall you see is the wall you built | Recorded in full in section 57 |
 
 ### 28. Cheat codes
 
@@ -4782,6 +4783,47 @@ more than a few turns has to answer questions, not just press the button.
   requires a `unitId` and a wall is not a unit. The player finds out by looking.
 - Siege state (19.5 step 2) and the assault set piece (step 3) are still ahead.
   What exists now is a wall both sides build, break, mend and take.
+
+---
+
+## 57. The wall you see is the wall you built
+
+Walls could be built, battered, mended, taken and raised by the AI, and **none
+of it was visible**. Worse than invisible: the city model already drew a rampart
+and bastions, driven by **rank**.
+
+⚠️ **So the game had two unrelated notions of fortification.** A Siedlung with
+three wall levels showed no wall at all, and a Großstadt that had never spent a
+single Compute on defence looked like a fortress and fought like an open town.
+Section 54 created that the moment walls became a production item, and nothing
+noticed because both halves were individually correct.
+
+| ID | Decision |
+|---|---|
+| D429 | **The two axes are separated and each now says what it means.** `rank` governs how developed the place is: houses, church, cathedral, a second storey. `wallLevel` governs what fortification stands: rampart and gate, then bastions at the full level. The original argument that "the fortress is earned" survives intact, and is better served, because it is now earned by the thing actually called fortification |
+| D430 | **Each level is a taller work than the last**, so 1, 2 and 3 are told apart at a glance without a number on screen |
+| D431 | ⚠️ **A breach is visible.** Past `WALL_BREACH_POINT` the turfed rampart walk is omitted and a bastion is missing, so a battered fort reads as raw earth from the map camera. A siege that only appears in a side panel is a siege the player learns about by reading |
+| D432 | ⚠️ **The rebuild signature did not include walls, and the comment beside it warned about exactly this.** It was `population:rank:factionId`, so a wall could go up, be battered and be mended without the model ever being rebuilt: the change above would have been invisible until the town happened to grow a citizen or change hands. Now keyed on `wallLevel` and the breach state, and on the **threshold** rather than raw hit points, because keying on every point of damage would rebuild the whole town on every blow |
+| D433 | `isBreached` and `WALL_BREACH_POINT` live in the engine, so the renderer and the thing deciding when to rebuild cannot disagree. They would not have had to disagree by much: `< 0.5` against `<= 0.5` would produce a fort that changed appearance only when something unrelated happened to it |
+
+### Verified by looking
+
+1004 tests, four of them pinning the breach threshold including the case that
+matters most: ⚠️ an **unwalled** city has integrity 0, so a naive
+`integrity < 0.5` would call every open town breached and draw rubble round a
+village.
+
+Then on the live URL, a city reading `Mauern Stufe 2 · 80/80` and ranked
+**Siedlung**, the lowest there is, standing inside a hexagonal rampart with its
+turfed walk. Under the old rule that city had no wall geometry whatsoever. The
+rebuild signature confirmed as `2:siedlung:player:2:whole`.
+
+### Left open
+
+- Antagonist fortification is still silent in the log (no `AiEvent`).
+- Siege state (19.5 step 2) and the assault set piece (step 3) remain. ⚠️ Note
+  19.5's own cut trigger prefers the **set piece** over the multi-turn
+  investment if only one can ship.
 
 ---
 

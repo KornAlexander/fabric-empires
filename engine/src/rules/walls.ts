@@ -81,6 +81,21 @@ export function wallDefenceBonus(city: City): number {
 }
 
 /**
+ * Below this much of the wall left standing, it reads as breached.
+ *
+ * Shared so the renderer and the thing that decides when to rebuild a city
+ * model cannot disagree about it. They would not have to disagree by much: one
+ * using `< 0.5` and the other `<= 0.5` would leave a fort that changed its
+ * appearance only when something unrelated happened to it.
+ */
+export const WALL_BREACH_POINT = 0.5;
+
+/** Whether the walls are far enough down to look it. */
+export function isBreached(city: City): boolean {
+  return city.wallLevel > 0 && wallIntegrity(city) < WALL_BREACH_POINT;
+}
+
+/**
  * Take damage on the walls first, and report what got through.
  *
  * Walls absorb rather than deflect: while any are standing they soak the blow,

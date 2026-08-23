@@ -27,7 +27,17 @@ import {
   SphereGeometry,
   type BufferGeometry,
 } from 'three';
-import { cityKind, rankIndex, unitType, type City, type Ruin, type Unit } from '@fabric-empires/engine';
+import {
+  cityKind,
+  isBreached,
+  rankIndex,
+  unitType,
+  wallIntegrity,
+  MAX_WALL_LEVEL,
+  type City,
+  type Ruin,
+  type Unit,
+} from '@fabric-empires/engine';
 
 const materialCache = new Map<string, MeshStandardMaterial>();
 
@@ -934,21 +944,40 @@ export function buildCity(city: City, factionColour: string): Group {
    * one-citizen camp already looks like a fortress there is nothing left for a
    * real city to look like.
    *
-   * So the rank decides what stands here:
+   * ⚠️ **It was then earned by the wrong thing.** Rank decided what stood
+   * here, and rank is population and retained knowledge. Once walls became a
+   * production item (section 54) that left two unrelated notions of
+   * fortification in the same game: a Siedlung with three wall levels showed
+   * no wall at all, and a Großstadt that had never spent a single Compute on
+   * defence looked like a fortress and fought like an open town. **What you
+   * see is now what you built.**
    *
-   *   Siedlung    a few huts and a track. No wall at all
-   *   Dorf        more houses, and a church tower to be recognised by
-   *   Gemeinde    the earth rampart goes up, and the gate with it
-   *   Stadt       bastions, and the keep
-   *   Großstadt   a second storey on everything, and the cathedral spire
+   * So the two axes are separated, and each says what it actually means:
+   *
+   *   rank       how developed the place is: houses, church, cathedral,
+   *              a second storey on everything
+   *   wallLevel  what fortification stands: rampart and gate, then bastions
    */
   const tier = rankIndex(city.rank);
-  const walled = tier >= 2;
-  const bastioned = tier >= 3;
+  const walled = city.wallLevel >= 1;
+  const bastioned = city.wallLevel >= MAX_WALL_LEVEL;
   const great = tier >= 4;
 
+  /**
+   * How much of the wall is still standing, 0 to 1.
+   *
+   * A wall that has been battered loses its turfed rampart walk, so a breached
+   * fort reads as raw earth from the map camera rather than as a finished one.
+   * That matters now that walls take damage: a siege has to be visible from
+   * outside the city panel, or the player only learns about it by reading.
+   */
+  const integrity = walled ? wallIntegrity(city) : 0;
+  const breached = isBreached(city);
+
   const RAMPART_RADIUS = 0.74;
-  const RAMPART_HEIGHT = 0.2;
+  // Each level is a taller work than the last, so 1, 2 and 3 are told apart
+  // at a glance without needing a number on screen.
+  const RAMPART_HEIGHT = 0.16 + 0.04 * Math.min(city.wallLevel, MAX_WALL_LEVEL);
   /** Where the buildings stand. Inside the walls once there are walls. */
   const GROUND = walled ? 0.14 : 0.02;
 
@@ -1003,13 +1032,18 @@ export function buildCity(city: City, factionColour: string): Group {
 
   // The rampart walk on top, turfed. Dark against the pale wall below it,
   // which is what finally gives the fort an edge to be recognised by.
-  const walk = part(
-    new RingGeometry(RAMPART_RADIUS - 0.12, RAMPART_RADIUS, 6, 1),
-    sward(),
-  );
-  walk.rotation.x = -Math.PI / 2;
-  walk.position.y = WALL_TOP;
-  group.add(walk);
+  //
+  // ⚠️ Omitted once the wall is more than half down: the turf is the finished
+  // surface, and a breach should not look finished.
+  if (!breached) {
+    const walk = part(
+      new RingGeometry(RAMPART_RADIUS - 0.12, RAMPART_RADIUS, 6, 1),
+      sward(),
+    );
+    walk.rotation.x = -Math.PI / 2;
+    walk.position.y = WALL_TOP;
+    group.add(walk);
+  }
 
   // The courtyard, well below the wall head, so the rampart reads as a wall
   // enclosing somewhere rather than as a plinth holding something up.
@@ -1032,12 +1066,14 @@ export function buildCity(city: City, factionColour: string): Group {
    * splinters, and the thing that finally makes the bastion legible from
    * above: a dark cap on a light plinth has an edge, and an edge is a shape.
    *
-   * ⚠️ Only from Stadt. A rampart is earth and labour; a bastioned trace is
-   * the thing that bankrupted states, and it should not be standing round a
-   * township of four families.
+   * ⚠️ Only at the full wall level. A rampart is earth and labour; a
+   * bastioned trace is the thing that bankrupted states, and it should not be
+   * standing round a township that has paid for one course of earthworks.
    */
   if (bastioned) {
-    for (let i = 0; i < 3; i++) {
+    // A breach takes a bastion with it, so the damage is legible from above.
+    const standing = breached ? 2 : 3;
+    for (let i = 0; i < standing; i++) {
       const angle = (i / 3) * Math.PI * 2 + Math.PI / 6;
       const height = RAMPART_HEIGHT + 0.03;
       const x = Math.cos(angle) * (RAMPART_RADIUS + 0.02);

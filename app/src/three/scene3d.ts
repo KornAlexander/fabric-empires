@@ -25,6 +25,7 @@ import {
   hexKey,
   hexRound,
   unitType,
+  isBreached,
   PLAYER_FACTION_ID,
   type GameMap,
   type GameState,
@@ -609,10 +610,19 @@ export function createScene3D(
         const colour = state.factions.get(city.factionId)?.colour ?? '#888888';
         // Population, rank and ownership all change the model, so those three
         // are the rebuild triggers rather than rebuilding blindly every turn.
-        // ⚠️ Rank belongs here: a promotion adds walls and a keep, and without
-        // it in the signature the town keeps its old shape until it happens to
-        // grow a citizen or change hands.
-        const signature = `${city.population}:${city.rank}:${city.factionId}`;
+        // ⚠️ Rank belongs here: a promotion adds a keep and a cathedral, and
+        // without it in the signature the town keeps its old shape until it
+        // happens to grow a citizen or change hands.
+        //
+        // ⚠️ **So do the walls, for exactly the same reason.** Fortification is
+        // what a player spends production on and what a siege knocks down, and
+        // neither was in this string: a wall could go up, be battered and be
+        // mended without the model ever being rebuilt. `isBreached` rather than
+        // raw hit points, because the model only changes at that threshold and
+        // keying on every point of damage would rebuild the town on every blow.
+        const signature =
+          `${city.population}:${city.rank}:${city.factionId}` +
+          `:${city.wallLevel}:${isBreached(city) ? 'breached' : 'whole'}`;
         if (existing && existing.userData.signature === signature) {
           placeOnGround(existing, city.hex);
           continue;

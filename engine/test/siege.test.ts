@@ -3,6 +3,7 @@ import {
   absorbWithWalls,
   cityCombatSide,
   createGameState,
+  isBreached,
   maxWallHp,
   productionCost,
   productionPhase,
@@ -14,6 +15,7 @@ import {
   MAX_WALL_LEVEL,
   MIN_DAMAGE,
   PLAYER_FACTION_ID,
+  WALL_BREACH_POINT,
   WALL_TARGET,
   type City,
   type GameState,
@@ -250,8 +252,38 @@ describe('taking a walled city', () => {
   });
 });
 
-describe('the helper still agrees with the rule that uses it', () => {
-  it('absorbs exactly what resolveAttack takes off the wall', () => {
+describe('a breach is one definition, shared', () => {
+  /*
+   * ⚠️ The renderer decides what a fort looks like and the scene decides when
+   * to rebuild that model. If those two disagreed about what "breached" means,
+   * a fort would change appearance only when something unrelated happened to
+   * it, which is close to impossible to notice and worse to debug. So the
+   * threshold lives in the engine and both read it.
+   */
+  it('is not breached while most of the wall stands', () => {
+    expect(isBreached(city({ wallLevel: 2, wallHp: maxWallHp(2) }))).toBe(false);
+    expect(isBreached(city({ wallLevel: 2, wallHp: maxWallHp(2) * 0.75 }))).toBe(false);
+  });
+
+  it('is breached once it is more than half down', () => {
+    expect(isBreached(city({ wallLevel: 2, wallHp: maxWallHp(2) * 0.25 }))).toBe(true);
+    expect(isBreached(city({ wallLevel: 2, wallHp: 0 }))).toBe(true);
+  });
+
+  it('⚠️ is never breached with no wall at all', () => {
+    // Integrity of an unwalled city is 0, so a naive `integrity < 0.5` would
+    // call every open town breached and draw rubble round a village.
+    expect(isBreached(city({ wallLevel: 0, wallHp: 0 }))).toBe(false);
+  });
+
+  it('turns exactly at the shared point', () => {
+    const at = maxWallHp(2) * WALL_BREACH_POINT;
+    expect(isBreached(city({ wallLevel: 2, wallHp: at }))).toBe(false);
+    expect(isBreached(city({ wallLevel: 2, wallHp: at - 1 }))).toBe(true);
+  });
+});
+
+describe('the helper still agrees with the rule that uses it', () => {  it('absorbs exactly what resolveAttack takes off the wall', () => {
     const { state, attackerId } = siege({ wallLevel: 3, wallHp: maxWallHp(3) });
     const before = state.cities.get('target')!;
     const preview = previewAttack(state, attackerId, { q: 0, r: 0 })!;
