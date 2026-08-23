@@ -1,6 +1,7 @@
 import { hexNeighbours, type Hex } from '../hex/index.js';
 import {
   isWallTarget,
+  minimumTopicCount,
   unitType,
   type City,
   type ProductionTarget,
@@ -56,14 +57,41 @@ export function unitCost(type: UnitType): number {
  *
  * `unlockedBySkill` is a 1-based index into the topic graph rather than a
  * topic id, because the engine must not assume anything about what a topic id
- * looks like (D35). An index past the end of the graph means "not in this
- * tree", which is locked rather than free: a generic tree with six nodes
- * should not hand out the Direct Lake Titan.
+ * looks like (D35).
+ *
+ * ⚠️ **The index is a position on the ladder, not a count of topics.** It used
+ * to be read as a literal index, which quietly made the whole unit table a
+ * statement about DP-600 in particular: that curriculum has exactly 41 topics
+ * and the last unit unlocks at exactly 41, so it worked, and it worked only
+ * because those two numbers happened to be equal. A 24-topic curriculum could
+ * never unlock anything gated above 24, so `unitUnlocked` returned false
+ * forever and nothing said why.
+ *
+ * Scaling the ladder onto whatever length the campaign actually has removes
+ * the assumption. For a graph of exactly `minimumTopicCount()` nodes the
+ * arithmetic is the identity, so DP-600 is unaffected, which is the property
+ * that made this safe to change at all.
  */
 export function unitUnlocked(state: GameState, typeId: UnitTypeId): boolean {
   const skill = unitType(typeId).unlockedBySkill;
   if (skill === null) return true;
-  const node = state.topics.nodes[skill - 1];
+
+  const nodes = state.topics.nodes;
+  if (nodes.length === 0) return false;
+
+  const ladder = minimumTopicCount();
+  /*
+   * ⚠️ Multiply before dividing, or the identity case stops being the
+   * identity. Written as `(skill / ladder) * nodes.length` this goes through a
+   * float: 12/41 is not representable, and 12/41*41 comes back as
+   * 12.000000000000002, which `ceil` turns into 13. Every unit then unlocked
+   * one topic late on the campaign the arithmetic was supposed to leave alone.
+   * `(skill * nodes.length) / ladder` stays exact whenever the two lengths are
+   * equal, which is the case that had to keep working.
+   */
+  const index = ladder <= 0 ? skill : Math.ceil((skill * nodes.length) / ladder);
+
+  const node = nodes[Math.min(nodes.length, Math.max(1, index)) - 1];
   if (!node) return false;
   return state.research.known.includes(node.id);
 }

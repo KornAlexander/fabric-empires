@@ -303,6 +303,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D478–D483 | The film was cut to a recording that no longer exists | Recorded in full in section 67 |
 | D484–D487 | The hardest session was the one that taught nothing | Recorded in full in section 68 |
 | D488–D492 | Eight panels, four corners, one phone | Recorded in full in section 69 |
+| D493–D497 | The unit table was a statement about DP-600 | Recorded in full in section 70 |
 
 ### 28. Cheat codes
 
@@ -5772,6 +5773,100 @@ nothing to do with the code that handles touch.
 1052 tests and the smoke test. Then measured in a 390x844 viewport: map at
 `top 0, height 473`, HUD at `top 473, height 371`, no overlap anywhere, and the
 setup screen, the opening film and the in-game HUD all readable in one column.
+
+---
+
+## 70. The unit table was a statement about DP-600
+
+Asked for: Erste Klasse playable in single-player, not only as the second seat
+in co-op. This section is the blocker being removed. The feature itself is not
+finished and 70.4 says exactly what is left.
+
+### 70.1 Why it was not simply a menu entry
+
+The course picker is hidden when `players === 1`, so a solo player always gets
+DP-600. Showing it would not have been enough, and the reason is worth writing
+down because it looked like a one-line change:
+
+- Erste Klasse is `role: 'questions'`, which exempts it from the world rules.
+- It has **24 topics**; a world needs **41**.
+- It has **0 antagonists**; a world needs one per cluster, and it has 7.
+
+⚠️ And the obvious shortcut is a trap. Pointing the solo presenter at the
+Klasse 1 bank while keeping the DP-600 world means `selectQuestion` is asked
+for a DP-600 topic from a bank that has none, returns undefined, and the
+presenter *"resolves neutral without troubling the player"*. The game would
+stop asking questions and score zero, silently. That is the locked door of
+section 58 again.
+
+⚠️ Rewriting the topic id on the way in is worse. `Dp600ChallengeProvider.present`
+records mastery under `request.topicId` **before** calling the presenter, so a
+six-year-old's answers about Anlaute would land on DP-600 topics and corrupt
+the readiness figure. That is precisely what the second seat was given no
+mastery tracker to prevent.
+
+So a solo Erste Klasse game has to be a **Klasse 1 game**: its own topics, its
+own antagonists, its own exam. Everything already keys off the campaign. The
+one thing that did not was the army.
+
+### 70.2 The ladder, read as an index
+
+`unlockedBySkill` is a 1-based index into the topic graph, and `unitUnlocked`
+read it literally: `nodes[skill - 1]`.
+
+⚠️ That quietly made the entire unit table a statement about **one
+curriculum**. DP-600 has exactly 41 topics and the last unit unlocks at exactly
+41, so it worked, and it worked *only because those two numbers were equal*. A
+24-topic tree can never unlock anything gated above 24: `unitUnlocked` returns
+false forever and nothing anywhere says why.
+
+It is now a position on a ladder, scaled onto whatever length the campaign
+actually has. For a graph the length of the ladder the arithmetic is the
+identity, which is the property that made it safe to change and which is now
+asserted rather than assumed.
+
+### 70.3 ⚠️ A float divide broke the identity immediately
+
+Written the natural way round, `(skill / ladder) * nodes.length`, the identity
+case stops being the identity: 12/41 is not representable, `12/41*41` comes
+back as `12.000000000000002`, and `Math.ceil` turns that into 13. **Every unit
+unlocked one topic late on the one campaign the change was supposed to leave
+untouched.** An existing test caught it on the first run.
+
+`(skill * nodes.length) / ladder` stays exact whenever the two lengths agree.
+
+### 70.4 ⚠️ What is still missing
+
+The engine no longer objects to a short curriculum. Erste Klasse is still not
+selectable solo, and finishing it needs:
+
+1. **Seven antagonists** for `M1 M2 M3 D1 D2 D3 D4`, in German and pitched at a
+   six-year-old. D213 already sketched the idea with *Die Zahlendreher*.
+2. **`role: 'world'`** on the campaign once it has them.
+3. **The world built from the chosen campaign.** `newGame` currently takes
+   `provider.topics()` and `rosterFor(ANTAGONISTS, ...)`, both DP-600, and the
+   provider is a module-level singleton constructed once. Switching campaign
+   per game is a real refactor of that seam, not a parameter.
+4. **The course picker shown when `players === 1`.**
+
+⚠️ Step 3 is where the readiness figure lives, and a mistake there is silent.
+It is deliberately not being rushed at the end of a long session.
+
+### 70.5 Decisions
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D493 | ⚠️ **`unlockedBySkill` is a rung on a ladder, not an index** | Read as an index it encoded "the curriculum has 41 topics" into every unit, which is the assumption D211 said the boundary existed to prevent. Nothing outside DP-600 could ever field a full army |
+| D494 | The identity for a ladder-length graph is asserted, not assumed | It is the entire safety argument for the change, and it broke on the first attempt from a floating-point divide |
+| D495 | Multiply before dividing | `(skill * nodes) / ladder` is exact where `(skill / ladder) * nodes` is not, and the difference is a whole unlock step |
+| D496 | ⚠️ **A short course does not get the DP-600 world with different questions** | The bank has no question for a DP-600 topic, so the presenter would resolve neutral and the game would quietly stop asking. Remapping the topic instead corrupts mastery, which is the figure the product exists to produce |
+| D497 | The remaining campaign-switch is left for its own pass | It rebuilds a module-level singleton that owns the readiness pipeline. Half of that, written tired, is worse than none of it |
+
+### 70.6 Verified
+
+1056 tests, 4 new. A 24-topic tree now unlocks every unit by its last topic,
+unlocks none of the gated ones with no research, and keeps the Pipeline Runner
+ahead of the Direct Lake Titan. The 41-topic case is unchanged, unit by unit.
 
 ---
 

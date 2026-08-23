@@ -15,6 +15,7 @@ import {
   unitType,
   unitUnlocked,
   unitsOf,
+  UNIT_TYPE_IDS,
   type GameState,
   type TopicGraph,
 } from '../src/index.js';
@@ -218,6 +219,75 @@ describe('the tech tree hands out the army', () => {
     const small = withCapital();
     const tiny: GameState = { ...small, topics: { nodes: small.topics.nodes.slice(0, 2) } };
     expect(unitUnlocked(tiny, 'directLakeTitan')).toBe(false);
+  });
+
+  /*
+   * ⚠️ The unit table is a ladder, not a list of topic indices.
+   *
+   * Read literally, `unlockedBySkill` made the whole table a statement about
+   * DP-600 in particular: that outline has exactly 41 topics and the last unit
+   * unlocks at exactly 41, so it worked, and only because those two numbers
+   * happened to be equal. A 24-topic curriculum could never unlock anything
+   * gated above 24 and nothing said why, which is what stopped a shorter
+   * course ever building a world.
+   */
+  describe('⚠️ a shorter curriculum still hands out the whole army', () => {
+    const shortTree = (length: number): GameState => {
+      const base = withCapital();
+      return { ...base, topics: { nodes: base.topics.nodes.slice(0, length) } };
+    };
+
+    it('leaves the 41-topic case exactly as it was', () => {
+      // The property that made the change safe: for a graph the length of the
+      // ladder, the scaling is the identity. Asserted, not assumed, because a
+      // float divide already broke it once and shifted every unlock by one.
+      const state = withCapital();
+      for (const id of UNIT_TYPE_IDS) {
+        const skill = unitType(id).unlockedBySkill;
+        if (skill === null) continue;
+        const node = state.topics.nodes[skill - 1]!;
+        const learned: GameState = {
+          ...state,
+          research: { ...state.research, known: [node.id] },
+        };
+        expect(unitUnlocked(learned, id), `${id} at literal index ${skill}`).toBe(true);
+      }
+    });
+
+    it('unlocks every unit by the end of a 24-topic tree', () => {
+      const state = shortTree(24);
+      const everything: GameState = {
+        ...state,
+        research: { ...state.research, known: state.topics.nodes.map((n) => n.id) },
+      };
+      for (const id of UNIT_TYPE_IDS) {
+        expect(unitUnlocked(everything, id), `${id} on a 24-topic tree`).toBe(true);
+      }
+    });
+
+    it('still gates them: knowing nothing unlocks only the free units', () => {
+      const state = shortTree(24);
+      for (const id of UNIT_TYPE_IDS) {
+        const free = unitType(id).unlockedBySkill === null;
+        expect(unitUnlocked(state, id), `${id} with no research`).toBe(free);
+      }
+    });
+
+    it('keeps the order: the late units still come after the early ones', () => {
+      const state = shortTree(24);
+      const known: string[] = [];
+      const unlockedAt = new Map<string, number>();
+      for (const node of state.topics.nodes) {
+        known.push(node.id);
+        const learned: GameState = { ...state, research: { ...state.research, known: [...known] } };
+        for (const id of UNIT_TYPE_IDS) {
+          if (!unlockedAt.has(id) && unitUnlocked(learned, id)) unlockedAt.set(id, known.length);
+        }
+      }
+      const runner = unlockedAt.get('pipelineRunner')!;
+      const titan = unlockedAt.get('directLakeTitan')!;
+      expect(runner).toBeLessThan(titan);
+    });
   });
 });
 
