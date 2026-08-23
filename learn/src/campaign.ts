@@ -103,11 +103,37 @@ export const DP600_CAMPAIGN: Campaign = Object.freeze({
 });
 
 /**
+ * One faction per Klasse 1 cluster, each named for the mistake it makes.
+ *
+ * ⚠️ The joke has to be the SKILL, not a generic monster. A child who beats
+ * Die Silbenschlucker should be able to say what a Silbe is, so every name is
+ * the error its cluster teaches you to stop making: the Zahlendreher swap
+ * digits, the Kleinschreiber refuse capital letters, the Punktvergesser never
+ * finish a sentence. Being frightening is not the point and would not survive
+ * the audience.
+ */
+const KLASSE1_ANTAGONISTS: readonly AntagonistDefinition[] = Object.freeze([
+  { id: 'zahlendreher', label: 'Die Zahlendreher', topicCluster: 'M1', colour: '#b5533f', seat: 'Zahlenburg', seatKind: 'lakehouse' },
+  { id: 'rechenraeuber', label: 'Die Rechenräuber', topicCluster: 'M2', colour: '#c2793a', seat: 'Rechenfels', seatKind: 'warehouse' },
+  { id: 'musterbrecher', label: 'Die Musterbrecher', topicCluster: 'M3', colour: '#7b8a3f', seat: 'Formenhain', seatKind: 'workspace' },
+  { id: 'lautlose', label: 'Die Lautlosen', topicCluster: 'D1', colour: '#4f7f7a', seat: 'Lautturm', seatKind: 'eventhouse' },
+  { id: 'silbenschlucker', label: 'Die Silbenschlucker', topicCluster: 'D2', colour: '#8a6fb0', seat: 'Silbenhain', seatKind: 'eventhouse' },
+  { id: 'kleinschreiber', label: 'Die Kleinschreiber', topicCluster: 'D3', colour: '#9c5f8a', seat: 'Kleinstadt', seatKind: 'semanticModel' },
+  { id: 'punktvergesser', label: 'Die Punktvergesser', topicCluster: 'D4', colour: '#a8474f', seat: 'Satzende', seatKind: 'semanticModel' },
+] as const);
+
+/**
  * Klasse 1: Mathe und Deutsch.
  *
- * A question source for the second seat, not a world. Twenty-four skills and
- * fifty-one questions, every stem short enough for somebody still learning to
- * read.
+ * ⚠️ **A world in its own right, not just a question source for seat two.**
+ * It began as the latter, because two things stopped it being a world: the
+ * unit table was secretly a statement about DP-600's 41 topics (section 70),
+ * and the app built every world from DP-600 no matter what the setup screen
+ * was told. Both are fixed, so a six-year-old can now have their own empire
+ * rather than only riding along in somebody else's.
+ *
+ * Twenty-four skills and fifty-one questions, every stem short enough for
+ * somebody still learning to read.
  */
 export const KLASSE1_CAMPAIGN: Campaign = Object.freeze({
   id: 'klasse1',
@@ -115,10 +141,16 @@ export const KLASSE1_CAMPAIGN: Campaign = Object.freeze({
   course: '1. Klasse: Mathe und Deutsch',
   blurb: 'Zahlen bis 20, Plus und Minus, Anlaute, Silben und erste Sätze.',
   language: 'de',
-  role: 'questions',
+  role: 'world',
   outline: KLASSE1_OUTLINE,
   questions: KLASSE1_QUESTIONS,
-  antagonists: [],
+  antagonists: KLASSE1_ANTAGONISTS,
+  /*
+   * A gentler paper, and an examiner who calls earlier. `threshold` is read by
+   * `proctorReady`, which used to hard-code DP-600's 0.8: a child would have
+   * had to reach professional-certification readiness before anything
+   * happened.
+   */
   exam: { length: 10, passMark: 0.6, threshold: 0.6, questionMs: 60_000 },
 });
 
@@ -135,7 +167,10 @@ export function campaignById(id: string): Campaign | undefined {
 
 /** The tech tree this campaign produces. */
 export function topicsFor(campaign: Campaign): TopicGraph {
-  return buildTopicGraph(campaign.outline);
+  // ⚠️ The id is not decoration. Topic ids are the keys SM-2 records and saves
+  // are stored under, so two campaigns sharing a prefix share a mastery
+  // history. See `topicIdFor`.
+  return buildTopicGraph(campaign.outline, campaign.id);
 }
 
 /**
@@ -182,21 +217,26 @@ export function validateCampaign(campaign: Campaign): string[] {
   if (campaign.role !== 'world') return problems;
 
   /*
-   * ⚠️ The floor nobody had hit.
+   * ⚠️ **There is no longer a topic-count floor, and removing it was a
+   * correction rather than a relaxation.**
    *
-   * Units unlock at a 1-based index into the topic graph, and the table goes
-   * up to 41. A curriculum with thirty topics never unlocks the unit gated at
-   * forty-one: `unitUnlocked` returns false forever and nothing says why. It
-   * was invisible while there was exactly one campaign, which happened to be
-   * exactly long enough.
+   * This used to reject any world with fewer than `minimumTopicCount()`
+   * topics, on the grounds that "the last N unit unlock(s) can never fire".
+   * That was true when `unlockedBySkill` was read as a literal index into the
+   * graph. It stopped being true when the ladder was scaled onto whatever
+   * length the campaign actually has (section 70), and nothing came back here
+   * to say so, so the validator went on enforcing a rule whose reason had been
+   * deleted one package away.
+   *
+   * Measured before removing it: a 24-topic curriculum with every topic known
+   * reaches 12 of 12 units, exactly as a 41-topic one does. The floor was
+   * refusing worlds that work.
+   *
+   * ⚠️ It is still worth knowing that this WAS load-bearing. Leaving it in
+   * place would have been the safe-looking choice and would have kept a
+   * six-year-old's campaign permanently invalid for a reason that no longer
+   * existed.
    */
-  const floor = minimumTopicCount();
-  if (graph.nodes.length < floor) {
-    problems.push(
-      `${campaign.id}: ${graph.nodes.length} topics, but units unlock up to index ${floor}. ` +
-        `The last ${floor - graph.nodes.length} unit unlock(s) can never fire.`,
-    );
-  }
 
   // Every cluster in the outline needs a faction, and every faction a cluster.
   const held = new Set(campaign.antagonists.map((a) => a.topicCluster));

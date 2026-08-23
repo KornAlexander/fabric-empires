@@ -28,7 +28,17 @@ export type QuestionPresenter = (
 
 export interface Dp600ProviderOptions {
   readonly presenter?: QuestionPresenter;
-  readonly graph?: TopicGraph;
+  /**
+   * The tech tree, or a way of finding the current one.
+   *
+   * ⚠️ **A function, because the campaign is chosen after this is built.** The
+   * app constructs one provider at module load, long before the player has
+   * picked a course, so a graph fixed at construction time can only ever be
+   * the default one. That is exactly how the world came to be DP-600 no matter
+   * what the setup screen was told: the picker offered a choice and the
+   * provider had already answered.
+   */
+  readonly graph?: TopicGraph | (() => TopicGraph);
   /**
    * Where review scheduling lives. Without one the game is playable and
    * teaches nothing between sessions, which is the honest degraded mode.
@@ -39,7 +49,7 @@ export interface Dp600ProviderOptions {
 }
 
 export class Dp600ChallengeProvider implements ChallengeProvider {
-  private readonly graph: TopicGraph;
+  private readonly graph: TopicGraph | (() => TopicGraph);
   private readonly presenter: QuestionPresenter | undefined;
   private readonly mastery: MasteryTracker | undefined;
   private readonly due: (() => string[]) | undefined;
@@ -57,7 +67,7 @@ export class Dp600ChallengeProvider implements ChallengeProvider {
   }
 
   topics(): TopicGraph {
-    return this.graph;
+    return typeof this.graph === 'function' ? this.graph() : this.graph;
   }
 
   async present(request: ChallengeRequest): Promise<ChallengeOutcome> {
@@ -79,7 +89,7 @@ export class Dp600ChallengeProvider implements ChallengeProvider {
     if (!this.mastery) return [];
     return this.mastery.dueTopics(
       now,
-      this.graph.nodes.map((node) => node.id),
+      this.topics().nodes.map((node) => node.id),
     );
   }
 }

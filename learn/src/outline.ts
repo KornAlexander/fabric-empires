@@ -51,8 +51,25 @@ export const DP600_OUTLINE: Outline = outlineJson as Outline;
 export const GATEWAY_WEIGHT = 2;
 export const SKILL_WEIGHT = 1;
 
-export function topicIdFor(skillId: number): string {
-  return `dp600-${skillId}`;
+/**
+ * The topic id for a skill, namespaced by the campaign it belongs to.
+ *
+ * ⚠️ **The campaign id is a parameter because topic ids are STORAGE KEYS.**
+ * SM-2 records, the researched set and the save file are all keyed by these
+ * strings. While this emitted `dp600-` unconditionally, every campaign
+ * produced the same 1..N ids, so a second world's topics would have landed on
+ * top of DP-600's records: a child's answers about Anlaute would have been
+ * filed against "Implement workspace-level access controls" and moved the one
+ * number this product really produces. Nothing would have thrown.
+ *
+ * ⚠️ Note that the INVERSE, `skillIdFromTopic`, was already fixed to accept
+ * any prefix, and its comment already described the shape as
+ * `<campaign>-<number>`. Half of a pair was corrected and the half that writes
+ * the value was left behind, which is why the format was documented and
+ * unreachable at the same time.
+ */
+export function topicIdFor(skillId: number, campaignId = 'dp600'): string {
+  return `${campaignId}-${skillId}`;
 }
 
 /**
@@ -104,7 +121,10 @@ export function clusterOf(
  * the 41 nodes, the tree is visibly dominated by "Prepare data", exactly as
  * the exam is.
  */
-export function buildTopicGraph(outline: Outline = DP600_OUTLINE): TopicGraph {
+export function buildTopicGraph(
+  outline: Outline = DP600_OUTLINE,
+  campaignId = 'dp600',
+): TopicGraph {
   const nodes: TopicNode[] = [];
 
   for (const branch of outline.branches) {
@@ -114,7 +134,7 @@ export function buildTopicGraph(outline: Outline = DP600_OUTLINE): TopicGraph {
       const [gateway, ...rest] = cluster.skills;
       if (!gateway) continue;
 
-      const gatewayId = topicIdFor(gateway.id);
+      const gatewayId = topicIdFor(gateway.id, campaignId);
       nodes.push({
         id: gatewayId,
         label: gateway.label,
@@ -125,7 +145,7 @@ export function buildTopicGraph(outline: Outline = DP600_OUTLINE): TopicGraph {
 
       for (const skill of rest) {
         nodes.push({
-          id: topicIdFor(skill.id),
+          id: topicIdFor(skill.id, campaignId),
           label: skill.label,
           cluster: cluster.id,
           requires: [gatewayId],

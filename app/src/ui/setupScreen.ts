@@ -242,31 +242,46 @@ export function createSetupScreen(): SetupScreen {
 
       const repaintCourses = (): void => {
         courseGroup.replaceChildren();
-        courseGroup.append(
-          optionList(
-            t('Player 1 answers with 1 2 3 4'),
-            allCampaigns()
-              .filter((c) => c.role === 'world')
-              .map((c) => ({ id: c.id, label: c.course, detail: c.blurb })),
-            courseP1,
-            (id) => {
-              courseP1 = id;
-            },
-          ),
-        );
+        const worlds = allCampaigns().filter((c) => c.role === 'world');
+        /*
+         * ⚠️ Shown to a SOLO player too, now that the answer is used.
+         *
+         * This picker was hidden unless two people were playing, which was the
+         * right call while it did nothing: `newGame` ignored it and built a
+         * DP-600 world regardless, so offering a lone player a choice would
+         * have been offering them a lie. It genuinely selects the world now,
+         * so hiding it would instead be hiding the feature.
+         *
+         * Still suppressed when there is nothing to choose between. A list of
+         * one is not a choice, it is a label.
+         */
+        if (worlds.length > 1 || players === 2) {
+          courseGroup.append(
+            optionList(
+              players === 2 ? t('Player 1 answers with 1 2 3 4') : t('Your course'),
+              worlds.map((c) => ({ id: c.id, label: c.course, detail: c.blurb })),
+              courseP1,
+              (id) => {
+                courseP1 = id;
+              },
+            ),
+          );
+        }
         // ⚠️ Only player one's course may build the world, so the second seat
         // is offered every course including the question-only ones, which is
         // what every imported file is.
-        courseGroup.append(
-          optionList(
-            t('Player 2 answers with A B C D'),
-            allCampaigns().map((c) => ({ id: c.id, label: c.course, detail: c.blurb })),
-            courseP2,
-            (id) => {
-              courseP2 = id;
-            },
-          ),
-        );
+        if (players === 2) {
+          courseGroup.append(
+            optionList(
+              t('Player 2 answers with A B C D'),
+              allCampaigns().map((c) => ({ id: c.id, label: c.course, detail: c.blurb })),
+              courseP2,
+              (id) => {
+                courseP2 = id;
+              },
+            ),
+          );
+        }
       };
 
       /*
@@ -294,7 +309,9 @@ export function createSetupScreen(): SetupScreen {
       card.append(courseGroup);
 
       const paintSeats = (): void => {
-        courseGroup.style.display = players === 2 ? '' : 'none';
+        // The course group's CONTENTS depend on the player count, not just its
+        // visibility, so this is a repaint rather than a display toggle.
+        repaintCourses();
       };
       paintSeats();
 

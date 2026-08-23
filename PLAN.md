@@ -310,6 +310,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D516–D519 | Auditing the learning loop, and finding it sound | Recorded in full in section 74 |
 | D520–D526 | The first screen opened halfway through itself | Recorded in full in section 75 |
 | D527–D534 | The film was made by hand, so it drifted | Recorded in full in section 76 |
+| D535–D543 | The course picker was a control that did nothing | Recorded in full in section 77 |
 
 ### 28. Cheat codes
 
@@ -6533,6 +6534,175 @@ worth checking a guard: the bug was put back, and the test failed.
 | D532 | The film is recorded in English | A German browser gets a German game without being asked, and this machine is German, so the deliverable would silently have come out in the wrong language for its audience |
 | D533 | ⚠️ **`/media/` is anchored, and a test enforces it** | `media/` matched at any depth and hid the recorder. `git status` and the publishable scan are both blind to ignored files, so nothing would have said so |
 | D534 | NOTICE's trailer section is corrected in place | It claimed non-commercial terms that no longer apply, while the same document claimed nothing free-tier survived. A licensing document contradicting itself is worse than one that is merely out of date |
+
+---
+
+## 77. The course picker was a control that did nothing
+
+### 77.1 What the setup screen was promising
+
+The plan was to finish Erste Klasse: give the Year 1 curriculum its factions,
+flip `role` from `questions` to `world`, and let a six-year-old have their own
+empire instead of only riding along in seat two.
+
+Mapping it first turned up something else. The setup screen has always shown
+player one a course picker, **filtered to campaigns that claim `role: 'world'`**,
+and `newGame` then ignored the answer completely:
+
+```ts
+const roster = rosterFor(ANTAGONISTS, lastSetup.focus, lastSetup.rivals);
+createGameState(seed, { map: ..., topics: provider.topics(), antagonistIds: roster });
+```
+
+`ANTAGONISTS` is the engine's built-in DP-600 roster. `provider.topics()` is a
+module-level singleton fixed to `DP600_TOPIC_GRAPH` at construction, which
+happens at import time, long before anybody has chosen anything. The exam came
+from four constants in `exam.ts`. `courseP1` selected one label in the co-op
+modal and nothing else.
+
+So the picker was a control that did nothing, and it was invisible for the
+reason these always are: there is exactly one world campaign compiled in, so
+the right answer and the wrong answer were the same value. Same shape as the
+unit table being a statement about DP-600 (section 70) and `media/` matching at
+any depth (section 76): a coincidence of the only case that existed, standing
+in for a rule.
+
+Fixing the lie is the same work as building the feature, which is what made
+this worth doing rather than deferring.
+
+### 77.2 One accessor, and everything routed through it
+
+```ts
+function worldCampaign(): Campaign {
+  const chosen = courseById(lastSetup.courseP1);
+  return chosen?.role === 'world' ? chosen : DP600_CAMPAIGN;
+}
+```
+
+Topics, factions, questions, outline, exam length, question timer and Proctor
+threshold now all read from it. Two supporting changes were needed:
+
+- the provider's `graph` option accepts **a function**, because the provider is
+  built before the choice exists;
+- `proctorReady(model, threshold)` takes the threshold as a parameter with the
+  DP-600 default, instead of reading a constant. A child would otherwise have
+  had to reach professional-certification readiness of 0.8 before anything
+  happened.
+
+⚠️ `newGame` also has to pass the antagonist **definitions**, not only the ids.
+Passing ids alone silently falls back to the engine's built-in roster, so a
+Klasse 1 game would have been fought against The Silo Horde, in English.
+
+### 77.3 ⚠️ Topic ids are storage keys, and they all said `dp600-`
+
+The first run of the new end-to-end test failed on something better than what
+it was testing:
+
+```
+AssertionError: dp600-1: expected 'dp600-1' to match /^klasse1-/
+```
+
+The Klasse 1 graph had the right number of nodes and DP-600's ids, because
+`topicIdFor` was:
+
+```ts
+export function topicIdFor(skillId: number): string {
+  return `dp600-${skillId}`;
+}
+```
+
+This matters far more than a cosmetic prefix. Topic ids are the keys that SM-2
+records, the researched set and the save file are stored under. Every campaign
+would have produced the same `1..N` ids, so a second world's topics would have
+landed on top of DP-600's records: a child's answers about Anlaute filed
+against "Implement workspace-level access controls", moving the one number this
+product really produces. Nothing would have thrown. It is exactly the
+corruption the second seat was given no mastery tracker to avoid (D205),
+arriving through a different door.
+
+⚠️ **And the inverse had already been fixed.** `skillIdFromTopic` had been
+changed to accept any prefix, and its comment already described the format as
+`<campaign>-<number>`. The reader was correct, documented, and reading a value
+nothing could produce. Half a pair fixed, and the half that WRITES left behind.
+
+### 77.4 The floor that was still being enforced after its reason was deleted
+
+`validateCampaign` rejected any world with fewer than `minimumTopicCount()`
+topics: "the last N unit unlock(s) can never fire". That was true while
+`unlockedBySkill` was a literal index. Section 70 scaled the ladder onto
+whatever length the campaign has, and nothing came back here to say so.
+
+Measured before removing it, rather than argued:
+
+```
+dp600    topics= 41  buildable=12/12  all units reachable
+klasse1  topics= 24  buildable=12/12  all units reachable
+```
+
+The check was refusing worlds that work. The test that pinned it now asserts
+the opposite and says why it used to be right, because deleting a test is how
+a rule loses its history.
+
+### 77.5 Seven factions named after the mistake they make
+
+One per cluster, in German, because the joke has to be the **skill**:
+
+| cluster | faction | what it gets wrong |
+| --- | --- | --- |
+| M1 Zahlen bis 20 | Die Zahlendreher | swap the digits |
+| M2 Plus und Minus | Die Rechenräuber | steal the sum |
+| M3 Formen und Größen | Die Musterbrecher | break the pattern |
+| D1 Laute | Die Lautlosen | take the sounds away |
+| D2 Silben | Die Silbenschlucker | swallow the syllables |
+| D3 Groß und klein | Die Kleinschreiber | refuse capital letters |
+| D4 Wörter und Sätze | Die Punktvergesser | never finish a sentence |
+
+A child who beats Die Silbenschlucker should be able to say what a Silbe is.
+Being frightening is not the point and would not survive the audience.
+
+### 77.6 The picker is shown to a solo player now, because it means something
+
+It was hidden unless two people were playing, which was right while it did
+nothing: offering a lone player a choice that was discarded would have been
+offering them a lie. It is suppressed only when there is genuinely nothing to
+choose between, since a list of one is a label rather than a choice.
+
+### 77.7 ⚠️ A German-first world exposed eight English strings
+
+The screenshot showed what 1068 passing tests could not: the log reading
+"The Proctor has noticed you at 100% readiness" underneath a German exam.
+Eight `log()` calls still wrote raw English. They had never been wrong before,
+because the only world was English by default. The i18n scan added in section
+73 looks at `.textContent` assignments and these go through a helper, so they
+were outside it.
+
+### 77.8 Verified on the deployed build, both worlds, one session
+
+| | Klasse 1 | DP-600 |
+| --- | --- | --- |
+| topics | 24, `klasse1-*` | 41, `dp600-*` |
+| factions | Die Zahlendreher … Die Punktvergesser | The Silo Horde … The Import Zealots |
+| villages | Zahlenburg, Satzende, … | Silo Hold, … |
+| Proctor threshold | 0.6 | 0.8 |
+| paper | **10 questions**, 60 s each | **40 questions**, 45 s each |
+| first exam question | "10 - 10 = ?" | DP-600 stem |
+
+Switching between them inside one session works, and DP-600 is unchanged in
+every observable respect. 1068 tests, 53 files.
+
+### 77.9 Decisions
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D535 | ⚠️ **The world is built from `courseP1`, all of it** | The picker had been filtering on `role: 'world'` and discarding the answer. Fixing the lie and building the feature were the same work |
+| D536 | The provider takes a graph FUNCTION | It is constructed at import time, before a course is chosen, so a value fixed at construction can only ever be the default |
+| D537 | ⚠️ **`newGame` passes antagonist DEFINITIONS, not just ids** | Ids alone fall back to the engine's built-in roster, so a Klasse 1 game would have been fought against The Silo Horde in English |
+| D538 | ⚠️ **`topicIdFor` takes the campaign id** | Topic ids are the keys SM-2 records and saves live under. Every campaign emitting `dp600-N` would have filed a child's answers against DP-600's records, silently |
+| D539 | `proctorReady` takes a threshold | A six-year-old should not have to reach professional-certification readiness before their examiner appears |
+| D540 | ⚠️ **The topic floor is deleted, not relaxed** | Its stated reason was removed one package away in section 70. Measured: 24 topics reach 12 of 12 units, exactly as 41 do. It was refusing worlds that work |
+| D541 | Klasse 1's factions are named for the mistake, in German | The joke has to be the skill. A child who beats Die Silbenschlucker should be able to say what a Silbe is |
+| D542 | The course picker is shown when playing alone | It was hidden while it did nothing, which was correct then. Hiding it now would hide the feature |
+| D543 | The remaining raw-English `log()` calls are translated | They were never wrong before because the only world was English. A German world is what made them visible, and a screenshot is what found them |
 
 ---
 

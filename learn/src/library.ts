@@ -93,6 +93,15 @@ export interface LibraryInput {
   /** Topic ids SM-2 currently considers due. */
   readonly due: ReadonlySet<string>;
   readonly outline?: Outline;
+  /**
+   * Which campaign these topic ids belong to.
+   *
+   * ⚠️ Must match the graph the game is actually running, or every lookup
+   * into `records`, `researched` and `due` misses: the library would report a
+   * fully studied empire as untouched, because it would be asking about
+   * `dp600-7` while the run stored `klasse1-7`.
+   */
+  readonly campaignId?: string;
   /** Cap on links shown per skill, so a row stays readable. */
   readonly maxLinks?: number;
 }
@@ -108,6 +117,7 @@ function isRetained(band: MasteryBand): boolean {
 
 export function buildLibraryModel(input: LibraryInput): LibraryModel {
   const outline = input.outline ?? DP600_OUTLINE;
+  const campaignId = input.campaignId ?? 'dp600';
   const maxLinks = input.maxLinks ?? 3;
 
   const bands = emptyBands();
@@ -131,7 +141,7 @@ export function buildLibraryModel(input: LibraryInput): LibraryModel {
       const skills: LibrarySkillEntry[] = [];
 
       for (const skill of cluster.skills) {
-        const topicId = topicIdFor(skill.id);
+        const topicId = topicIdFor(skill.id, campaignId);
         const record = input.records.get(topicId);
         const band = masteryBand(record);
         const forSkill = questionsForSkill(input.questions, skill.id);

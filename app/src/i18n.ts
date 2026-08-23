@@ -138,6 +138,20 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
   'One empire. Every battle asks you both at once, each from your own course.':
     'Ein Reich. Jeder Kampf fragt euch beide gleichzeitig, jeden aus seinem eigenen Kurs.',
   'Player 1 answers with 1 2 3 4': 'Spieler 1 antwortet mit 1 2 3 4',
+  'Your course': 'Dein Kurs',
+  'Nothing to raid here.': 'Hier gibt es nichts zu plündern.',
+  'The raid failed.': 'Der Überfall ist gescheitert.',
+  'The village': 'Das Dorf',
+  '{city} taken.': '{city} eingenommen.',
+  '{city} taken from {from}.': '{city} von {from} eingenommen.',
+  'Carried off {spoils}.': '{spoils} erbeutet.',
+  'You held. A raider from {who} was destroyed.':
+    'Du hast standgehalten. Ein Angreifer von {who} wurde vernichtet.',
+  'The Proctor sets {count} questions.': 'Der Prüfer stellt {count} Fragen.',
+  'The Proctor has noticed you at {percent}% readiness. {count} questions await.':
+    'Der Prüfer ist bei {percent}% Bereitschaft auf dich aufmerksam geworden. {count} Fragen warten.',
+  'Hex grid shown.': 'Hexgitter eingeblendet.',
+  'Hex grid hidden.': 'Hexgitter ausgeblendet.',
   'Player 2 answers with A B C D': 'Spieler 2 antwortet mit A B C D',
   '{n} rivals': '{n} Gegner',
   'Every branch of the outline has a faction holding it.':

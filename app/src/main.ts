@@ -86,10 +86,8 @@ import {
 } from '@fabric-empires/engine';
 import {
   DAY_MS,
-  DP600_QUESTIONS,
+  DP600_CAMPAIGN,
   Dp600ChallengeProvider,
-  SIEGE_LENGTH,
-  SIEGE_QUESTION_MS,
   bandStrength,
   buildLibraryModel,
   buildSiege,
@@ -104,6 +102,8 @@ import {
   scoreFor,
   scoreSiege,
   summarise,
+  topicsFor,
+  type Campaign,
 } from '@fabric-empires/learn';
 import { createEffects } from './render/effects.js';
 import { createScene3D } from './three/scene3d.js';
@@ -140,6 +140,31 @@ import { probeEdition } from './coach.js';
  * looks exactly like a single-player game.
  */
 const courseById = (id: string) => allCampaigns().find((c) => c.id === id);
+
+/**
+ * The campaign the WORLD is built from.
+ *
+ * ⚠️ **This function is the fix for a control that did nothing.** The setup
+ * screen has always shown player one a course picker, filtered to campaigns
+ * that claim `role: 'world'`, and `newGame` then ignored the answer entirely:
+ * the topic graph came from a provider hard-wired to DP-600, the factions came
+ * from the engine's built-in `ANTAGONISTS`, and the exam came from constants.
+ * Picking a course changed a label in the co-op modal and nothing else.
+ *
+ * It was invisible for the usual reason. There is exactly one world campaign
+ * compiled in, so the wrong answer and the right answer were the same value.
+ * That is the same shape as the unit table being a statement about DP-600
+ * (section 70) and `media/` matching at any depth (section 76): a coincidence
+ * of the only case that existed, standing in for a rule.
+ *
+ * Falls back rather than throwing. A campaign that only supplies questions
+ * cannot build a world, and an id from a deleted import resolves to nothing,
+ * so both land on the campaign this game is actually about.
+ */
+function worldCampaign(): Campaign {
+  const chosen = courseById(lastSetup.courseP1);
+  return chosen?.role === 'world' ? chosen : DP600_CAMPAIGN;
+}
 import { loadGame, localSlot, saveGame } from './persist.js';
 import { createBattleBanner, type BattleSide } from './ui/battleBanner.js';
 
@@ -180,6 +205,8 @@ let seatOnePresenter: ((request: ChallengeRequest) => Promise<ChallengeOutcome>)
 const provider = new Dp600ChallengeProvider({
   presenter: (request) => (seatOnePresenter ?? soloPresenter)(request),
   mastery,
+  // Late-bound: this is built before the player has chosen anything.
+  graph: () => topicsFor(worldCampaign()),
 });
 
 /**
@@ -411,10 +438,13 @@ function recordHarnessGrant(name: string): void {
  */
 const library = createGreatLibrary(() => {
   const now = Date.now();
+  const campaign = worldCampaign();
   const model = buildLibraryModel({
     records: new Map(state.topics.nodes.map((n) => [n.id, mastery.get(n.id)])),
     researched: new Set(state.research.known),
-    questions: DP600_QUESTIONS,
+    questions: campaign.questions,
+    outline: campaign.outline,
+    campaignId: campaign.id,
     due: new Set(provider.dueTopics(now)),
   });
   return { model, summary: summarise(model), now };
@@ -1022,14 +1052,14 @@ function doRaid(): void {
   if (!target) {
     // Say why rather than doing nothing: the cooldown is invisible otherwise.
     const near = hexNeighbour(state.units.get(selectedUnitId)!.hex, 0);
-    log(canRaid(state, selectedUnitId, near).reason ?? 'Nothing to raid here.', 'bad');
+    log(t(canRaid(state, selectedUnitId, near).reason ?? 'Nothing to raid here.'), 'bad');
     return;
   }
 
   const village = cityAt(state, target);
   const result = raidCity(state, selectedUnitId, target);
   if (!result.ok || !result.state) {
-    log(result.reason ?? 'The raid failed.', 'bad');
+    log(t(result.reason ?? 'The raid failed.'), 'bad');
     return;
   }
 
@@ -1430,7 +1460,12 @@ async function playAttack(
     const from = battle.cityFormerFactionId
       ? state.factions.get(battle.cityFormerFactionId)?.label
       : undefined;
-    log(`${defenderCity?.name ?? 'The village'} taken${from ? ` from ${from}` : ''}.`, 'good');
+    log(
+    from
+      ? t('{city} taken from {from}.', { city: defenderCity?.name ?? t('The village'), from })
+      : t('{city} taken.', { city: defenderCity?.name ?? t('The village') }),
+    'good',
+  );
     if (battle.clusterOpened) {
       // The point of capturing rather than burning, said out loud.
       const topic = topicById(state.topics, battle.clusterOpened);
@@ -1453,7 +1488,7 @@ async function playAttack(
       const parts = Object.entries(battle.loot)
         .filter(([, amount]) => (amount ?? 0) > 0)
         .map(([id, amount]) => `${amount} ${id}`);
-      if (parts.length > 0) log(`Carried off ${parts.join(', ')}.`, 'good');
+      if (parts.length > 0) log(t('Carried off {spoils}.', { spoils: parts.join(', ') }), 'good');
     }
     log(t('Nothing was learned there.'), 'bad');
     void playCityFallsShot(target);
@@ -2109,7 +2144,7 @@ async function presentEnemyTurn(
     } else if (battle?.defenderDestroyed) {
       log(`${who} destroyed one of your units.`, 'bad');
     } else if (battle?.attackerDestroyed) {
-      log(`You held. A raider from ${who} was destroyed.`, 'good');
+      log(t('You held. A raider from {who} was destroyed.', { who }), 'good');
     } else {
       log(`${who} raided you for ${battle?.damageToDefender ?? 0}.`, 'bad');
     }
@@ -2449,10 +2484,13 @@ function article(label: string): string {
  */
 function libraryModel() {
   const now = Date.now();
+  const campaign = worldCampaign();
   return buildLibraryModel({
     records: new Map(state.topics.nodes.map((n) => [n.id, mastery.get(n.id)])),
     researched: new Set(state.research.known),
-    questions: DP600_QUESTIONS,
+    questions: campaign.questions,
+    outline: campaign.outline,
+    campaignId: campaign.id,
     due: new Set(provider.dueTopics(now)),
   });
 }
@@ -2466,15 +2504,19 @@ function libraryModel() {
  */
 function refreshReadiness(): void {
   const model = libraryModel();
+  const exam = worldCampaign().exam;
   const percent = Math.round(model.examRetained * 100);
   el.readiness.textContent = t('{percent}% exam', { percent });
 
-  const ready = proctorReady(model);
+  const ready = proctorReady(model, exam.threshold);
   el.faceProctor.hidden = !ready || finished;
   if (ready && !proctorAnnounced) {
     proctorAnnounced = true;
     log(
-      `The Proctor has noticed you at ${percent}% readiness. ${SIEGE_LENGTH} questions await.`,
+      t('The Proctor has noticed you at {percent}% readiness. {count} questions await.', {
+        percent,
+        count: exam.length,
+      }),
       'good',
     );
     // Straight down onto the capital, because the exam is not coming for a
@@ -2514,9 +2556,15 @@ async function faceTheProctor(): Promise<void> {
   siegeRunning = true;
   el.faceProctor.disabled = true;
 
-  const paper = buildSiege(DP600_QUESTIONS, state.seed);
+  const campaign = worldCampaign();
+  const paper = buildSiege(
+    campaign.questions,
+    state.seed,
+    campaign.outline,
+    campaign.exam.length,
+  );
   const correctIds = new Set<string>();
-  log(`The Proctor sets ${paper.length} questions.`, 'bad');
+  log(t('The Proctor sets {count} questions.', { count: paper.length }), 'bad');
 
   try {
     for (const entry of paper) {
@@ -2524,7 +2572,7 @@ async function faceTheProctor(): Promise<void> {
         kind: 'boss' as const,
         topicId: `exam-${entry.position}`,
         tier: 3 as const,
-        timeLimitMs: timeLimit(SIEGE_QUESTION_MS),
+        timeLimitMs: timeLimit(campaign.exam.questionMs),
       };
       const given = await modal.ask({ question: entry.question, request });
       const answer = given.answer;
@@ -2657,7 +2705,9 @@ function refreshThreats(): void {
   // ⚠️ Only the factions this game actually has. A game can be started with
   // three rivals rather than seven, and listing all of them would have shown
   // four enemies that do not exist, permanently "gone" and at infinite range.
-  const rows = ANTAGONISTS.filter((a) => state.factions.has(a.id)).map((antagonist) => {
+  const rows = worldCampaign().antagonists
+    .filter((a) => state.factions.has(a.id))
+    .map((antagonist) => {
     const units = unitsOf(state, antagonist.id);
     let distance = Number.POSITIVE_INFINITY;
     for (const unit of units) {
@@ -2761,11 +2811,21 @@ function newGame(rawSeed: string): void {
   const seed = normaliseSeed(rawSeed);
   const shape = WORLD_SHAPES.find((s) => s.id === lastSetup.shape);
   const size = WORLD_SIZES.find((s) => s.id === lastSetup.size);
-  const roster = rosterFor(ANTAGONISTS, lastSetup.focus, lastSetup.rivals);
+  /*
+   * ⚠️ The world comes from the chosen course, all three parts of it.
+   *
+   * `antagonists` hands the engine the faction DEFINITIONS and `antagonistIds`
+   * picks the subset this game wants. Passing only the ids, which is what this
+   * used to do, silently fell back to the engine's built-in DP-600 roster: a
+   * Klasse 1 game would have been fought against The Silo Horde.
+   */
+  const campaign = worldCampaign();
+  const roster = rosterFor(campaign.antagonists, lastSetup.focus, lastSetup.rivals);
   adopt(
     createGameState(seed, {
       map: worldOptions(lastSetup),
-      topics: provider.topics(),
+      topics: topicsFor(campaign),
+      antagonists: campaign.antagonists,
       antagonistIds: roster,
     }),
     t('New empire on seed {seed}. {shape}, {size}, {rivals} rivals.', {
@@ -3093,7 +3153,7 @@ window.addEventListener('keydown', (e) => {
   } else if (e.key === 'g') {
     gridVisible = !gridVisible;
     scene.setGridVisible(gridVisible);
-    log(gridVisible ? 'Hex grid shown.' : 'Hex grid hidden.');
+    log(gridVisible ? t('Hex grid shown.') : t('Hex grid hidden.'));
   }
 });
 

@@ -63,9 +63,18 @@ export interface SiegeResult {
   readonly byBranch: ReadonlyMap<string, { asked: number; correct: number }>;
 }
 
-/** Whether the player has studied enough for the Proctor to call. */
-export function proctorReady(model: LibraryModel): boolean {
-  return model.examRetained >= PROCTOR_THRESHOLD;
+/**
+ * Whether the player has studied enough for the Proctor to call.
+ *
+ * ⚠️ The threshold is a parameter with a DP-600 default, not a constant. Each
+ * campaign carries its own `exam.threshold`, and a Year 1 curriculum calls its
+ * examiner earlier than a professional certification does.
+ */
+export function proctorReady(
+  model: LibraryModel,
+  threshold: number = PROCTOR_THRESHOLD,
+): boolean {
+  return model.examRetained >= threshold;
 }
 
 /**
