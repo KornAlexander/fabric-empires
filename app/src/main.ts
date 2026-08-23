@@ -3039,6 +3039,15 @@ declare global {
         factionId: string,
       ) => { id: string; typeId: string; q: number; r: number; hp: number }[];
       cityCount: () => number;
+      cities: () => {
+        id: string;
+        factionId: string;
+        q: number;
+        r: number;
+        hp: number;
+        wallLevel: number;
+        wallHp: number;
+      }[];
       playerCityCount: () => number;
       resources: () => Record<string, number>;
       selected: () => string | undefined;
@@ -3166,6 +3175,24 @@ window.__fabricEmpires = {
   // ⚠️ Every settlement on the map, the player's and all seven villages. It
   // used to be the same number as the player's because nobody else had a city.
   cityCount: () => state.cities.size,
+  /**
+   * Every settlement, flattened, walls included.
+   *
+   * ⚠️ Added because antagonist fortification was untestable from a browser:
+   * the engine could prove a wall went up, and nothing outside it could see
+   * one. A rule that cannot be observed in the running game is a rule nobody
+   * will notice breaking.
+   */
+  cities: () =>
+    [...state.cities.values()].map((c) => ({
+      id: c.id,
+      factionId: c.factionId,
+      q: c.hex.q,
+      r: c.hex.r,
+      hp: c.hp,
+      wallLevel: c.wallLevel,
+      wallHp: c.wallHp,
+    })),
   playerCityCount: () =>
     [...state.cities.values()].filter((c) => c.factionId === PLAYER_FACTION_ID).length,
   resources: () => ({ ...state.factions.get(PLAYER_FACTION_ID)!.resources }),

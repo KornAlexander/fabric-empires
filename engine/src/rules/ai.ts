@@ -17,6 +17,7 @@ import { canAttack, previewAttack, resolveAttack, type CombatLog } from './comba
 export const HOPELESS_ASSAULT_TURNS = 12;
 import { findPath, reachable } from './movement.js';
 import { musterTile } from './production.js';
+import { maxWallHp, wallWork } from './walls.js';
 
 /**
  * The antagonist's turn.
@@ -343,7 +344,37 @@ export function garrisonPhase(state: GameState, factionId: string): AiTurnResult
       continue;
     }
     if (standing >= MAX_GARRISON_PER_FACTION) {
-      // Hold at the threshold: ready, but with nowhere to put anyone.
+      /*
+       * ⚠️ **An army at full strength digs in.**
+       *
+       * This cycle used to be thrown away: a faction at its unit cap held at
+       * the threshold and did nothing with the tick. Walls were therefore
+       * something only the player ever had, which left half the siege system
+       * unexercised in an actual game and made every antagonist city a soft
+       * target no matter how late it was taken.
+       *
+       * Spending the spare cycle here keeps the AI's simple-timer model, needs
+       * no new saved field, and gives the same competition the player has:
+       * troops first, earthworks with what is left over. A faction that loses
+       * units drops below the cap and goes back to raising them, which is the
+       * right priority.
+       *
+       * `wallWork` is the player's own rule, so an antagonist mends a breach
+       * exactly as a player would and stops when there is nothing to do.
+       */
+      const work = wallWork(city);
+      if (work) {
+        const level = work.kind === 'raise' ? work.level : city.wallLevel;
+        cities.set(id, {
+          ...city,
+          wallLevel: level,
+          wallHp: maxWallHp(level),
+          productionProgress: 0,
+        });
+        changed = true;
+        continue;
+      }
+      // Nothing left to raise or mend: ready, but with nowhere to put anyone.
       cities.set(id, { ...city, productionProgress: GARRISON_INTERVAL_TURNS });
       changed = true;
       continue;

@@ -289,6 +289,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D404–D411 | The deployment was distributing the soundtrack | Recorded in full in section 53 |
 | D412–D418 | Walls: the first piece of the siege | Recorded in full in section 54 |
 | D419–D423 | The walls were never actually being hit | Recorded in full in section 55 |
+| D424–D428 | Antagonists fortify, and a bug that was not one | Recorded in full in section 56 |
 
 ### 28. Cheat codes
 
@@ -4690,7 +4691,9 @@ nothing without one, and its units carry `q`/`r` at the top level rather than a
 - **The AI does not understand walls**, which 19.2 warns about: it will throw
   itself at a fortress forever. It also never builds them.
 - `unitCount()` in the browser harness returns 0 while units exist. Unrelated
-  to walls, but it is wrong and something may be relying on it.
+  to walls, but it is wrong and something may be relying on it. ⚠️ **Retracted
+  in D428: it is not a bug.** It takes a `factionId` and was being called with
+  none.
 
 ---
 
@@ -4742,6 +4745,43 @@ bundle confirmed to contain the repair string.
 - Siege state itself (19.5 step 2) and the assault set piece (step 3) are still
   ahead. What exists now is a wall that can be built, broken, mended and taken.
 - `unitCount()` in the browser harness still returns 0 while units exist.
+  ⚠️ **Retracted in D428: it is not a bug**, it takes a `factionId`.
+
+---
+
+## 56. Antagonists fortify, and a bug that was not one
+
+Section 19.2 asks that the AI understand walls. D423 taught it not to batter a
+fortress it cannot break. This is the other half: until now walls were something
+only the player ever had, so half the siege system was never exercised in an
+actual game and every antagonist city stayed soft however late it was taken.
+
+| ID | Decision |
+|---|---|
+| D424 | **An army at full strength digs in.** The AI's simple-timer model already threw a cycle away whenever a faction sat at `MAX_GARRISON_PER_FACTION`: it held at the threshold and did nothing. That spare cycle now goes into earthworks. No new saved field, no version bump, and the same competition the player has, with troops first and walls from what is left over |
+| D425 | ⚠️ **Troops come first, and there is a test that fails if that inverts.** An AI that fortified instead of defending would be *easier* to beat and would stop being a threat at all. Below the cap it still raises a unit; after losing one it drops below the cap and goes back to replacing it, keeping the wall it already built |
+| D426 | The AI mends through `wallWork`, the player's own rule, so an antagonist repairs a breach exactly as a player would and stops when there is nothing left to do. One rule, two callers |
+| D427 | **`cities()` added to the browser harness**, reporting faction and wall state. ⚠️ Antagonist fortification was otherwise untestable outside the engine: the rule could be proven in a unit test and **nothing in the running game could see it**. A rule that cannot be observed where it ships is a rule nobody will notice breaking |
+| D428 | ⚠️ **The `unitCount()` bug recorded in 54 and 55 was not a bug.** It takes a `factionId`, and I had been calling it with none, so it counted the units of a faction that does not exist. Exactly the same mistake as `factionUnits()` two sections earlier. **A defect reported twice in the plan was my own call-site error**, and leaving it there would have sent somebody hunting for it |
+
+### Verified in the deployed game, not only in the engine
+
+6 new tests, **1000 total**. Then driven against the live URL: by turn 19, **six
+antagonist cities were walled**, each at level 1 and 40/40 hit points.
+
+⚠️ **Getting there needed the defence challenge answered.** Turn advancement
+stalled dead at turn 16 through forty-five `endTurn()` calls, which looked
+exactly like a regression in the turn pipeline. It was not: the log read *"The
+Silo Horde is at your gates. Hold them."* six times over, and the game was
+correctly refusing to advance until the player answered. Any script that drives
+more than a few turns has to answer questions, not just press the button.
+
+### Left open
+
+- Antagonist fortification is silent: no `AiEvent` is raised, because that type
+  requires a `unitId` and a wall is not a unit. The player finds out by looking.
+- Siege state (19.5 step 2) and the assault set piece (step 3) are still ahead.
+  What exists now is a wall both sides build, break, mend and take.
 
 ---
 
