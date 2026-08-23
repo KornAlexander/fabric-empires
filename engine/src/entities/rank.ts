@@ -165,10 +165,11 @@ export function earnedRank(city: City, strengthOf: StrengthOf): CityRankInfo {
  *
  * ⚠️ **It stalls, it never falls.** A lapsed topic stops a settlement rising
  * and it does not take anything away that was already built. The plan wanted
- * full Anno behaviour, where a house downgrades when its demand is unmet
- * (24.1), and that is the sharper mechanic; it is also the one most likely to
- * feel like a punishment on a study aid, which is the last thing a study aid
- * can afford. Forgetting blocks progress. It does not burn your town down.
+ * the full reference behaviour in 24.1, where a house downgrades when its
+ * demand is unmet, and that is the sharper mechanic; it is also the one most
+ * likely to feel like a punishment on a study aid, which is the last thing a
+ * study aid can afford. Forgetting blocks progress. It does not burn your
+ * town down.
  */
 export function promotionFor(
   city: City,

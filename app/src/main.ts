@@ -2466,6 +2466,10 @@ async function askAndStart(): Promise<void> {
   lastSetup = await setup.ask(lastSetup);
   buildSecondSeat();
   newGame(lastSetup.seed);
+  // Build the shaders before the film starts rather than during it. The world
+  // exists by now and the setup screen is still up, which is the last moment
+  // nobody is watching the frame rate.
+  await scene.world.prewarm();
   await playOpening();
 }
 

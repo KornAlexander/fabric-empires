@@ -127,11 +127,11 @@ describe('⚠️ a rank cannot be bought with food alone', () => {
 describe('⚠️ it stalls, it never falls', () => {
   it('does not take a rank away when the topics lapse', () => {
     /*
-     * The plan wanted full Anno behaviour, where a house downgrades when its
-     * demand goes unmet, and that is the sharper mechanic. It is also the one
-     * most likely to read as a punishment on a study aid, which is the last
-     * thing a study aid can afford. Forgetting blocks progress. It does not
-     * burn your town down.
+     * The plan wanted the full reference behaviour in 24.1, where a house
+     * downgrades when its demand goes unmet, and that is the sharper
+     * mechanic. It is also the one most likely to read as a punishment on a
+     * study aid, which is the last thing a study aid can afford. Forgetting
+     * blocks progress. It does not burn your town down.
      */
     const grand = town({ population: 9, rank: 'grossstadt', boundSkills: ['a'] });
     expect(promotionFor(grand, ignorant)).toBeUndefined();

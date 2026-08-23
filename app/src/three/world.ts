@@ -100,6 +100,23 @@ export interface World {
   setSize(width: number, height: number): void;
   render(): void;
   /**
+   * Compile every visible material now, while a menu is still on screen.
+   *
+   * three.js builds a program the first time it actually draws with it, so a
+   * material that has not been on camera yet compiles during the frame it
+   * first appears. Measured on this scene: after real frames of play,
+   * `compileAsync` still had **13 programs** left to build, so that work was
+   * demonstrably being deferred into gameplay.
+   *
+   * ⚠️ What is NOT claimed: that any of those 13 land during a battle. An
+   * attempt to stage a fight and watch the count produced a clean zero that
+   * turned out to mean the fight never started, which is not evidence of
+   * anything. The pooled combat meshes are added visible with `count = 0`, so
+   * they are plausibly warm already. This is worth doing because moving 13
+   * compiles onto the loading screen is free, not because a hitch was proven.
+   */
+  prewarm(): Promise<void>;
+  /**
    * Lean the grade while a film is on screen.
    *
    * Walked over about half a second rather than cut, because a grade that
@@ -391,6 +408,14 @@ export function createWorld(canvas: HTMLCanvasElement, quality = HIGH_QUALITY): 
       grade.tick(Math.min(0.1, (at - lastRenderAt) / 1000));
       lastRenderAt = at;
       composer.render();
+    },
+
+    async prewarm() {
+      // ⚠️ `compile` walks traverseVisible, so anything parked under an
+      // invisible parent is not covered by this and will still compile on the
+      // frame it is shown. Pools that want warming must be in the scene and
+      // visible, which is what combatFx already does with `count = 0`.
+      await renderer.compileAsync(scene, camera);
     },
 
     setCinematic(on) {
