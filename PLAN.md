@@ -36,7 +36,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D05 | Map | Hex grid with real unit movement |
 | D06 | Map generation | Procedural, seeded, shareable seed |
 | D07 | Session length | 45-60 minutes, save and resume at any point |
-| D08 | Combat | Civ-style HP combat. Strength plus HP, with the question applying a large plus/minus modifier to the attack roll |
+| D08 | Combat | Hit-point combat in the genre's usual form. Strength plus HP, with the question applying a large plus/minus modifier to the attack roll |
 | D09 | Loss consequence | Army versus army. You lose units, not territory. Territory changes hands only when a city actually falls |
 | D10 | Timers | 20 s battle, 30 s research, 45 s boss. Tight on everything |
 | D11 | Victory conditions | Domination, Science (full tech tree), and The Exam (timed final siege) |
@@ -281,6 +281,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D353–D359 | The opening was singing over itself | Recorded in full in section 45.5 |
 | D360–D366 | Somewhere to build | Recorded in full in section 46.6 |
 | D367–D375 | Questions for a topic nobody shipped | Recorded in full in section 47.5 |
+| D376–D381 | Say what kind of game this is, and check the claim | Recorded in full in section 48 |
 
 ### 28. Cheat codes
 
@@ -1505,6 +1506,7 @@ Then the rails come off. Skippable, and a "replay tutorial" entry stays in the m
 - **Disclaimer in the README** (D33): all questions are original, written from the publicly published skills-measured outline; the project is not affiliated with, endorsed by, or sponsored by Microsoft certification; it reproduces no exam content.
 - **No tenant coordinates:** no workspace, item or capacity GUIDs, no `*.webapp.fabricapps.net` hosts, no UPNs, no `C:\Users\<name>` paths. Read from env with no default.
 - `tools/verify_publishable.py` runs in CI with shape-matching regex classes, not a list of identifiers I happened to notice: fabric SQL endpoints, `*.pbidedicated.windows.net`, `*.openai.azure.com`, `*.vault.azure.net`, any bare GUID, plus an allowlist where every entry quotes the offending text.
+  - ⚠️ **Specified, not written (D376).** The file does not exist, there is no `.github/workflows` for it to run in, and no npm script calls it. Everything above this line is a plan, not a control. Nothing scans for secrets, tenant GUIDs or local paths today. **This must exist before the repository goes public**, and it matters for the secrets, not for the trademarks.
 - ⚠️ `rayfin/.deployments.json` carries a `publishableKey`. **Gitignore it.**
 - `NOTICE.md` records AI art provenance (model, date, that prompts are committed) and audio provenance.
 - Grep the README and every PR body before publishing for German characters, customer names, and disclosure phrasing.
@@ -1521,6 +1523,8 @@ Not legal advice. This records the reasoning so it can be re-examined.
 
 **Rules that apply to this repo:**
 - No competitor or product names anywhere in the tree, including art prompts, code comments and commit messages. `tools/verify_publishable.py` carries a trademark class matching `Civilization|Civ ?[IVX0-9]|Sid Meier|Firaxis|Take-Two|2K Games|Age of Empires|Ensemble Studios`. It **warns** rather than fails (D47).
+  - ⚠️ Because that checker was never written, this rule went unenforced from D08 to `6641910`: the D08 row itself named a competitor for the whole life of the project, and a manual scan of all 189 tracked text files found it (D377). It is now reworded. **A rule with no check is a preference.**
+  - ⚠️ Watch the regex when it is written. `Civ ?[IVX0-9]` matches `Civi`, so it flags every use of `Civilian`, of which this codebase has around twenty. A class that cries wolf gets ignored, which is how a real hit hides.
 - The public README describes the game as a "turn-based 4X strategy game". Genre comparisons stay out of the title, the tagline and the repo name.
 - Distinctive coined terminology from other titles is avoided. Generic terms (monument, settler, tech tree) are fine. "Wonders" was renamed to "Monuments" for distance (D36), though it was probably generic enough to keep.
 - No Microsoft logo, no Fabric logo, no certification badge. Referencing "Microsoft Fabric" and "DP-600" descriptively is nominative fair use; visual marks are not.
@@ -4314,6 +4318,61 @@ Driven end to end against a stub model: `POST` with a topic of
   stub that speaks the same shape, exactly as section 38 left the coach.
 - ⚠️ Nothing rate-limits drafting. On a public host that is somebody else's
   Foundry bill.
+
+---
+
+## 48. Say what kind of game this is, and check the claim
+
+The game reads as close to the genre leader, because it is: a hex map, a
+settler, a tech tree and an end-turn button. The request was to say so plainly
+in a README, so a reader knows within one sentence that this is a *genre entry*
+rather than a copy, and to assess separately how close it really is.
+
+The assessment lives in `IP-ASSESSMENT.md`, which is **gitignored** (D378). It
+found that the interesting problem was not similarity at all.
+
+| ID | Decision |
+|---|---|
+| D376 | ⚠️ **`tools/verify_publishable.py` does not exist.** Section 12 described it as running in CI with classes for secrets, tenant GUIDs, Fabric SQL endpoints, `*.openai.azure.com` hosts and `C:\Users\<name>` paths. There is no such file, no `.github/workflows` directory at all, and no npm script. Both mentions are now marked as specified-not-written. **A documented safeguard that does not exist is worse than a known absence**, because the plan reassures on a point where nothing is being checked, and the real exposure is the secrets, never the trademarks |
+| D377 | The repository violated its own naming rule, at D08, since the first day. A scan of all 189 tracked text files found exactly one genuine competitor name and nothing else. Reworded. The rule survived unenforced for the whole project precisely because the checker in D376 was never written |
+| D378 | The assessment is **not published**. A public repo should state its position, which the README now does, not publish its own risk analysis: such a document is a map of where to press, carries no privilege, and goes stale as the code moves |
+| D379 | The README leads with the **genre**, in the first line, and never names another game. It also states *why* the shell is conventional: the novelty budget is spent on the questions, so anyone who has played a 4X can start without instructions. A deliberately ordinary shell is a design rationale, and it is better written down than inferred |
+| D380 | Add the missing `LICENSE` (MIT, as section 12 always said). Its absence meant the repo was all rights reserved by default, contradicting the stated intent. ⚠️ Confirm this deliberately: an MIT grant on a published snapshot is effectively irrevocable. It is clean because `media/` is untracked, so no generated audio is sublicensed |
+| D381 | Both D33 disclaimers now exist somewhere a reader will see them. They had been required since week one and lived only in this plan, because **there was no README at all** |
+
+### What the scan actually taught
+
+⚠️ **The first scan was wrong in both directions, and the shape of the error is
+worth keeping.** It ran over the working tree, which includes ignored files, so
+it reported risk in `media/familia-nostra.txt` that no reader could ever see;
+and its `Civ ?[IVX0-9]` class matched `Civi`, flagging twenty-odd uses of
+`Civilian` as trademark hits. Thirty-four matches, three of them real.
+
+Scan **what git tracks**, not what is on disk. The published artefact is the
+only thing that can carry risk, and a checker that cries wolf is a checker
+somebody learns to skim.
+
+### What was verified rather than remembered
+
+Every factual claim in the README was checked against the code, because a
+README written from memory is where wrong numbers live longest: twelve unit
+types, nine roles, seven factions, four resources, three victories, and the
+three npm scripts it tells the reader to run. The first version of that check
+reported "0 unit types", which is impossible, and meant the regex was broken
+rather than the code. **An implausible measurement is a bug in the measurement.**
+
+### Left open
+
+- The checker in D376 is still not written. This is the one item that guards
+  against something that would actually hurt.
+- `OutcomeKind` is still `'defeat' | 'domination' | 'science'`. These are
+  internal identifiers and the player-facing text already avoids both words,
+  but `'conquest'` and `'mastery'` would cost nothing and remove the single
+  most quotable similarity in the codebase.
+- The contest rules on originality and licensing have not been read against
+  this. They should be, before submitting.
+- The employment question is the one thing here that wants a human answer.
+  CELA converts every "low" in the assessment into an actual clearance.
 
 ---
 

@@ -36,3 +36,11 @@ media/
 # checked by tests; this is not, and mixing the two in one repository would
 # make it impossible to tell them apart later.
 tools/coach/banks/
+
+# ⚠️ The internal IP and terms assessment. Deliberately not published.
+#
+# A public repository should state its position, which the README does, not
+# publish its own risk analysis. A document that inventories where a project is
+# weakest is a map for anyone who wants to press on it, it carries no legal
+# privilege, and it goes stale the moment the code moves. It stays local.
+IP-ASSESSMENT.md
