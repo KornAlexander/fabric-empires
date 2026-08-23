@@ -89,10 +89,24 @@ clone hears them. See `app/src/cues.ts` and section 40 of PLAN.md.
 
 ### The trailer
 
-`media/fabric-empires-intro.mp4` carries the anthem, so it inherits the same
-non-commercial terms and is ignored by git for the same reason. It is published
-on Discord and LinkedIn, where that licence is not a problem, rather than
-committed here.
+`media/fabric-empires-intro.mp4` carries the anthem, and therefore the same
+ownership: it is a recording of this build set to the Pro-generated
+`anthem.mp3`. It is ignored by git for **size**, not for licence.
+
+⚠️ **It used to be the counter-example to the claim above.** This document
+said that nothing predating the subscription survives anywhere in the project
+while, four sections later, this section said the trailer inherited
+non-commercial terms. Both sentences were maintained by hand and only one of
+them could be true. The trailer was in fact a 31-second file with a baked-in
+copy of the free-plan take, and it played perfectly, which is why nobody
+looked at it.
+
+It is no longer made by hand. `npm run record:intro` drives the real game,
+captures the title sequence, and muxes the audio in from the same
+`app/public/audio/anthem.mp3` the game serves to players. Playwright records
+no audio track at all, so there is no route by which a differently-licensed
+recording can reach the file: the soundtrack can only arrive by being taken
+from the shipped, owned one. See `tools/media/record-intro.mjs`.
 
 Everything in the trailer other than the music is the game rendering itself
 live: no shot was staged, composited or drawn by hand.

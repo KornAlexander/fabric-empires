@@ -24,6 +24,7 @@
     "serve:capacity": "node tools/coach/server.mjs",
     "serve:standalone": "npx vite preview app --outDir dist",
     "smoke": "node tools/smoke/play-bundle.mjs",
+    "record:intro": "node tools/media/record-intro.mjs",
     "deploy": "node tools/deploy.mjs"
   },
   "devDependencies": {

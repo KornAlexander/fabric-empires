@@ -21,7 +21,13 @@ app/public/assets/audio/**/*.ogg
 # ships; it simply plays in silence when the file below is absent, which is the
 # state of every fresh clone. See NOTICE.
 app/public/audio/
-media/
+# ⚠️ Leading slash: root only. Without it this pattern matches a directory
+# called `media` at ANY depth, and it silently swallowed `tools/media/`, the
+# recorder that exists so the intro video stops being a hand-made copy. The
+# tool written to prevent drift would itself never have been committed, and
+# `git status` reports nothing at all when a file is ignored.
+# Guarded by app/test/repoVisibility.test.ts.
+/media/
 
 # Question authoring sources ARE committed: see learn/content/dp-600/questions/src.
 # The answer obfuscation protects the shipped bundle, which is what a player

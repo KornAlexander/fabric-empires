@@ -309,6 +309,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D511–D515 | The screen you look at most was in the wrong language | Recorded in full in section 73 |
 | D516–D519 | Auditing the learning loop, and finding it sound | Recorded in full in section 74 |
 | D520–D526 | The first screen opened halfway through itself | Recorded in full in section 75 |
+| D527–D534 | The film was made by hand, so it drifted | Recorded in full in section 76 |
 
 ### 28. Cheat codes
 
@@ -5615,6 +5616,10 @@ FABRIC EMPIRES             up at the 49.76 s choir
 is no committed recorder, so it was made by hand, and the existing file is both
 mistimed and carrying audio that cannot be distributed.
 
+**Closed in section 76.** There is a committed recorder now, and the reason it
+was open this long is the reason it went wrong: a hand-made recording of a
+generated film is a second copy of that film.
+
 ---
 
 ## 68. The hardest session was the one that taught nothing
@@ -6393,6 +6398,141 @@ Tests 52 files green.
 | D524 | ⚠️ **`focus({ preventScroll: true })` plus an explicit scroll position** | Focus is a keyboard affordance that quietly doubles as a scroll command, and the thing we focus is always the last button on the card |
 | D525 | ⚠️ **The verdict scrolls to the top, not the Continue button** | The explanation is the moment the game teaches. Answering a question and being shown the bottom of the answer is the learning loop failing silently |
 | D526 | The rule becomes a test, because this bit twice in one session | Two unrelated files, one cause, one afternoon. A comment would have been the third place to not read |
+
+---
+
+## 76. The film was made by hand, so it drifted
+
+### 76.1 The last free-tier artefact
+
+`media/fabric-empires-intro.mp4`: 31.18 seconds, 1600x900, written at 11:13,
+with an **AAC audio track baked into it**. The Pro anthem was generated at
+17:10. So the trailer was wrong in two independent ways at once.
+
+**Mistimed.** The Pro take runs about 1.6 times slower through the same words.
+The recording was cut to a performance that no longer exists, which is the same
+fault section 67 fixed inside the game and did not fix outside it. 31 seconds
+is almost exactly where the *old* chorus landed, at 30.54 s.
+
+**Unlicensed.** Free-plan output is licensed for non-commercial use, and Pro
+ownership is explicitly not retroactive. `NOTICE.md` already said, in its own
+words, that "nothing that predates the subscription survives anywhere in this
+project" and then, four sections further down, said the trailer inherited
+non-commercial terms. One document, two hand-maintained facts, and only one of
+them could be true.
+
+Neither fault was visible. The file played perfectly.
+
+### 76.2 The fix is not "record it again more carefully"
+
+A hand-made recording of a generated film **is a second copy of that film**.
+That is the whole diagnosis, and it puts this in the same family as sections
+64, 67, 68, 72, 73 and 75. Recording it again by hand would produce a correct
+file and leave the mechanism that made it wrong entirely intact, ready for the
+next time the anthem or the shots change.
+
+So the deliverable had to become derivable. `tools/media/record-intro.mjs`,
+run with `npm run record:intro`, drives the real game and captures the real
+sequence. Two properties do the work, and both are structural rather than
+matters of care:
+
+**⚠️ It contains no timing constants. Not one.** The film is driven by the
+anthem's own playback clock, so the recorder watches the running game instead
+of being told what to expect: it starts when the anthem's clock first moves and
+stops when the letterbox closes. `ANTHEM_MARKS` can be re-measured, and beats
+can be added or removed, without this script knowing. Had it hard-coded 52 800
+it would have become the fourth copy of a number that has already been wrong
+twice.
+
+**⚠️ The audio is the shipped file, not a re-recording.** Playwright captures
+video with no audio track whatsoever. That sounds like a limitation and is
+actually the guarantee: the only way sound can reach the deliverable is by
+being muxed in from `app/public/audio/anthem.mp3`, the exact file the game
+serves to players. There is no path by which a stale or free-tier take arrives.
+The licence is now correct by construction rather than by vigilance.
+
+### 76.3 The two clocks had to be pinned together, and wall-clock could not do it
+
+The film and the song are one performance, so the mux is only right if the
+audio starts on the frame the film did. The first instinct, timing from when
+the recording was started, is wrong by an amount nobody can predict: capture
+does not begin when the context is created, and encoder start-up is not free.
+
+Measured on the actual run:
+
+```
+anthem starts at   video t = 5.92 s
+raw capture length         61.56 s
+```
+
+Nearly **six seconds** of lead-in. Wall-clock arithmetic would have put every
+card six seconds ahead of its line, which is a far worse version of the bug
+being fixed.
+
+So the page paints itself white for 140 ms at the instant the anthem's clock
+first moves, and reports what that clock said. The flash is a timestamp written
+in the only ink a video recorder can read. `signalstats` finds the bright
+frames afterwards, and the two clocks are pinned on a known frame:
+
+```
+flash          5 frames, 5.920 s .. 6.080 s
+anthem at flash                     0.004 s
+=> trim video from 6.080 s, audio from 0.164 s
+```
+
+### 76.4 Verified by measurement, not by watching it
+
+The six cards were sampled 1.6 s after each mark. Every one carries its own
+line, in order, in English, and FABRIC EMPIRES is still on screen at the 49.76 s
+choir, which the film's own contract requires.
+
+The audio was then identified rather than assumed. Cross-correlating the
+video's own audio track against `anthem.mp3`, with an unrelated soundtrack file
+as a control:
+
+| compared with | best lag | peak correlation | envelope correlation |
+| --- | --- | --- | --- |
+| `anthem.mp3` (the file the game serves) | **-3 samples (-0.4 ms)** | **0.9990** | 0.9999 |
+| a different track (control) | +918 samples | -0.0095 | 0.3959 |
+
+So the audio is provably the Pro anthem, and the film and the song are aligned
+to **0.4 milliseconds**. That is the flash marker paying for itself: the number
+is not "close enough", it is exact to well under a frame.
+
+### 76.5 ⚠️ The recorder was invisible to git
+
+`.gitignore` line 24 read `media/`. A pattern with no leading slash matches a
+directory of that name **at any depth**, so it silently swallowed
+`tools/media/` whole.
+
+The tool written specifically to stop the video being a hand-made copy would
+itself never have been committed. It would have existed on one laptop, the
+video would have kept being made by hand, and the section documenting the fix
+would have described a file that was not in the repository.
+
+Nothing reports this. `git status` prints an ignored file exactly the way it
+prints a file that does not exist, which is to say not at all. And
+`verify_publishable.py` scans **tracked** files, so an ignored source file is
+an unscanned one as well: two safety nets with the same blind spot. The scan
+went from 204 files to 205 the moment the pattern was anchored, which is the
+recorder becoming visible to it.
+
+`app/test/repoVisibility.test.ts` now asserts that nothing under `tools/`,
+`app/src`, `engine/src` or `learn/src` is ignored. It was checked the only way
+worth checking a guard: the bug was put back, and the test failed.
+
+### 76.6 Decisions
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D527 | The trailer is produced by a committed tool, not by hand | A hand-made recording of a generated film is a second copy of it, and this copy had already drifted into being both mistimed and unlicensed |
+| D528 | ⚠️ **The recorder holds no timing constants at all** | The running game is the clock. A hard-coded end time would have been the fourth copy of a number that has already been wrong twice |
+| D529 | ⚠️ **Audio is muxed from the shipped `anthem.mp3`** | Playwright records no audio, so the only route into the file is the owned one. Licence by construction beats licence by vigilance |
+| D530 | ⚠️ **A white flash marks the sync point** | The anthem started 5.92 s into the capture. Wall-clock arithmetic would have put every card six seconds early, which is the exact bug being fixed |
+| D531 | The result is verified by cross-correlation, not by watching | "It looks fine" is what the broken file also produced. -0.4 ms at 0.9990 against a control is a claim that can fail |
+| D532 | The film is recorded in English | A German browser gets a German game without being asked, and this machine is German, so the deliverable would silently have come out in the wrong language for its audience |
+| D533 | ⚠️ **`/media/` is anchored, and a test enforces it** | `media/` matched at any depth and hid the recorder. `git status` and the publishable scan are both blind to ignored files, so nothing would have said so |
+| D534 | NOTICE's trailer section is corrected in place | It claimed non-commercial terms that no longer apply, while the same document claimed nothing free-tier survived. A licensing document contradicting itself is worse than one that is merely out of date |
 
 ---
 
