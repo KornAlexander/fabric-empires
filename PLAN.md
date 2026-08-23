@@ -4334,7 +4334,7 @@ found that the interesting problem was not similarity at all.
 | ID | Decision |
 |---|---|
 | D376 | ⚠️ **`tools/verify_publishable.py` does not exist.** Section 12 described it as running in CI with classes for secrets, tenant GUIDs, Fabric SQL endpoints, `*.openai.azure.com` hosts and `C:\Users\<name>` paths. There is no such file, no `.github/workflows` directory at all, and no npm script. Both mentions are now marked as specified-not-written. **A documented safeguard that does not exist is worse than a known absence**, because the plan reassures on a point where nothing is being checked, and the real exposure is the secrets, never the trademarks |
-| D377 | The repository violated its own naming rule, at D08, since the first day. A scan of all 189 tracked text files found exactly one genuine competitor name and nothing else. Reworded. The rule survived unenforced for the whole project precisely because the checker in D376 was never written |
+| D377 | The repository violated its own naming rule, at D08, since the first day. ⚠️ **The first scan reported that as the only case and was wrong.** It reused the eight-name trademark class from section 12.1, so it searched only for the names whose absence had already been considered: it found `Civ-style` and missed **Anno** (20 lines, including `engine/src/entities/rank.ts` and `engine/test/rank.test.ts`) and **Stronghold** (3 lines). Section 12 warns against "a list of identifiers I happened to notice"; that class is precisely such a list, and reusing it inherited its blind spot. **A check written from memory finds what its author already remembered** |
 | D378 | The assessment is **not published**. A public repo should state its position, which the README now does, not publish its own risk analysis: such a document is a map of where to press, carries no privilege, and goes stale as the code moves |
 | D379 | The README leads with the **genre**, in the first line, and never names another game. It also states *why* the shell is conventional: the novelty budget is spent on the questions, so anyone who has played a 4X can start without instructions. A deliberately ordinary shell is a design rationale, and it is better written down than inferred |
 | D380 | Add the missing `LICENSE` (MIT, as section 12 always said). Its absence meant the repo was all rights reserved by default, contradicting the stated intent. ⚠️ Confirm this deliberately: an MIT grant on a published snapshot is effectively irrevocable. It is clean because `media/` is untracked, so no generated audio is sublicensed |
@@ -4342,15 +4342,24 @@ found that the interesting problem was not similarity at all.
 
 ### What the scan actually taught
 
-⚠️ **The first scan was wrong in both directions, and the shape of the error is
-worth keeping.** It ran over the working tree, which includes ignored files, so
-it reported risk in `media/familia-nostra.txt` that no reader could ever see;
-and its `Civ ?[IVX0-9]` class matched `Civi`, flagging twenty-odd uses of
-`Civilian` as trademark hits. Thirty-four matches, three of them real.
+⚠️ **The first scan was wrong in three ways, and the shape of the error is
+worth more than the result.** It ran over the working tree, which includes
+ignored files, so it reported risk in `media/familia-nostra.txt` that no reader
+could ever see. Its `Civ ?[IVX0-9]` class matched `Civi`, flagging twenty-odd
+uses of `Civilian`. And **its list was too short**, because it was section
+12.1's own list: it found the one name that section had thought of and missed
+the two it had not, one of which appears twenty times and in shipped source.
 
-Scan **what git tracks**, not what is on disk. The published artefact is the
-only thing that can carry risk, and a checker that cries wolf is a checker
-somebody learns to skim.
+Three rules fall out of that:
+
+1. Scan **what git tracks**, not what is on disk. The published artefact is the
+   only thing that can carry risk.
+2. A checker that cries wolf is a checker somebody learns to skim.
+3. ⚠️ **Never validate a list against itself.** The class in 12.1 was written
+   from memory, and any scan seeded with it can only confirm what its author
+   already suspected. There is no regex shape that means "this is a game
+   title", so a list is unavoidable, but it has to be widened by someone who
+   was not the person who wrote the code, and it must print its own limits.
 
 ### What was verified rather than remembered
 
