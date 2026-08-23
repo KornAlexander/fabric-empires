@@ -96,6 +96,30 @@ export function isBreached(city: City): boolean {
 }
 
 /**
+ * How much wall a free repair puts back in one go.
+ *
+ * ⚠️ **This number is the difference between a hard siege and a locked door.**
+ *
+ * An antagonist mends with a spare garrison cycle, which costs it nothing. When
+ * that cycle restored the wall to *full*, three separately reasonable decisions
+ * multiplied into a wall nothing could break: walls roughly double a city's
+ * defence, damage lands on the walls first, and a defender put 120 hit points
+ * back every six turns. Measured against a level-three wall, a Pipeline Runner
+ * and **the siege unit itself** could never take the city at all; only the
+ * single heaviest unit in the game got in.
+ *
+ * A paid repair, ordered through production and costed in Compute, still
+ * finishes the whole job. This is the free one, so it is a patch rather than a
+ * rebuild.
+ */
+export const WALL_MEND_PER_CYCLE = WALL_HP_PER_LEVEL / 2;
+
+/** Put back what a free repair can, without exceeding the wall's own height. */
+export function mendedBy(city: City, amount: number): number {
+  return Math.min(maxWallHp(city.wallLevel), city.wallHp + amount);
+}
+
+/**
  * Take damage on the walls first, and report what got through.
  *
  * Walls absorb rather than deflect: while any are standing they soak the blow,

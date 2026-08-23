@@ -17,7 +17,7 @@ import { canAttack, previewAttack, resolveAttack, type CombatLog } from './comba
 export const HOPELESS_ASSAULT_TURNS = 12;
 import { findPath, reachable } from './movement.js';
 import { musterTile } from './production.js';
-import { maxWallHp, wallWork } from './walls.js';
+import { maxWallHp, mendedBy, wallWork, WALL_MEND_PER_CYCLE } from './walls.js';
 
 /**
  * The antagonist's turn.
@@ -364,11 +364,16 @@ export function garrisonPhase(state: GameState, factionId: string): AiTurnResult
        */
       const work = wallWork(city);
       if (work) {
-        const level = work.kind === 'raise' ? work.level : city.wallLevel;
+        // ⚠️ A raise builds the new course to its full height, because that is
+        // what building it means. A **mend** only patches: this cycle is free,
+        // and a free rebuild to full made a level-three wall unbreakable by
+        // anything but the heaviest unit in the game. See WALL_MEND_PER_CYCLE.
+        const raising = work.kind === 'raise';
+        const level = raising ? work.level : city.wallLevel;
         cities.set(id, {
           ...city,
           wallLevel: level,
-          wallHp: maxWallHp(level),
+          wallHp: raising ? maxWallHp(level) : mendedBy(city, WALL_MEND_PER_CYCLE),
           productionProgress: 0,
         });
         changed = true;

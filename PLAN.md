@@ -291,6 +291,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D419–D423 | The walls were never actually being hit | Recorded in full in section 55 |
 | D424–D428 | Antagonists fortify, and a bug that was not one | Recorded in full in section 56 |
 | D429–D433 | The wall you see is the wall you built | Recorded in full in section 57 |
+| D434–D437 | The walls were a locked door, and every test agreed they were fine | Recorded in full in section 58 |
 
 ### 28. Cheat codes
 
@@ -4824,6 +4825,57 @@ rebuild signature confirmed as `2:siedlung:player:2:whole`.
 - Siege state (19.5 step 2) and the assault set piece (step 3) remain. ⚠️ Note
   19.5's own cut trigger prefers the **set piece** over the multi-turn
   investment if only one can ship.
+
+---
+
+## 58. The walls were a locked door, and every test agreed they were fine
+
+Before building the assault set piece on top of the wall system, one question
+was worth asking: with the AI now fortifying and mending, **can a city still be
+taken?**
+
+⚠️ **No.** Three separately reasonable decisions had multiplied:
+
+- walls roughly double a city's defence (D414),
+- damage lands on the walls first (D419),
+- an antagonist at its unit cap mends for free every garrison cycle (D426).
+
+That last one restored the wall to **full**. A besieger doing floor damage
+removes 60 hit points over six turns; the defender was putting 120 back.
+
+| ID | Decision |
+|---|---|
+| D434 | ⚠️ **Measured, because nothing else would have found it.** Every unit test passed, the feature demonstrated correctly in the browser, and the arithmetic was still impossible. Against a level-three mending wall a **Pipeline Runner never took the city, and neither did the Notebook Cannon** — the siege unit, the thing built to break cities. Only the Direct Lake Titan, the single heaviest unit in the game, got in |
+| D435 | **A free repair patches; a paid one rebuilds.** `WALL_MEND_PER_CYCLE` is half a level's hit points. Ordering repair through production still finishes the whole job, because it costs Compute and takes turns. The garrison cycle costs nothing, so it may not do the same work |
+| D436 | ⚠️ **The `aiWalls` test asserted the defect.** It required the wall to come back to full height in one cycle, which is exactly what caused the deadlock, and it passed the entire time. Rewritten to assert *progress*: a mend advances, never exceeds the wall's height, and enough cycles still finish |
+| D437 | Three regression tests grind a real siege turn by turn with the defender mending, and one of them asserts the **ordering**: a siege unit must take a walled city faster than a line unit. If those ever converge, siege units have stopped being worth building and 19.2's "bring siege" is decoration |
+
+### The curve now, measured
+
+Turns to take a city, defender mending throughout:
+
+| attacker | no wall | wall 1 | wall 3 |
+|---|---|---|---|
+| Pipeline Runner | 22 | 26 | **38** |
+| Notebook Cannon | 5 | 8 | **15** |
+| Direct Lake Titan | 4 | 5 | **9** |
+
+Walls slow a line unit by 16 turns and a siege unit by 10. Nothing is
+impossible, and bringing the right tool is worth more than bringing more of the
+wrong one, which is the argument the unit roster is supposed to make.
+
+### Two process notes worth keeping
+
+⚠️ **The regression test was proved by breaking the code again.** The full mend
+was reintroduced deliberately and all three tests failed, then it was put back.
+A regression test that has never seen the regression is a guess.
+
+⚠️ **`git checkout -- <file>` discarded uncommitted work.** It was used to undo
+that deliberate break, and it reverted the file to HEAD, taking the real fix
+with it because the fix was not committed either. The tests then failed for a
+reason that looked like the fix not working. **Never revert a scratch edit with
+`checkout` on a file that has uncommitted changes**; patch it back the same way
+it was patched out.
 
 ---
 

@@ -3,6 +3,7 @@ import {
   absorbWithWalls,
   cityCombatSide,
   createGameState,
+  garrisonPhase,
   isBreached,
   maxWallHp,
   productionCost,
@@ -12,6 +13,7 @@ import {
   setProduction,
   wallIntegrity,
   wallWork,
+  MAX_GARRISON_PER_FACTION,
   MAX_WALL_LEVEL,
   MIN_DAMAGE,
   PLAYER_FACTION_ID,
@@ -280,6 +282,87 @@ describe('a breach is one definition, shared', () => {
     const at = maxWallHp(2) * WALL_BREACH_POINT;
     expect(isBreached(city({ wallLevel: 2, wallHp: at }))).toBe(false);
     expect(isBreached(city({ wallLevel: 2, wallHp: at - 1 }))).toBe(true);
+  });
+});
+
+describe('⚠️ a walled city is hard, not impossible', () => {
+  /*
+   * The regression this exists for shipped and was only caught by measuring.
+   *
+   * Three reasonable decisions multiplied: walls roughly double a city's
+   * defence, damage lands on the walls first, and an antagonist mended for
+   * free every garrison cycle. When that mend restored the wall to *full*, a
+   * level-three city could not be taken by a Pipeline Runner **or by the siege
+   * unit built to break cities**. Only the heaviest unit in the game got in.
+   *
+   * A besieger doing floor damage removes 60 hit points over six turns; the
+   * defender was putting 120 back. That is a locked door wearing the costume
+   * of a hard siege, and every unit test passed while it was true.
+   */
+  const grind = (typeId: Unit['typeId'], limit: number): number | undefined => {
+    const { state, attackerId } = siege(
+      { wallLevel: MAX_WALL_LEVEL, wallHp: maxWallHp(MAX_WALL_LEVEL) },
+      typeId,
+    );
+    const defenderId = state.cities.get('target')!.factionId;
+
+    /*
+     * ⚠️ The defender needs its full complement, parked well away.
+     *
+     * Without it `garrisonPhase` is below the unit cap, so it musters a
+     * soldier onto the city instead of mending, and the attack then resolves
+     * against that unit rather than against the walls. The first version of
+     * this test measured a brawl outside the gate and reported it as a wall
+     * that never fell.
+     */
+    const units = new Map(state.units);
+    for (let i = 0; i < MAX_GARRISON_PER_FACTION; i += 1) {
+      units.set(`garrison-${i}`, {
+        id: `garrison-${i}`,
+        typeId: 'pipelineRunner',
+        factionId: defenderId,
+        hex: { q: 30 + i, r: 0 },
+        hp: 100,
+        movesLeft: 1,
+        fortified: false,
+      });
+    }
+    let current: GameState = { ...state, units };
+
+    for (let turn = 1; turn <= limit; turn += 1) {
+      const out = resolveAttack(current, attackerId, { q: 0, r: 0 });
+      if (!out.ok) return undefined;
+      current = out.result.state;
+
+      const city = current.cities.get('target');
+      if (!city || city.factionId === PLAYER_FACTION_ID) return turn;
+
+      // Keep the attacker on its feet: this measures the walls, not attrition.
+      const alive = new Map(current.units);
+      alive.set(attackerId, { ...alive.get(attackerId)!, hp: 100, movesLeft: 2 });
+      current = { ...current, units: alive };
+      // And let the defender mend, which is the half that caused the deadlock.
+      current = garrisonPhase(current, defenderId).state;
+    }
+    return undefined;
+  };
+
+  it('falls to the siege unit it was designed to fall to', () => {
+    const turns = grind('notebookCannon', 60);
+    expect(turns).toBeDefined();
+    expect(turns!).toBeLessThan(40);
+  });
+
+  it('falls even to a line unit, given long enough', () => {
+    expect(grind('pipelineRunner', 90)).toBeDefined();
+  });
+
+  it('⚠️ rewards bringing siege rather than numbers', () => {
+    // If these ever converge, the siege units have stopped being worth building
+    // and the whole "bring siege" argument in 19.2 is decoration.
+    const cannon = grind('notebookCannon', 60)!;
+    const line = grind('pipelineRunner', 90)!;
+    expect(cannon).toBeLessThan(line);
   });
 });
 

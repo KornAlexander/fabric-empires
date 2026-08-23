@@ -8,6 +8,7 @@ import {
   MAX_GARRISON_PER_FACTION,
   MAX_WALL_LEVEL,
   PLAYER_FACTION_ID,
+  WALL_MEND_PER_CYCLE,
   type City,
   type GameState,
   type Unit,
@@ -100,15 +101,41 @@ describe('an antagonist at full strength digs in', () => {
     expect(wallIntegrity(city)).toBe(1);
   });
 
-  it('mends a breach rather than leaving it open', () => {
+  it('⚠️ mends a breach by patching it, not by rebuilding it', () => {
+    /*
+     * This test used to assert the wall came back to full height in a single
+     * cycle, which is what it did. That was the deadlock: a free repair of 120
+     * hit points every six turns outran every besieger in the game except the
+     * heaviest, so a level-three city simply could not be taken. The test
+     * passed the whole time, because it was asserting the defect.
+     *
+     * A mend is now a patch. It makes progress, it never exceeds the wall's own
+     * height, and enough cycles still finish the job.
+     */
     const { state, factionId, cityId } = stage(MAX_GARRISON_PER_FACTION, {
       wallLevel: 2,
       wallHp: 3,
     });
-    const after = garrisonPhase(state, factionId).state;
-    const city = after.cities.get(cityId)!;
-    expect(city.wallLevel).toBe(2);
-    expect(city.wallHp).toBe(maxWallHp(2));
+
+    const once = garrisonPhase(state, factionId).state.cities.get(cityId)!;
+    expect(once.wallLevel).toBe(2);
+    expect(once.wallHp).toBeGreaterThan(3);
+    expect(once.wallHp).toBeLessThan(maxWallHp(2));
+    expect(once.wallHp).toBe(3 + WALL_MEND_PER_CYCLE);
+  });
+
+  it('gets there in the end, and stops at the wall it has', () => {
+    let { state, factionId, cityId } = stage(MAX_GARRISON_PER_FACTION, {
+      wallLevel: 2,
+      wallHp: 3,
+    });
+    for (let i = 0; i < GARRISON_INTERVAL_TURNS * 12; i += 1) {
+      state = garrisonPhase(state, factionId).state;
+    }
+    const city = state.cities.get(cityId)!;
+    // It carries on to the full height once the breach is patched.
+    expect(city.wallLevel).toBe(MAX_WALL_LEVEL);
+    expect(city.wallHp).toBe(maxWallHp(MAX_WALL_LEVEL));
   });
 });
 
