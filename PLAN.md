@@ -286,6 +286,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D385–D389 | The fog was a hole in the world | Recorded in full in section 50 |
 | D390–D397 | The gate that was only ever described | Recorded in full in section 51 |
 | D398–D403 | Deployed, and what the platform decided for us | Recorded in full in section 52 |
+| D404–D409 | The deployment was distributing the soundtrack | Recorded in full in section 53 |
 
 ### 28. Cheat codes
 
@@ -4584,6 +4585,50 @@ serving the bundle that was tested, rather than an older one.
 - The submission URL is decided by whether the anonymous access in D400 is
   intended platform behaviour or an accident of configuration. Worth confirming
   from a browser with no Entra session at all before relying on it.
+
+---
+
+## 53. The deployment was distributing the soundtrack
+
+D400 claimed the app serves anonymously, on the strength of a page load in a
+browser profile that is signed into the tenant. That is not evidence. Settling
+it properly turned the licence question from theoretical into live.
+
+| ID | Decision |
+|---|---|
+| D404 | **Anonymous access confirmed, this time with something that could have said no.** A raw HTTP request carrying no browser session at all, and a fresh context with no profile and no storage state: `/` returns 200, **zero cookies are set, there is no redirect**, and the game loads and plays. D400 was right, but it was right by luck until now |
+| D405 | ⚠️ **Which meant the public URL was serving the soundtrack.** The same unauthenticated request returned all **3,372,390 bytes** of `anthem.mp3` as `audio/mpeg`. `MUSIC-LICENSING.md` opens with the answer: "not in the app you hand to other people. Yes, on your own machine." The free tier grants personal, non-commercial use and no right to redistribute, and a public URL is redistribution however free the game is |
+| D406 | ⚠️ **`.gitignore` protects the repository. It does not protect the bundle.** `app/public/audio/` is untracked, so a clean clone builds silently and everything looks compliant. On this machine the files exist, Vite copies `public/` verbatim, and `rayfin up` ran the ordinary build. The protection had a hole exactly the width of the author's own hard disk |
+| D407 | **`npm run build:public` strips the audio, and verifies that it did.** `tools/build/strip-audio.mjs` removes `app/dist/audio` and then sweeps the whole finished bundle for any remaining audio extension, failing the build if one survives. ⚠️ A silent no-op here would ship the soundtrack, and the entire lesson of this section is that the previous silent path also looked fine. 15.6 MB to **1.19 MB** |
+| D408 | `rayfin.yml` builds with `build:public`, so the deployed artefact cannot carry audio even if someone forgets. Verified against the live host afterwards: `/audio/anthem.mp3` now returns 27,544 bytes of `text/html` rather than 3.3 MB of `audio/mpeg`. **Static content is replaced on deploy**, so "rayfin up never deletes" is about items, not files |
+| D409 | ⚠️ **The audio probe now gets a 500, not a 404**, because the host errors on a missing file rather than reporting it missing. `audio.ts` and `soundtrack.ts` already treat any not-ok response as "no soundtrack" and fall through to silence, so the game is correct, and the smoke test encodes `/audio/*` as an expected absence alongside `/api/*`. But the browser still writes three failed requests to the console, and nothing in JavaScript can stop it. Cosmetic, and worth knowing before somebody opens devtools on the public URL and concludes it is broken |
+
+### The music still exists
+
+Nothing was deleted. `app/public/audio/` is untouched, the local build still has
+the score, and `npm run build` is unchanged. Only the *public* build is silent,
+which is the state the opening was written to survive: it plays in silence when
+the files are absent, which is every clean clone.
+
+If the soundtrack should be part of what people hear, the route is a paid Suno
+tier, where ownership transfers, and not a different reading of the free one.
+
+### A tooling trap worth recording
+
+⚠️ **`npm pkg set` with `&&` in the value.** The shell rewrote the separator to
+`;` before npm ever saw it, and the mangled value was written into
+`package.json`. It then propagated *into* the workspace build, so the child
+command became `vite build ; node tools/build/strip-audio.mjs` and the build
+failed inside Rollup for a reason that had nothing to do with Rollup. Edit
+`package.json` directly for anything containing a shell operator.
+
+### Left open
+
+- The capacity hosts a live public app for the contest window, with the cost
+  that implies.
+- ⚠️ **Anonymous hosting is a property of the platform, not a setting chosen
+  here.** It could change. Re-run the check in `D404` before relying on the URL
+  in a submission.
 
 ---
 

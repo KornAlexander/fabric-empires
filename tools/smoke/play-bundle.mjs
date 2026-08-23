@@ -53,12 +53,25 @@ const page = await browser.newPage({ viewport: { width: 1333, height: 768 } });
 
 page.on('pageerror', (e) => pageErrors.push(e.message));
 page.on('console', (m) => {
-  if (m.type() === 'error' && !m.text().includes('404')) pageErrors.push(m.text().slice(0, 200));
+  if (m.type() === 'error' && !/404|500/.test(m.text())) pageErrors.push(m.text().slice(0, 200));
 });
 page.on('response', (r) => {
-  // The standalone build has no coach and no question host. Those 404s are the
-  // design, not a fault.
-  if (r.status() >= 400 && !r.url().includes('/api/')) {
+  // Two absences are the design, not a fault, and both are probed for and
+  // handled:
+  //
+  //   /api/*   the standalone edition has no capacity host, so there is no
+  //            coach and no question bank to talk to.
+  //   /audio/* `build:public` strips the soundtrack on licence grounds (see
+  //            MUSIC-LICENSING.md and tools/build/strip-audio.mjs). The app
+  //            HEAD-probes and falls through to silence.
+  //
+  // ⚠️ The audio probe comes back **500**, not 404, because the host errors on
+  // a missing file rather than reporting it missing. `audio.ts` treats any
+  // not-ok response the same way, so the game is correct either way, but the
+  // browser still writes the failed request to the console and nothing in
+  // JavaScript can stop it. Cosmetic, and worth knowing before somebody opens
+  // devtools on the public URL and concludes the app is broken.
+  if (r.status() >= 400 && !r.url().includes('/api/') && !r.url().includes('/audio/')) {
     badResponses.push(`HTTP ${r.status()} ${r.url().slice(0, 110)}`);
   }
 });

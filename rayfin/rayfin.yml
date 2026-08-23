@@ -13,12 +13,13 @@ services:
       - http://localhost:4173
       - http://localhost:5180
       - http://127.0.0.1:5173
+      - https://mint-flora-abb0f046f9-swedencentral.webapp.fabricapps.net
   data:
     enabled: false
   staticHosting:
     enabled: true
     folder: app/dist
-    buildCommand: npm run build
+    buildCommand: npm run build:public
     indexDocument: index.html
   storage:
     enabled: false
