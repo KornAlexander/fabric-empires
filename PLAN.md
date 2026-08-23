@@ -300,6 +300,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D460–D467 | The soundtrack shipped, and the game could not hear it | Recorded in full in section 64 |
 | D468–D472 | Somebody finally played it to the end | Recorded in full in section 65 |
 | D473–D477 | Two words, and the assessment that looked in the wrong place | Recorded in full in section 66 |
+| D478–D483 | The film was cut to a recording that no longer exists | Recorded in full in section 67 |
 
 ### 28. Cheat codes
 
@@ -5486,6 +5487,125 @@ domination             absent
 The region is yours    PRESENT
 Every skill mastered   PRESENT
 ```
+
+---
+
+## 67. The film was cut to a recording that no longer exists
+
+The report was that the new anthem "does not match the wording shown in the
+video". It was two separate faults with the same symptom, and only one of them
+was about the song.
+
+### 67.1 The video was already stale
+
+`media/fabric-empires-intro.mp4` is 31.18 s and was written at 11:13. The Pro
+anthem was installed at 17:10. So the file still carries the **free-tier**
+recording, which is the one thing section 63 established cannot be distributed.
+It has to be re-recorded whatever else happens, and until it is, it stays out of
+everything. It is gitignored, so nothing has shipped.
+
+### 67.2 The timings were measurements of a performance that got replaced
+
+Section 45 timed the five cards by decoding the anthem and finding where each
+sung line begins. Those numbers were correct, and they were correct **about one
+specific recording**. Re-generating the anthem replaced it.
+
+⚠️ The new take sings the same words about **1.6 times slower**:
+
+| landmark | old take | new take |
+| --- | --- | --- |
+| accompaniment enters | 4.60 s | **8.46 s** |
+| *Ex nihilo terra surgit* | 5.35 s | **8.99 s** |
+| *Flumina viam inveniunt* | 12.44 s | **20.61 s** |
+| *Manus parvae, manus magnae* | 18.29 s | **29.44 s** |
+| *Simul aedificant* | 24.79 s | **41.52 s** |
+| full choir | 30.54 s | **49.76 s** |
+
+So every card was on screen well before its own line: exactly the defect
+section 45 existed to fix, arriving again by a different route.
+
+⚠️ **The gap-hunting method that worked the first time does not work here.**
+The old take had silences between the lines. This one does not: once the
+orchestra is playing, the vocal band never falls quiet, and a silence detector
+finds three onsets in the first minute and then nothing. Spectral flux, which
+measures how much the spectrum *changes* rather than how loud it is, finds the
+phrase starts through the accompaniment.
+
+The mapping was then checked rather than assumed. Stretching the **old** take's
+line spacing uniformly onto the new one predicts where each line ought to fall,
+and every prediction lands on an independently measured onset:
+
+| line | predicted by stretch | nearest measured onset |
+| --- | --- | --- |
+| *Ex nihilo* | 8.46 s | 8.99 s |
+| *Flumina* | 20.08 s | 20.61 s |
+| *Manus parvae* | 29.67 s | 29.44 s |
+| *Simul aedificant* | 40.32 s | 41.52 s |
+
+Two independent methods agreeing to about a second is the evidence; either one
+alone would have been a guess.
+
+### 67.3 ⚠️ The measurements existed twice
+
+`intro.ts` held them as five `durationMs` values and `intro.test.ts` held them
+again as a `SUNG_AT` table. Nothing made the two agree, so the test would have
+gone on passing while both disagreed with the music. They are now one exported
+`ANTHEM_MARKS`, and the durations are subtractions between marks.
+
+This is the same shape as the `MOODS` duplication in section 64: a list of
+facts written down in two places, where the second copy makes the first one
+look verified.
+
+### 67.4 ⚠️ Three rules that can no longer all hold
+
+Re-timing broke a test, and the right response was not to move the number
+quietly:
+
+- the title card comes up on *Simul aedificant*, at 41.5 s
+- every card must be readable, so at least 5 s
+- the title must still be up when the choir enters, at 49.8 s
+- **the film must run under 45 s**, "so it can be sat through"
+
+The first two alone put the end past 46.5 s. There is no film that satisfies
+all four against this recording, because the new take spends 41 s on a verse the
+old one sang in 25.
+
+The 45 s figure was itself a property of the replaced recording. What actually
+protects the player is that the opening plays **once per new game** (a resumed
+empire never sees it, D308) and Esc skips it at any frame. The bound is now a
+minute, and the reasoning is written where the number is.
+
+The alternative was cutting the audio. Removing 15 s would mean splicing inside
+sung phrases, and an audible join in the piece the game opens with is worse than
+twenty seconds of a film nobody watches twice.
+
+### 67.5 Decisions
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D478 | ⚠️ **`ANTHEM_MARKS` is the single source of the recording's timings** | They were in two places, and the copy in the test is what made the stale numbers look checked. A measurement written twice is a measurement nobody owns |
+| D479 | Phrase onsets are found by spectral flux, not by silence | The first method worked only because the first recording happened to have gaps. Re-using it here would have reported that the song has three lines |
+| D480 | The mapping is confirmed by two independent methods | A uniform stretch of the old spacing and a fresh onset detection agree within a second. Either alone is a guess dressed as a measurement |
+| D481 | ⚠️ **The film grows to 52.8 s rather than the audio being cut** | An audible splice in the anthem is permanent and central; a longer film is skippable and seen once |
+| D482 | The 45 s bound is raised **with its reasoning**, not adjusted | It was unsatisfiable, not merely tight, and it described an artefact that no longer exists. Bounds that get moved silently are how guards die |
+| D483 | The stale video is left in place, unpublished, until it is re-recorded | Deleting the only copy of something the author may want, with no replacement ready, is not tidying |
+
+### 67.6 Verified where it ships
+
+1051 tests. Then the **deployed** game, sampling which card is on screen
+against the anthem's own clock:
+
+```
+Fabrica                     0.14 s   (mark 0)
+Ex nihilo                   9.03 s   (mark 8.99)
+Flumina viam inveniunt     20.69 s   (mark 20.61)
+Manus parvae, manus magnae 29.44 s   (mark 29.44)
+FABRIC EMPIRES             up at the 49.76 s choir
+```
+
+⚠️ **Still open:** the intro video has to be re-recorded from this build. There
+is no committed recorder, so it was made by hand, and the existing file is both
+mistimed and carrying audio that cannot be distributed.
 
 ---
 

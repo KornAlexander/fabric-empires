@@ -9,7 +9,7 @@
 
 import { Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
-import { introDurationMs, introShots, type IntroWorld } from '../src/intro.js';
+import { ANTHEM_MARKS, introDurationMs, introShots, type IntroWorld } from '../src/intro.js';
 
 const world: IntroWorld = {
   centre: new Vector3(0, 0, 0),
@@ -57,19 +57,22 @@ describe('⚠️ the cards land on the lines they name', () => {
    * passage was one early. Nothing was broken and nothing looked wrong in a
    * screenshot; it just felt off.
    *
-   * These are the line starts measured from the recording, by decoding it and
-   * finding the breath gaps in the band the voices occupy. A card must be on
-   * screen when its own line begins.
+   * ⚠️ It then happened a second time, for a different reason, and that is why
+   * these numbers are now imported rather than repeated here. Re-recording the
+   * anthem replaced the performance the old constants described, and the film
+   * drifted straight back out of sync. This table used to be a second copy of
+   * the measurements, so it would have agreed with the code while both
+   * disagreed with the music.
    */
   const SUNG_AT: Readonly<Record<string, number>> = {
-    'intro-forge': 0,
-    'intro-dawn': 5_350,
-    'intro-rivers': 12_440,
-    'intro-hands': 18_290,
-    'intro-title': 24_790,
+    'intro-forge': ANTHEM_MARKS.forge,
+    'intro-dawn': ANTHEM_MARKS.dawn,
+    'intro-rivers': ANTHEM_MARKS.rivers,
+    'intro-hands': ANTHEM_MARKS.hands,
+    'intro-title': ANTHEM_MARKS.title,
   };
   /** The full choir enters here, and the title should still be up for it. */
-  const CHORUS_MS = 30_540;
+  const CHORUS_MS = ANTHEM_MARKS.chorus;
 
   /** When each beat starts and ends, in milliseconds from the first frame. */
   function windows(): { id: string; start: number; end: number }[] {
@@ -119,9 +122,32 @@ describe('the beats themselves', () => {
   });
 
   it('runs well under a minute, so it can be sat through', () => {
+    /*
+     * ⚠️ This bound was 45 s, and the re-recorded anthem made it unsatisfiable
+     * rather than merely tight. Three requirements above now collide:
+     *
+     *   - the title card comes up on *Simul aedificant*, at 41.5 s
+     *   - every card is on screen at least 5 s, or it cannot be read
+     *   - the title is still up when the full choir enters, at 49.8 s
+     *
+     * The first two alone put the end past 46.5 s. There is no film that
+     * satisfies all three and finishes inside 45 s, because the new take
+     * spends 41 s on a verse the old one sang in 25.
+     *
+     * Raising a bound to make a change pass is usually how a guard dies, so:
+     * the guard is the *minute*, and it still holds. The 45 s figure was a
+     * property of a recording that no longer exists. What actually protects
+     * the player is that the film plays once per new game (a resumed empire
+     * never sees it, D308) and Esc skips it at any frame.
+     *
+     * The alternative was to cut the audio, which would mean editing inside
+     * sung phrases to remove 15 s, and an audible splice in the one piece of
+     * music the game leads with is a worse outcome than twenty extra seconds
+     * of a film nobody is forced to watch twice.
+     */
     const total = introDurationMs(shots);
     expect(total).toBeGreaterThan(20_000);
-    expect(total).toBeLessThan(45_000);
+    expect(total).toBeLessThan(60_000);
   });
 });
 

@@ -21,21 +21,12 @@
  * time *Ex nihilo terra surgit* was actually sung the sequence had already cut
  * to the next card. Every card was one passage early.
  *
- * The lines were located by decoding the track and looking for the breath gaps
- * between them, in the band the voices occupy. They begin at:
- *
- * | t | passage |
- * | --- | --- |
- * | 0.00 s | *Fabrica... fabrica... Texamus una.* solo, unaccompanied |
- * | 5.35 s | *Ex nihilo terra surgit* (low strings enter at 4.6 s) |
- * | 12.44 s | *Flumina viam inveniunt* |
- * | 18.29 s | *Manus parvae, manus magnae* |
- * | 24.79 s | *Simul aedificant* |
- * | 30.54 s | the chorus, full choir |
- *
- * Each beat runs from one of those to the next. ⚠️ The old durations were
- * already almost exactly right, which is the tell: the sequence was not
- * mistimed, it was **started too early**.
+ * ⚠️ **They are therefore measurements of ONE PERFORMANCE, and do not survive
+ * a re-generation.** Re-recording the anthem on the Pro plan produced a take
+ * that is roughly 1.6 times slower through the same words, and the film went
+ * straight back to showing each card ahead of its line. That is not a bug in
+ * either the film or the song; it is what happens when a constant describes an
+ * artefact that got replaced. `ANTHEM_MARKS` is the one place to fix it.
  */
 
 import { Vector3 } from 'three';
@@ -45,6 +36,49 @@ import {
   orbitShot,
   type CinematicShot,
 } from './three/cinematic.js';
+
+/**
+ * Where each sung line begins, in milliseconds into the anthem.
+ *
+ * The lines were located by decoding the track and looking for where the
+ * spectrum changes in the band the voices occupy. The unaccompanied opening
+ * was found by watching for the arrival of low-frequency energy, since a solo
+ * treble voice has almost none.
+ *
+ * | mark | measured | the old free-tier take, for comparison |
+ * | --- | --- | --- |
+ * | accompaniment enters | 8.46 s | 4.60 s |
+ * | *Ex nihilo terra surgit* | 8.99 s | 5.35 s |
+ * | *Flumina viam inveniunt* | 20.61 s | 12.44 s |
+ * | *Manus parvae, manus magnae* | 29.44 s | 18.29 s |
+ * | *Simul aedificant* | 41.52 s | 24.79 s |
+ * | full choir | 49.76 s | 30.54 s |
+ *
+ * ⚠️ **One source of truth, deliberately.** These numbers used to exist twice,
+ * once as five `durationMs` values here and once as a `SUNG_AT` table in the
+ * test, with nothing to make them agree. Two copies of a measurement is two
+ * chances to update one of them.
+ */
+export const ANTHEM_MARKS = {
+  /** The film opens here, on the unaccompanied voice. */
+  forge: 0,
+  /** *Ex nihilo terra surgit*, just after the strings come in at 8.46 s. */
+  dawn: 8_990,
+  /** *Flumina viam inveniunt*. */
+  rivers: 20_610,
+  /** *Manus parvae, manus magnae*. */
+  hands: 29_440,
+  /** *Simul aedificant*, where the title card belongs. */
+  title: 41_520,
+  /** The full choir. The title must still be on screen for this. */
+  chorus: 49_760,
+  /** Where the film stops, a little past the choir's entry. */
+  end: 52_800,
+} as const;
+
+/** How long a beat runs, from its own mark to the next one. */
+const beat = (from: keyof typeof ANTHEM_MARKS, to: keyof typeof ANTHEM_MARKS): number =>
+  ANTHEM_MARKS[to] - ANTHEM_MARKS[from];
 
 export interface IntroWorld {
   /** The middle of the map, on the ground. */
@@ -92,7 +126,7 @@ export function introShots(world: IntroWorld): readonly CinematicShot[] {
     toHeight: 3.4,
     sweepRad: 0.34,
     startAngleRad: -1.2,
-    durationMs: 5350,
+    durationMs: beat('forge', 'dawn'),
   });
 
   /*
@@ -112,8 +146,7 @@ export function introShots(world: IntroWorld): readonly CinematicShot[] {
     toHeight: extent * 0.62,
     sweepRad: 0.72,
     startAngleRad: -0.5,
-    // 5.35s to 12.44s: the length of its own line, which it always was.
-    durationMs: 7090,
+    durationMs: beat('dawn', 'rivers'),
   });
 
   /*
@@ -133,8 +166,7 @@ export function introShots(world: IntroWorld): readonly CinematicShot[] {
     endDistance: extent * 0.2,
     startHeight: extent * 0.3,
     endHeight: extent * 0.075,
-    // 12.44s to 18.29s.
-    durationMs: 5850,
+    durationMs: beat('rivers', 'hands'),
   });
 
   /*
@@ -153,8 +185,7 @@ export function introShots(world: IntroWorld): readonly CinematicShot[] {
     endHeight: 2.6,
     radius: extent * 0.22,
     sweepRad: 0.85,
-    // 18.29s to 24.79s.
-    durationMs: 6500,
+    durationMs: beat('hands', 'title'),
   });
 
   /*
@@ -164,8 +195,8 @@ export function introShots(world: IntroWorld): readonly CinematicShot[] {
    * card, and this is the line the whole project is arguing for.
    *
    * ⚠️ It comes up on *Simul aedificant*, "together they build", and is still
-   * on screen when the full choir enters at 30.54 s. That is the loudest
-   * moment in the piece and the title card should be sitting on it.
+   * on screen when the full choir enters. That is the loudest moment in the
+   * piece and the title card should be sitting on it.
    */
   const title = orbitShot({
     id: 'intro-title',
@@ -177,7 +208,7 @@ export function introShots(world: IntroWorld): readonly CinematicShot[] {
     toHeight: 5.4,
     sweepRad: 0.62,
     startAngleRad: 0.85,
-    durationMs: 7600,
+    durationMs: beat('title', 'end'),
   });
 
   return [forge, dawn, rivers, hands, title];
