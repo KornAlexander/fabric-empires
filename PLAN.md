@@ -277,6 +277,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D324–D334 | Photoreal, measured against a photograph | Recorded in full in section 41.9 |
 | D335–D340 | A fortified unit could never get up again | Recorded in full in section 42.5 |
 | D341–D346 | The trailer, re-cut at the graded look | Recorded in full in section 43.5 |
+| D347–D352 | The empire studies something, whether or not you told it to | Recorded in full in section 44.5 |
 
 ### 28. Cheat codes
 
@@ -3820,6 +3821,120 @@ opening does on purpose (32.4). The heuristic was wrong, not the film.
   camera, rather than from turn one.
 - Both files carry the anthem, so both inherit its non-commercial terms and
   both stay out of the repository. See MUSIC-LICENSING.md.
+
+---
+
+### 44. The empire studies something, whether or not you told it to
+
+Asked for: if nothing is selected for research, pick something on the player's
+behalf.
+
+#### 44.1 ⚠️ Idle was the default, not an edge case
+
+Two paths left the tech tree stopped, and both were ordinary rather than
+exceptional:
+
+- **A new game began studying nothing.** `research: EMPTY_RESEARCH` with
+  `current: undefined`.
+- **`completeResearch` cleared the slot.** So the rhythm of every game was
+  learn, idle, learn, idle, and the idle half lasted until somebody noticed.
+
+In both, Compute went on arriving and simply banked. Nothing threw, nothing
+logged, and the tree quietly stopped moving. For a study tool whose entire
+premise is that the questions keep coming, that is the worst failure available:
+the player is not blocked, they are just not learning, and the game looks fine.
+
+#### 44.2 ⚠️ The choice is deliberately dull, because it has to be
+
+`autoSelectResearch` takes the **first researchable topic in graph order**.
+That is not laziness; the engine is not permitted to be cleverer.
+
+D35 says the engine never learns what a topic is *about*. So it cannot rank by
+exam weight, by how weak the learner is, or by anything else that would make
+this a good study recommendation. And a `TopicNode`'s `weight` is no help
+either: it is a **cost**, 2 for a gateway and 1 for a skill, not a measure of
+importance.
+
+What is left is the order the challenge provider supplied, which for a
+certification is the published order of its own outline. Neutral,
+deterministic, and a perfectly reasonable path through a syllabus. Anything
+better belongs to the learning layer, which can call `startResearch` whenever
+it likes.
+
+#### 44.3 Three places, and one of them deliberately does not fund
+
+| Where | Why |
+| --- | --- |
+| `createGameState` | So turn one is already studying rather than banking |
+| `completeResearch` | The one that matters: finishing a topic starts the next |
+| The turn pipeline | The net underneath, for a loaded save or a re-imported curriculum |
+
+⚠️ **A topic picked in the pipeline is not funded on the same turn.** Switching
+topics forfeits progress, so investing Compute into something the player never
+chose, in the same breath as choosing it, would charge them for a decision they
+had no chance to see. Selecting now and funding from the next turn gives them a
+full turn to change it for free, because progress is still zero.
+
+It is also **reported**, not done silently, and the app says so in the log.
+Something choosing your next subject without telling you is indistinguishable
+from a bug the first time you notice the tech tree moving on its own.
+
+#### 44.4 ⚠️ Sixteen existing tests failed, and they were not all stale
+
+That number looked alarming and was mostly mechanical: tests that call
+`startResearch(state, researchable(state)[0].id)` now get **"Already
+researching this"** back, because auto-select had already chosen exactly that
+topic. Those went through a helper that tolerates it.
+
+Three were real, and one of them improved:
+
+- `starting state > knows nothing and is researching nothing` asserted the old
+  default in its title. Rewritten to assert the new one, keeping the parts that
+  still hold: nothing known, nothing invested.
+- `iknowthis refuses when nothing is being researched` guards a state a game no
+  longer reaches on its own. Kept, with the state made idle explicitly, because
+  the guard still matters for a loaded save.
+- ⚠️ **`pays income into the treasury` became a stronger test.** It asserted
+  that the treasury grows by exactly the income, which held only because an
+  empire researching nothing spent nothing. It now asserts the whole ledger
+  balances: `before + income − research − production`. That is a better claim
+  than the one it replaced.
+
+#### 44.5 Decisions
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D347 | ⚠️ **Never idle: pick when nothing is selected** | Idle was the default state through two ordinary paths, and it fails silently. Compute arrives, banks, and no part of the tree moves |
+| D348 | The engine picks in graph order, not cleverly | D35 forbids it knowing what a topic means, and `weight` is a cost rather than an importance. Graph order is the syllabus's own order |
+| D349 | ⚠️ **The pipeline's pick does not fund that turn** | Switching forfeits progress. Funding a choice the player never saw would charge them for it |
+| D350 | The pick is reported and logged | Choosing somebody's subject for them without saying so reads as a bug |
+| D351 | Auto-select runs inside `completeResearch` | It is the path that produced the idling in the first place, and putting it there means no caller can forget |
+| D352 | ⚠️ **`startResearch` still refuses the current topic** | The UI already omits it from the options, so a player cannot hit it, and the guard protects progress from a stray re-selection |
+
+#### 44.6 Verified
+
+- 922 tests, 15 new.
+- Driven in a real game: on arrival, having chosen nothing, the empire was
+  already studying *Implement workspace-level access controls*. After fourteen
+  turns in which research was never touched, **three topics were known** and a
+  fourth was funded. Before this change that run would have ended with zero.
+- ⚠️ The first run of that check reported "tech tree did not move", and the
+  cause was the scenario rather than the feature: it never founded a city, so
+  there was no territory, no income and no Compute at all.
+
+#### 44.7 Open
+
+- ⚠️ **"Bank Compute and stay undecided" has stopped being a position a player
+  can hold**, and `fundResearch` used to call it a legitimate strategy. It is
+  now only reachable by finishing the tree. Nobody asked to keep it, and the
+  trade favours the study tool, but it was a real option and it is gone.
+- The choice is dull by necessity in the engine and could be much better in the
+  app. `learn/src/coach.ts` already ranks topics by exam weight, retention gap
+  and whether they are due; having the app pre-empt the engine with that
+  ranking is the obvious next step and is deliberately not in this change.
+- A player who never opens the research panel now learns whatever the outline
+  lists first, forever. That is better than learning nothing, and it is not the
+  same as studying well.
 
 ---
 

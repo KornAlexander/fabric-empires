@@ -13,7 +13,7 @@
 
 import { unitType, type Faction } from '../entities/index.js';
 import { addResources, empireIncome, growthThreshold } from '../rules/yields.js';
-import { fundResearch, researchReady } from '../rules/research.js';
+import { autoSelectResearch, fundResearch, researchReady } from '../rules/research.js';
 import { reviewOpportunities, reviewPhase, type ReviewOpportunity } from '../rules/review.js';
 import { runFactionTurn, garrisonPhase, type AiEvent } from '../rules/ai.js';
 import { rememberVisible } from '../rules/vision.js';
@@ -55,6 +55,14 @@ export interface TurnReport {
   readonly grownCities: readonly string[];
   /** Compute moved into research this turn. */
   readonly researchSpent: number;
+  /**
+   * A topic the engine picked because nothing was selected.
+   *
+   * ⚠️ Reported rather than done silently. Something choosing what you study
+   * on your behalf and not saying so is the kind of help that reads as a bug
+   * the first time somebody notices the tech tree moving without them.
+   */
+  readonly researchAutoSelected: string | undefined;
   /**
    * A topic that is fully funded and waiting for its challenge.
    *
@@ -165,6 +173,7 @@ function upkeepPhase(state: GameState, factionId: string): TurnResult {
       upkeepPaid: income.upkeep,
       grownCities: grown,
       researchSpent: 0,
+      researchAutoSelected: undefined,
       researchReadyTopicId: undefined,
       bankrupt,
       reviewsAvailable: [],
@@ -239,7 +248,26 @@ export function endTurn(state: GameState, options: TurnOptions = {}): TurnResult
    * completely whenever a topic was being studied, which is most of the game.
    */
   const produced = productionPhase(reviewed.state, factionId);
-  const funded = fundResearch(produced.state, factionId);
+
+  /*
+   * Nothing being studied is not a strategy, it is an oversight.
+   *
+   * `completeResearch` already picks the next topic the moment one finishes,
+   * so this is the net underneath: a loaded save, a topic that vanished from
+   * a re-imported curriculum, or any path that leaves research idle.
+   *
+   * ⚠️ **A topic picked here is deliberately NOT funded on the same turn.**
+   * Switching away from a topic forfeits its progress, so investing Compute
+   * into something the player never chose, in the same breath as choosing it,
+   * would charge them for a decision they had no chance to see. Selecting now
+   * and funding from the next turn gives them a full turn to change it for
+   * free, because progress is still zero.
+   */
+  const chosen = autoSelectResearch(produced.state);
+  const autoSelected = chosen === produced.state ? undefined : chosen.research.current;
+  const funded = autoSelected
+    ? { state: chosen, spent: 0, readyTopicId: undefined }
+    : fundResearch(chosen, factionId);
   const refreshed = refreshPhase(funded.state, factionId);
 
   /*
@@ -282,6 +310,7 @@ export function endTurn(state: GameState, options: TurnOptions = {}): TurnResult
     report: {
       ...afterUpkeep.report,
       researchSpent: funded.spent,
+      researchAutoSelected: autoSelected,
       researchReadyTopicId: funded.readyTopicId ?? researchReady(funded.state),
       // Recomputed against the new turn, so a city that reviewed this turn is
       // offered again next turn rather than looking permanently spent.

@@ -36,13 +36,31 @@ function fresh(): GameState {
   return createGameState('FABRIC', { spawnAntagonists: false });
 }
 
-/** Fund and complete a topic outright, for building up a research position. */
-function learn(state: GameState, topicId: string): GameState {
+/**
+ * Make `topicId` the topic being studied.
+ *
+ * ⚠️ Tolerates it already being current. A new game now begins studying the
+ * first available topic on its own, so a test that picks that same topic gets
+ * "Already researching this" back, which is correct behaviour and a useless
+ * failure.
+ */
+function choose(state: GameState, topicId: string): GameState {
+  if (state.research.current === topicId) return state;
   const started = startResearch(state, topicId);
   if (!started.ok) throw new Error(`start ${topicId}: ${started.reason}`);
+  return started.state;
+}
+
+/** A state with nothing being studied, which no longer happens on its own. */
+function idle(state: GameState): GameState {
+  return { ...state, research: { ...state.research, current: undefined, progress: 0 } };
+}
+
+/** Fund and complete a topic outright, for building up a research position. */
+function learn(state: GameState, topicId: string): GameState {
   const node = topicById(state.topics, topicId)!;
   const funded = fundResearch(
-    withCompute(started.state, researchCost(node)),
+    withCompute(choose(state, topicId), researchCost(node)),
     PLAYER_FACTION_ID,
   );
   const done = completeResearch(funded.state, 1);
@@ -51,10 +69,21 @@ function learn(state: GameState, topicId: string): GameState {
 }
 
 describe('starting state', () => {
-  it('knows nothing and is researching nothing', () => {
+  it('⚠️ knows nothing, but is already studying something', () => {
+    /*
+     * ⚠️ **This test used to assert the opposite**, and the opposite was the
+     * bug. A new empire began researching nothing, so the opening turns of
+     * every game banked Compute and moved no part of the tech tree. Nothing
+     * threw and nothing logged; the tree simply sat still.
+     *
+     * What has not changed is that it knows nothing yet and has invested
+     * nothing, which is what keeps the opening choice free to change.
+     */
     const state = fresh();
-    expect(state.research).toEqual(EMPTY_RESEARCH);
+    expect(state.research.known).toEqual([]);
+    expect(state.research.progress).toBe(0);
     expect(researchProgress(state)).toBe(0);
+    expect(state.research.current).toBe(researchable(state)[0]!.id);
   });
 
   it('uses the subject-free tree unless one is supplied', () => {
@@ -104,7 +133,7 @@ describe('choosing a topic', () => {
     const [first, ...rest] = researchable(state);
     const second = rest[0] ?? first;
     state = startResearch(state, first!.id).ok
-      ? (startResearch(state, first!.id) as { ok: true; state: GameState }).state
+      ? choose(state, first!.id)
       : state;
     state = fundResearch(withCompute(state, 5), PLAYER_FACTION_ID).state;
     expect(state.research.progress).toBe(5);
@@ -129,7 +158,7 @@ describe('funding', () => {
     // The player must be able to watch the bill being paid.
     let state = fresh();
     const root = researchable(state)[0]!;
-    state = (startResearch(state, root.id) as { ok: true; state: GameState }).state;
+    state = choose(state, root.id);
     state = withCompute(state, 4);
 
     const tick = fundResearch(state, PLAYER_FACTION_ID);
@@ -144,7 +173,7 @@ describe('funding', () => {
     let state = fresh();
     const root = researchable(state)[0]!;
     const cost = researchCost(root);
-    state = (startResearch(state, root.id) as { ok: true; state: GameState }).state;
+    state = choose(state, root.id);
     state = withCompute(state, cost + 100);
 
     const tick = fundResearch(state, PLAYER_FACTION_ID);
@@ -155,7 +184,10 @@ describe('funding', () => {
   });
 
   it('does nothing when nothing is being researched', () => {
-    const tick = fundResearch(withCompute(fresh(), 50), PLAYER_FACTION_ID);
+    // ⚠️ Made idle on purpose. A game does not reach this state by itself any
+    // more, but `fundResearch` still has to cope with it: a loaded save, or a
+    // tree whose every topic is known.
+    const tick = fundResearch(withCompute(idle(fresh()), 50), PLAYER_FACTION_ID);
     expect(tick.spent).toBe(0);
     expect(tick.readyTopicId).toBeUndefined();
   });
@@ -163,14 +195,14 @@ describe('funding', () => {
   it('does nothing when the treasury is empty', () => {
     let state = fresh();
     const root = researchable(state)[0]!;
-    state = (startResearch(state, root.id) as { ok: true; state: GameState }).state;
+    state = choose(state, root.id);
     expect(fundResearch(withCompute(state, 0), PLAYER_FACTION_ID).spent).toBe(0);
   });
 
   it('reports the topic as ready once fully funded', () => {
     let state = fresh();
     const root = researchable(state)[0]!;
-    state = (startResearch(state, root.id) as { ok: true; state: GameState }).state;
+    state = choose(state, root.id);
     const tick = fundResearch(withCompute(state, researchCost(root)), PLAYER_FACTION_ID);
     expect(tick.readyTopicId).toBe(root.id);
     expect(researchReady(tick.state)).toBe(root.id);
@@ -182,13 +214,16 @@ describe('completing', () => {
     expect(completeResearch(fresh(), 1).ok).toBe(false);
   });
 
-  it('a right answer learns the topic and clears the slot', () => {
+  it('a right answer learns the topic and moves straight on to the next', () => {
     const state = fresh();
     const root = researchable(state)[0]!;
     const learned = learn(state, root.id);
     expect(isResearched(learned, root.id)).toBe(true);
-    expect(learned.research.current).toBeUndefined();
     expect(learned.research.progress).toBe(0);
+    // ⚠️ The slot used to be left empty here, which is what made every game
+    // alternate between studying and idling.
+    expect(learned.research.current).toBeDefined();
+    expect(learned.research.current).not.toBe(root.id);
   });
 
   it('a neutral answer still completes it, so the null provider can play', () => {
@@ -196,7 +231,7 @@ describe('completing', () => {
     // zero blocked research, that game could never advance.
     let state = fresh();
     const root = researchable(state)[0]!;
-    state = (startResearch(state, root.id) as { ok: true; state: GameState }).state;
+    state = choose(state, root.id);
     state = fundResearch(withCompute(state, researchCost(root)), PLAYER_FACTION_ID).state;
     const done = completeResearch(state, 0);
     expect(done.ok).toBe(true);
@@ -213,7 +248,7 @@ describe('completing', () => {
      */
     let state = fresh();
     const root = researchable(state)[0]!;
-    state = (startResearch(state, root.id) as { ok: true; state: GameState }).state;
+    state = choose(state, root.id);
     state = fundResearch(withCompute(state, researchCost(root)), PLAYER_FACTION_ID).state;
 
     const failed = completeResearch(state, -1);
@@ -233,7 +268,7 @@ describe('through the turn pipeline', () => {
   it('funds research from income and reports what was spent', () => {
     let state = fresh();
     const root = researchable(state)[0]!;
-    state = (startResearch(state, root.id) as { ok: true; state: GameState }).state;
+    state = choose(state, root.id);
     state = withCompute(state, 3);
 
     const result = endTurn(state);
@@ -246,7 +281,7 @@ describe('through the turn pipeline', () => {
     // outcome of a challenge it never saw.
     let state = fresh();
     const root = researchable(state)[0]!;
-    state = (startResearch(state, root.id) as { ok: true; state: GameState }).state;
+    state = choose(state, root.id);
     state = withCompute(state, researchCost(root));
 
     const result = endTurn(state);
@@ -293,7 +328,7 @@ describe('saving research', () => {
   it('round trips a part-funded topic', () => {
     let state = fresh();
     const root = researchable(state)[0]!;
-    state = (startResearch(state, root.id) as { ok: true; state: GameState }).state;
+    state = choose(state, root.id);
     state = fundResearch(withCompute(state, 5), PLAYER_FACTION_ID).state;
 
     const restored = deserialise(serialise(state));

@@ -146,8 +146,22 @@ describe('the war code', () => {
 
 describe('the exam codes', () => {
   it('iknowthis refuses when nothing is being researched', () => {
-    const out = findCheat('iknowthis')!.apply(context());
-    expect(out.ok).toBe(false);
+      /*
+       * ⚠️ The state has to be made idle now. A game selects a topic on its
+       * own when none is chosen, so this branch is no longer reachable by
+       * simply starting a game. The guard still matters for a loaded save or a
+       * tree whose every topic is already known, which is why it is kept
+       * rather than deleted.
+       */
+      const base = context();
+      const idle = {
+        ...base,
+        state: {
+          ...base.state,
+          research: { ...base.state.research, current: undefined, progress: 0 },
+        },
+      };
+      const out = findCheat('iknowthis')!.apply(idle);
   });
 
   it('iknowthis completes the funded topic', () => {

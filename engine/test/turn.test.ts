@@ -260,7 +260,22 @@ describe('turns', () => {
     const { state: after, report } = endTurn(state);
     const now = after.factions.get(PLAYER_FACTION_ID)!.resources;
 
-    expect(now.compute).toBe(before.compute + report.treasuryGained.compute);
+    /*
+     * ⚠️ The whole Compute ledger, not just the income half.
+     *
+     * This used to assert that the treasury simply grew by the income, which
+     * held only because an empire researching nothing spent nothing. Now that
+     * a game always has something selected, Compute arrives and is drawn on in
+     * the same turn, and the claim worth making is the stronger one: every
+     * Compute is accounted for as income, research or production.
+     */
+    expect(now.compute).toBe(
+      before.compute +
+        report.treasuryGained.compute -
+        report.researchSpent -
+        report.productionSpent,
+    );
+    // Nothing spends Trust, so it still simply accumulates.
     expect(now.trust).toBe(before.trust + report.treasuryGained.trust);
   });
 

@@ -1542,6 +1542,22 @@ async function doEndTurn(): Promise<void> {
   if (report.researchSpent > 0) {
     log(`${report.researchSpent} Compute into research.`);
   }
+  /*
+   * Say so when the empire chose for itself.
+   *
+   * ⚠️ Silence here would be the actual problem. Something picking your next
+   * subject without telling you is indistinguishable from a bug the first time
+   * you notice the tech tree moving on its own, and the whole point of the
+   * message is that the player knows they may change it.
+   */
+  if (report.researchAutoSelected) {
+    const node = provider.topics().nodes.find((n) => n.id === report.researchAutoSelected);
+    log(
+      t('Nothing was being studied, so the council began {topic}. Choose another if you like.', {
+        topic: node?.label ?? report.researchAutoSelected,
+      }),
+    );
+  }
   for (const made of report.unitsBuilt) {
     const label = unitType(made.typeId).label;
     log(

@@ -33,7 +33,7 @@ import {
   type UnitTypeId,
 } from '../entities/index.js';
 import { GENERIC_TOPIC_GRAPH, type TopicGraph } from '../challenge/index.js';
-import { EMPTY_RESEARCH, type ResearchState } from '../rules/research.js';
+import { EMPTY_RESEARCH, autoSelectResearch, type ResearchState } from '../rules/research.js';
 import { rememberVisible } from '../rules/vision.js';
 
 export type Difficulty = 'apprentice' | 'analyst' | 'architect';
@@ -590,7 +590,15 @@ export function createGameState(
    * that happens is a render, and a map that flashes fully lit before the fog
    * arrives has already given away every camp it was meant to hide.
    */
-  return rememberVisible(world, PLAYER_FACTION_ID);
+  /*
+   * And it starts studying something.
+   *
+   * A new empire used to begin researching nothing at all, so the first turns
+   * of every game banked Compute into a treasury and moved no part of the tech
+   * tree. The first topic in the graph is chosen; the player is free to pick
+   * another before any Compute has gone into it.
+   */
+  return rememberVisible(autoSelectResearch(world), PLAYER_FACTION_ID);
 }
 
 /**

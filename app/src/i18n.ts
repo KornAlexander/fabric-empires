@@ -53,6 +53,8 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
   'Hover a tile': 'Zeige auf ein Feld',
   'Researching nothing': 'Keine Forschung',
   'Choose what to study.': 'Wähle, was du lernen willst.',
+  'Nothing was being studied, so the council began {topic}. Choose another if you like.':
+    'Es wurde nichts erforscht, also hat der Rat mit {topic} begonnen. Wähle gerne etwas anderes.',
   'Who is coming': 'Wer kommt',
   'Your empire begins.': 'Dein Reich beginnt.',
   'Turn {n}': 'Runde {n}',
