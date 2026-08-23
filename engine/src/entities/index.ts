@@ -82,13 +82,37 @@ export interface Unit {
   readonly fortified: boolean;
 }
 
+/**
+ * A city builds soldiers or it builds walls, out of one purse.
+ *
+ * ⚠️ Declared here rather than in `rules/production.ts` because `City` carries
+ * it, and entities must not import from rules. `'wall'` is not a `UnitTypeId`,
+ * so the compiler flags every existing site that assumed one.
+ */
+export const WALL_TARGET = 'wall';
+export type ProductionTarget = UnitTypeId | typeof WALL_TARGET;
+
+/** Whether a set of build orders means fortification rather than a unit. */
+export function isWallTarget(target: ProductionTarget): target is typeof WALL_TARGET {
+  return target === WALL_TARGET;
+}
+
 export interface City {
-  readonly id: string;
-  readonly factionId: string;
+  readonly id: string;  readonly factionId: string;
   readonly hex: Hex;
   readonly name: string;
   readonly kind: CityKind;
   readonly hp: number;
+  /**
+   * Fortification built here, 0 to `MAX_WALL_LEVEL`. Raised only by
+   * production; never falls when the walls are battered.
+   */
+  readonly wallLevel: number;
+  /**
+   * Wall hit points still standing. Separate from `wallLevel` so a siege can
+   * make progress across several assaults without erasing what was paid for.
+   */
+  readonly wallHp: number;
   readonly population: number;
   /**
    * How far the settlement has come: Siedlung through Großstadt.
@@ -123,8 +147,13 @@ export interface City {
    *
    * Optional rather than a null, because `exactOptionalPropertyTypes` makes
    * the difference between "not building" and "building undefined" a real one.
+   *
+   * ⚠️ Widened from `UnitTypeId` to include `WALL_TARGET`, so that walls
+   * compete for the same capped Compute as soldiers rather than living in a
+   * parallel queue. The union is deliberate: every place that assumed a unit
+   * now fails to compile until it says what it means by a wall.
    */
-  readonly producing?: UnitTypeId;
+  readonly producing?: ProductionTarget;
   /** Compute already sunk into the current build. Kept when orders change. */
   readonly productionProgress: number;
   /**

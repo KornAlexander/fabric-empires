@@ -17,7 +17,7 @@ import { GENERIC_TOPIC_GRAPH, type TopicGraph } from '../challenge/index.js';
 import { EMPTY_RESEARCH, type ResearchState } from '../rules/research.js';
 import type { Difficulty, GameState } from '../state/index.js';
 
-export const SAVE_VERSION = 7;
+export const SAVE_VERSION = 8;
 
 export interface SaveFile {
   readonly version: number;
@@ -193,6 +193,25 @@ const MIGRATIONS: Readonly<Record<number, (save: SaveFile) => SaveFile>> =
       cities: save.cities.map((city) => ({
         ...city,
         rank: rankFromPopulationAlone(city.population ?? 1),
+      })),
+    }),
+
+    /**
+     * 7 -> 8: cities can be walled.
+     *
+     * Both fields default to zero, which is exactly what an old save means:
+     * nobody had ever built a wall, so nothing had one. ⚠️ `wallHp` must not be
+     * seeded from `maxWallHp` here, because a level of zero has no hit points
+     * and a non-zero default would hand every existing city a wall it never
+     * paid for.
+     */
+    7: (save) => ({
+      ...save,
+      version: 8,
+      cities: save.cities.map((city) => ({
+        ...city,
+        wallLevel: 0,
+        wallHp: 0,
       })),
     }),
   });

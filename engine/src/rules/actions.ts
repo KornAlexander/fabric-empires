@@ -126,6 +126,8 @@ export function foundCity(
     name: options.name ?? cityKind(kind).label,
     kind,
     hp: cityKind(kind).baseHp,
+    wallLevel: 0,
+    wallHp: 0,
     population: 1,
     rank: FIRST_RANK,
     growthStore: 0,

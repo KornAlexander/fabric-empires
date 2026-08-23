@@ -267,6 +267,6 @@ describe('saves', () => {
      * did not exist when the save was played.
      */
     expect(capital(loaded).rank).toBe('siedlung');
-    expect(SAVE_VERSION).toBe(7);
+    expect(SAVE_VERSION).toBe(8);
   });
 });

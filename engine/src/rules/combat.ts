@@ -12,6 +12,7 @@ import { terrain } from '../map/index.js';
 import { createRng, type Rng } from '../rng/index.js';
 import { isCivilian, cityKind, unitType, type City, type Unit } from '../entities/index.js';
 import { cityAt, tileAt, unitAt, type GameState } from '../state/index.js';
+import { wallDefenceBonus } from './walls.js';
 import { grantFoothold, razeCityAt } from './sack.js';
 import type { ResourceId } from '../map/index.js';
 
@@ -161,15 +162,22 @@ export function cityCombatSide(
   // made a siege pointless right up until the moment it succeeded.
   const factor = hpFactor(city.hp, cityKind(city.kind).baseHp);
   const modifier = challengeModifier(options.challengeScore ?? 0);
+  // Walls sit in `fortifyBonus` because that is what they are: a defensive
+  // work rather than a property of the ground. Scaled by how much of the wall
+  // is still standing, so battering it down actually helps the besieger.
+  const wallBonus = wallDefenceBonus(city);
 
   return {
     baseStrength,
     hpFactor: factor,
     terrainBonus,
-    fortifyBonus: 0,
+    fortifyBonus: wallBonus,
     techBonus: 0,
     challengeModifier: modifier,
-    effective: Math.max(1, baseStrength * factor * (1 + terrainBonus) + modifier),
+    effective: Math.max(
+      1,
+      baseStrength * factor * (1 + terrainBonus + wallBonus) + modifier,
+    ),
   };
 }
 

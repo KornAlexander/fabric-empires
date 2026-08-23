@@ -211,8 +211,10 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
   'Nothing in this file can be played yet.':
     'Aus dieser Datei lässt sich noch nichts spielen.',
   '{title} is ready. Pick it as a course below.':
-    '{title} ist bereit. Wähle es unten als Kurs aus.',
-  'Those questions could not be prepared.':
+    '{title} ist bereit. Wähle es unten als Kurs aus.',    // Walls. "Stufe" rather than "Level", which is the ordinary German word for
+    // a tier and keeps the interface out of Denglisch.
+    'Walls level {level}': 'Mauern Stufe {level}',
+    'Walls level {level} · {hp}/{full}': 'Mauern Stufe {level} · {hp}/{full}',  'Those questions could not be prepared.':
     'Diese Fragen konnten nicht vorbereitet werden.',
   'That file could not be read. Excel and CSV both work.':
     'Diese Datei konnte nicht gelesen werden. Excel und CSV funktionieren beide.',

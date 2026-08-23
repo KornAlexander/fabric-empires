@@ -11,3 +11,4 @@ export * from './sack.js';
 export * from './rank.js';
 export * from './vision.js';
 export * from './settle.js';
+export * from './walls.js';

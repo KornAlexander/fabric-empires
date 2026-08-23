@@ -4639,4 +4639,57 @@ failed inside Rollup for a reason that had nothing to do with Rollup. Edit
 
 ---
 
+## 54. Walls: the first piece of the siege
+
+Section 19.5 orders the siege as walls, then siege state, then the assault set
+piece, then the defender's options. This is step one, and it is the largest
+engine change on that list.
+
+| ID | Decision |
+|---|---|
+| D412 | **Two numbers, not one.** `wallLevel` is what was built and only production raises it; `wallHp` is what still stands and attackers knock it down. Keeping them apart is what lets a siege *progress*: the walls come down over several assaults while the investment survives. One number would either forget what was paid for or make damage permanent |
+| D413 | **Walls are a production target, sharing the one purse.** `producing` widens from `UnitTypeId` to `ProductionTarget = UnitTypeId \| 'wall'`, so arming and fortifying compete for the same capped Compute exactly as building and studying already do. ⚠️ The union was chosen over a parallel queue deliberately: `'wall'` is not a `UnitTypeId`, so **the compiler names every site that assumed a unit**. It found eight, in four files, including two test helpers |
+| D414 | **Walls scale defence rather than adding to it**, and they sit in `cityCombatSide`'s `fortifyBonus`, which existed and was hard-coded to 0. A flat bonus would make a size-one outpost with three levels as hard to take as a capital, which contradicts the whole rank system |
+| D415 | ⚠️ **Scaled by integrity, so battering them down actually helps.** Without that a siege meets the same defence on its last assault as its first, which is the exact flaw `hpFactor` was added to fix for the city itself. `wallIntegrity` reports an unwalled city as **0, not 1**, so no caller can read "no walls" as "perfect walls" |
+| D416 | ⚠️ **A finished wall would otherwise complete every turn, forever.** At full height the next level costs nothing, and a zero cost is always already paid. The tick drops the orders instead, and the top level clears `producing` when it lands. There is a test for it that runs sixty turns |
+| D417 | **Save version 8**, defaulting both fields to zero. ⚠️ `wallHp` must not be seeded from `maxWallHp`: a level of zero has no hit points, and a non-zero default would hand every existing city a wall it never paid for. Section 19.2 predicted "save version 4"; the real number was 7 |
+| D418 | `absorbWithWalls` is written and tested but **not yet wired into combat**. Walls currently change the odds; they do not yet soak damage. That belongs with the assault set piece in 19.5 step 3, and shipping the helper now means the rule is settled and covered before the thing that calls it exists |
+
+### What the compiler and the tests each caught
+
+The union type did its job: eight sites, named precisely, including the two
+places a new `City` is built in tests. Nothing had to be found by hand.
+
+⚠️ **Three of my own checks were wrong before the code was.** `createGameState`
+takes a seed string, not an options object. `deserialise` returns a `GameState`
+and throws, so treating it as a result object made every load look like a
+silent failure. And a browser check reported "walls NOT OFFERED" when the real
+situation was that the player had no city yet, because the seven on the map
+belong to the antagonists.
+
+### Verified on the deployed app, not only in the suite
+
+19 new tests, 981 total. Then driven in a browser against the live URL: found a
+city, ordered walls from the build picker, and watched it through.
+
+```
+Mauern Stufe 1 · 40/40
+Mauern Stufe 2: 45/72 Compute · 2 turns
+```
+
+Level one at full height, orders carried on to level two, and the price risen
+from 36 to 72. ⚠️ The harness's `factionUnits()` needs a faction id and returns
+nothing without one, and its units carry `q`/`r` at the top level rather than a
+`hex`, which cost two wrong probes.
+
+### Left open
+
+- Combat does not call `absorbWithWalls` yet (D418).
+- **The AI does not understand walls**, which 19.2 warns about: it will throw
+  itself at a fortress forever. It also never builds them.
+- `unitCount()` in the browser harness returns 0 while units exist. Unrelated
+  to walls, but it is wrong and something may be relying on it.
+
+---
+
 *Last updated: 23 August 2026*

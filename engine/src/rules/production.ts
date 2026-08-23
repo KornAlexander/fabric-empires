@@ -1,13 +1,16 @@
 import { hexNeighbours, type Hex } from '../hex/index.js';
 import {
+  isWallTarget,
   unitType,
   type City,
+  type ProductionTarget,
   type Unit,
   type UnitType,
   type UnitTypeId,
   UNIT_TYPE_IDS,
 } from '../entities/index.js';
 import { canStandOn } from './movement.js';
+import { maxWallHp, nextWallCost, MAX_WALL_LEVEL } from './walls.js';
 import { tileAt, unitAt, type GameState } from '../state/index.js';
 
 /**
@@ -84,14 +87,18 @@ export type ProductionResult =
 export function setProduction(
   state: GameState,
   cityId: string,
-  typeId: UnitTypeId,
+  typeId: ProductionTarget,
 ): ProductionResult {
   const city = state.cities.get(cityId);
   if (!city) return { ok: false, reason: 'No such city' };
   if (city.factionId !== state.activeFactionId) {
     return { ok: false, reason: 'Not your city' };
   }
-  if (!unitUnlocked(state, typeId)) {
+  if (isWallTarget(typeId)) {
+    if (nextWallCost(city.wallLevel) === undefined) {
+      return { ok: false, reason: 'The walls are already at their full height' };
+    }
+  } else if (!unitUnlocked(state, typeId)) {
     return { ok: false, reason: `${unitType(typeId).label} has not been researched` };
   }
 
@@ -106,9 +113,18 @@ export function cancelProduction(state: GameState, cityId: string): ProductionRe
   if (!city) return { ok: false, reason: 'No such city' };
   const cities = new Map(state.cities);
   const next = { ...city };
-  delete (next as { producing?: UnitTypeId }).producing;
+  delete (next as { producing?: ProductionTarget }).producing;
   cities.set(cityId, next);
   return { ok: true, state: { ...state, cities } };
+}
+
+/** What the city's current orders cost in total, walls included. */
+export function productionCost(city: City): number {
+  if (!city.producing) return 0;
+  if (isWallTarget(city.producing)) {
+    return nextWallCost(city.wallLevel) ?? 0;
+  }
+  return unitCost(unitType(city.producing));
 }
 
 /** Where a newly built unit can stand: the city itself, or beside it. */
@@ -118,7 +134,11 @@ export function musterTile(state: GameState, city: City): Hex | undefined {
     const tile = tileAt(state, hex);
     if (!tile) return false;
     if (unitAt(state, hex)) return false;
-    return canStandOn(type(city.producing ?? 'engineer'), tile);
+    // Walls muster nothing, so fall back to the lightest footprint rather than
+    // asking `unitType` about a target that is not a unit.
+    const orders = city.producing;
+    const id = orders && !isWallTarget(orders) ? orders : 'engineer';
+    return canStandOn(type(id), tile);
   };
   if (candidate(city.hex)) return city.hex;
   return hexNeighbours(city.hex).find(candidate);
@@ -131,10 +151,17 @@ export interface ProductionEvent {
   readonly hex: Hex;
 }
 
+/** A wall that went up this turn, for the log to mention. */
+export interface WallEvent {
+  readonly cityId: string;
+  readonly level: number;
+}
+
 export interface ProductionTick {
   readonly state: GameState;
   readonly spent: number;
   readonly built: readonly ProductionEvent[];
+  readonly walled: readonly WallEvent[];
   /** Cities that finished something but had nowhere to put it. */
   readonly blocked: readonly string[];
 }
@@ -148,12 +175,13 @@ export interface ProductionTick {
  */
 export function productionPhase(state: GameState, factionId: string): ProductionTick {
   const faction = state.factions.get(factionId);
-  if (!faction) return { state, spent: 0, built: [], blocked: [] };
+  if (!faction) return { state, spent: 0, built: [], walled: [], blocked: [] };
 
   const ids = [...state.cities.keys()].sort();
   const cities = new Map(state.cities);
   const units = new Map(state.units);
   const built: ProductionEvent[] = [];
+  const walled: WallEvent[] = [];
   const blocked: string[] = [];
   let purse = faction.resources.compute;
   let spent = 0;
@@ -163,8 +191,15 @@ export function productionPhase(state: GameState, factionId: string): Production
     const city = cities.get(id);
     if (!city || city.factionId !== factionId || !city.producing) continue;
 
-    const type = unitType(city.producing);
-    const cost = unitCost(type);
+    const cost = productionCost(city);
+    // ⚠️ A wall already at full height costs nothing and would otherwise
+    // complete instantly, every turn, forever. Drop the orders instead.
+    if (cost <= 0) {
+      const idle = { ...city, productionProgress: 0 };
+      delete (idle as { producing?: ProductionTarget }).producing;
+      cities.set(id, idle);
+      continue;
+    }
     const remaining = cost - city.productionProgress;
     const draw = Math.max(0, Math.min(remaining, PRODUCTION_CAP_PER_TURN, purse));
     const progress = city.productionProgress + draw;
@@ -175,6 +210,27 @@ export function productionPhase(state: GameState, factionId: string): Production
       cities.set(id, { ...city, productionProgress: progress });
       continue;
     }
+
+    // A finished wall needs no muster tile and no room on the map. It goes up,
+    // it comes back to full height, and the orders are kept so a player who
+    // wants a fortress does not have to ask three times.
+    if (isWallTarget(city.producing)) {
+      const level = Math.min(MAX_WALL_LEVEL, city.wallLevel + 1);
+      const raised = {
+        ...city,
+        wallLevel: level,
+        wallHp: maxWallHp(level),
+        productionProgress: 0,
+      };
+      if (nextWallCost(level) === undefined) {
+        delete (raised as { producing?: ProductionTarget }).producing;
+      }
+      cities.set(id, raised);
+      walled.push({ cityId: id, level });
+      continue;
+    }
+
+    const type = unitType(city.producing);
 
     // Finished. Find somewhere to stand before spending the progress, so a
     // hemmed-in city keeps its unit rather than losing it to a full tile.
@@ -207,8 +263,8 @@ export function productionPhase(state: GameState, factionId: string): Production
     cities.set(id, done);
   }
 
-  if (spent === 0 && built.length === 0 && blocked.length === 0) {
-    return { state, spent: 0, built: [], blocked: [] };
+  if (spent === 0 && built.length === 0 && walled.length === 0 && blocked.length === 0) {
+    return { state, spent: 0, built: [], walled: [], blocked: [] };
   }
 
   const factions = new Map(state.factions);
@@ -221,6 +277,7 @@ export function productionPhase(state: GameState, factionId: string): Production
     state: { ...state, factions, cities, units, nextEntityId },
     spent,
     built,
+    walled,
     blocked,
   };
 }

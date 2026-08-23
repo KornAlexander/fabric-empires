@@ -106,6 +106,8 @@ function hypothetical(state: GameState, hex: Hex): City {
     name: '',
     kind,
     hp: CITY_KINDS[kind].baseHp,
+    wallLevel: 0,
+    wallHp: 0,
     population: 1,
     rank: FIRST_RANK,
     growthStore: 0,

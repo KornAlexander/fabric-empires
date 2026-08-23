@@ -541,6 +541,8 @@ export function createGameState(
         name: definition.seat,
         kind: definition.seatKind,
         hp: cityKind(definition.seatKind).baseHp,
+        wallLevel: 0,
+        wallHp: 0,
         population: 2,
         // A rival's seat was there before the player arrived, so it starts one
         // step up from a fresh camp.

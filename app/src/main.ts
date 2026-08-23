@@ -36,6 +36,12 @@ import {
   cancelProduction,
   setProduction,
   unitCost,
+  productionCost,
+  isWallTarget,
+  maxWallHp,
+  nextWallCost,
+  WALL_TARGET,
+  type ProductionTarget,
   PRODUCTION_CAP_PER_TURN,
   endTurn,
   fortifyUnit,
@@ -2078,20 +2084,39 @@ function refreshCities(): void {
       row.append(wants);
     }
 
+    if (city.wallLevel > 0) {
+      const walls = document.createElement('div');
+      walls.className = 'status';
+      const full = maxWallHp(city.wallLevel);
+      walls.textContent = t('Walls level {level} · {hp}/{full}', {
+        level: String(city.wallLevel),
+        hp: String(city.wallHp),
+        full: String(full),
+      });
+      row.append(walls);
+    }
+
     if (city.producing) {
-      const type = unitType(city.producing);
-      const cost = unitCost(type);
+      // ⚠️ `producing` is a unit OR a wall, so nothing here may call
+      // `unitType` before it has asked which. Narrowed inline rather than
+      // through a boolean, because TypeScript cannot carry a type guard's
+      // result across a separate variable.
+      const orders = city.producing;
+      const label = isWallTarget(orders)
+        ? t('Walls level {level}', { level: String(city.wallLevel + 1) })
+        : unitType(orders).label;
+      const cost = productionCost(city);
       const bar = document.createElement('div');
       bar.className = 'bar';
       const fill = document.createElement('div');
-      fill.style.width = `${Math.min(100, (city.productionProgress / cost) * 100)}%`;
+      fill.style.width = `${Math.min(100, (city.productionProgress / Math.max(1, cost)) * 100)}%`;
       bar.append(fill);
 
       const status = document.createElement('div');
       status.className = 'status';
       const left = Math.max(0, cost - city.productionProgress);
       const turns = Math.ceil(left / PRODUCTION_CAP_PER_TURN);
-      status.textContent = `${type.label}: ${city.productionProgress}/${cost} Compute${
+      status.textContent = `${label}: ${city.productionProgress}/${cost} Compute${
         left > 0 ? ` · ${turns} turn${turns === 1 ? '' : 's'}` : ' · ready'
       }`;
       row.append(bar, status);
@@ -2105,6 +2130,18 @@ function refreshCities(): void {
     none.value = '';
     none.textContent = city.producing ? 'Stop building' : 'Build nothing';
     picker.append(none);
+    // Walls first, because they are the one thing in the list that is not a
+    // soldier and would otherwise be lost at the bottom of twelve unit names.
+    const wallPrice = nextWallCost(city.wallLevel);
+    if (wallPrice !== undefined) {
+      const option = document.createElement('option');
+      option.value = WALL_TARGET;
+      option.textContent = `${t('Walls level {level}', {
+        level: String(city.wallLevel + 1),
+      })} (${wallPrice})`;
+      option.selected = city.producing === WALL_TARGET;
+      picker.append(option);
+    }
     for (const id of buildable) {
       const option = document.createElement('option');
       option.value = id;
@@ -2115,7 +2152,7 @@ function refreshCities(): void {
     picker.addEventListener('change', () => {
       const chosen = picker.value;
       const result = chosen
-        ? setProduction(state, city.id, chosen as UnitTypeId)
+        ? setProduction(state, city.id, chosen as ProductionTarget)
         : cancelProduction(state, city.id);
       if (!result.ok) {
         log(result.reason, 'bad');

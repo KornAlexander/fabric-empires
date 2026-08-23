@@ -627,6 +627,8 @@ describe('founding cities', () => {
       name: 'Capital',
       kind: 'workspace',
       hp: 200,
+      wallLevel: 0,
+      wallHp: 0,
       population: 1,
       rank: 'siedlung',
       growthStore: 0,
