@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Fabric Empires</title>
     <!--
       A hex, inline.
@@ -408,11 +408,121 @@
         0%, 100% { box-shadow: 0 0 0 rgba(138, 111, 208, 0); }
         50% { box-shadow: 0 0 14px rgba(138, 111, 208, 0.75); }
       }
+
+      /* ==================================================================
+         Phones and small tablets.
+
+         ⚠️ The desktop HUD is eight panels pinned to four corners at fixed
+         pixel widths, between 272px and 330px. On a 390px screen they do not
+         merely look cramped, they stack on top of each other: the research
+         panel covers the top bar, the threat list runs off the right edge
+         mid-word, and the map is left as a sliver between them. Measured on a
+         390x844 viewport before any of this was written.
+
+         The fix is a different layout rather than smaller text. The map keeps
+         the top of the screen, because a strategy map you cannot see is not a
+         game, and every panel moves into one scrolling column underneath it.
+         ================================================================== */
+      #hud { display: contents; }
+
+      @media (max-width: 760px) {
+        /*
+          The wrapper stops being invisible and becomes the column. Because it
+          was `display: contents` above, this is the only place the panels'
+          own positioning has to be undone.
+        */
+        #hud {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          position: fixed;
+          left: 0;
+          right: 0;
+          top: 56vh;
+          bottom: 0;
+          padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
+          z-index: 20;
+        }
+
+        /* The board keeps the upper half and stays put while the HUD scrolls. */
+        #map, #fx {
+          position: fixed;
+          top: 0;
+          left: 0;
+          height: 56vh;
+          width: 100vw;
+        }
+
+        /*
+          ⚠️ Without this a drag on the map scrolls the page instead of panning
+          the camera, which makes the map unusable by touch even though every
+          pointer handler is already correct.
+        */
+        #map { touch-action: none; }
+
+        /* Undo every corner pin in one place. */
+        #hud > .panel {
+          position: static;
+          width: auto;
+          min-width: 0;
+          max-width: none;
+          transform: none;
+          max-height: none;
+          flex: 0 0 auto;
+        }
+
+        /* These two scroll internally on desktop; in a column they must not. */
+        #log, #threats, #research .options { max-height: 30vh; }
+
+        #tile { text-align: left; }
+        #help { text-align: left; }
+
+        /*
+          The top bar wraps rather than overflowing. Turn, resources and the
+          buttons are the one row a player needs at a glance.
+        */
+        #resources, #controls { flex-wrap: wrap; gap: 10px; }
+
+        /* Touch targets. 44px is the smallest a finger reliably hits. */
+        #hud button,
+        .fe-option,
+        .fe-choice-option,
+        .fe-setup-option { min-height: 44px; }
+
+        /* Dialogs are already full-screen; just stop them being letterboxed. */
+        .fe-setup-card, .fe-choice-card, .fe-modal { max-width: none; }
+      }
+
+      /*
+        Landscape phones have almost no vertical room, so the split above would
+        leave the map a letterbox slit. Give the board more of it and let the
+        HUD column be the thing that scrolls.
+      */
+      @media (max-width: 900px) and (orientation: landscape) and (max-height: 520px) {
+        #hud { top: 62vh; }
+        #map, #fx { height: 62vh; }
+      }
     </style>
   </head>
   <body>
     <canvas id="map"></canvas>
     <canvas id="fx"></canvas>
+
+    <!--
+      Every HUD panel lives in here.
+
+      ⚠️ On a wide screen this wrapper is `display: contents`, so it vanishes
+      from layout entirely and each panel keeps the fixed corner position it
+      has always had. Nothing about the desktop HUD changes.
+
+      On a narrow screen it becomes a real scrolling column under the map,
+      which is the only way eight panels pinned to four corners can coexist on
+      a 390px phone. Without a wrapper they are siblings of the canvas and
+      there is nothing to scroll.
+    -->
+    <div id="hud">
 
     <div class="panel" id="resources">
       <span id="turn-badge">Turn 1</span>
@@ -520,6 +630,8 @@
     </div>
 
     <div class="panel" id="log"><div class="entry muted" data-i18n="Your empire begins.">Your empire begins.</div></div>
+
+    </div><!-- #hud -->
 
     <script type="module" src="/src/main.ts"></script>
   </body>

@@ -302,6 +302,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D473–D477 | Two words, and the assessment that looked in the wrong place | Recorded in full in section 66 |
 | D478–D483 | The film was cut to a recording that no longer exists | Recorded in full in section 67 |
 | D484–D487 | The hardest session was the one that taught nothing | Recorded in full in section 68 |
+| D488–D492 | Eight panels, four corners, one phone | Recorded in full in section 69 |
 
 ### 28. Cheat codes
 
@@ -5710,6 +5711,67 @@ Read the documentation   B1  Create a data connection
 ```
 
 That was a **wrong** answer, chosen blindly, which is the case that matters.
+
+---
+
+## 69. Eight panels, four corners, one phone
+
+The HUD is eight panels pinned to the four corners of the window at fixed pixel
+widths, between 272 px and 330 px. That is a good desktop layout and it does not
+degrade on a phone, it collapses: measured on a 390x844 viewport, the research
+panel covered the top bar, the threat list ran off the right edge mid-word, the
+unit panel and the log overlapped each other, and the map was a sliver between
+them.
+
+Smaller text would not have fixed it. Four corners is simply not a layout that
+exists on a 390 px screen.
+
+### 69.1 The board keeps the top, the HUD becomes a column
+
+The map takes the upper **56vh**, because a strategy map you cannot see is not
+a game, and every panel moves into one scrolling column underneath it.
+
+⚠️ **The panels needed a parent to do that**, and they had none: they were
+siblings of the canvas, so there was nothing to scroll and nothing to lay out.
+They are now wrapped in `#hud`, which is **`display: contents` on a wide
+screen**. That makes the wrapper vanish from layout entirely, so every existing
+`position: fixed` corner rule still applies and **the desktop HUD is byte for
+byte the layout it was**. Only the narrow breakpoint turns it into a real flex
+column.
+
+### 69.2 ⚠️ The canvas was sized from the window, not from itself
+
+`viewportSize()` returned `window.innerWidth/innerHeight`, and `fitCanvas`
+wrote that straight onto the canvases. So CSS would have shrunk the board to
+56vh while the renderer kept drawing a full-height world into it, squashing the
+scene, and the effects overlay would have stretched across the interface below.
+
+It now measures the board element. three.js is already told
+`renderer.setSize(w, h, false)`, which means **CSS owns the display size**, so
+reporting what CSS decided is both correct and keeps the breakpoint in exactly
+one place. On a wide screen the element is `100vw x 100vh`, so the number is
+identical to before and nothing changes.
+
+⚠️ `touch-action: none` on the map matters more than it looks. Every pointer
+handler was already correct; without this line a drag scrolls the page instead
+of panning the camera, so the map is unusable by touch for a reason that has
+nothing to do with the code that handles touch.
+
+### 69.3 Decisions
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D488 | ⚠️ **`#hud` is `display: contents` on desktop** | It buys a parent for mobile layout while leaving the desktop HUD provably unchanged. A wrapper that participates in layout would have moved eight panels nobody asked to move |
+| D489 | The map keeps 56vh rather than being pushed off | Every alternative that fits the panels comfortably does it by making the board too small to play on. The panels scroll; the board does not |
+| D490 | ⚠️ **The renderer measures the board, not the window** | They were the same number until the day they were not, and the failure would have been a squashed world rather than an error |
+| D491 | `touch-action: none` on the canvas | The one line between "every pointer handler works" and "the map cannot be moved on a phone" |
+| D492 | 44 px minimum on anything tappable | Below that a finger misses, and the answer buttons are the whole interface during a question |
+
+### 69.4 Verified where it ships
+
+1052 tests and the smoke test. Then measured in a 390x844 viewport: map at
+`top 0, height 473`, HUD at `top 473, height 371`, no overlap anywhere, and the
+setup screen, the opening film and the in-game HUD all readable in one column.
 
 ---
 

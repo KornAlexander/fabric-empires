@@ -2560,7 +2560,24 @@ function refreshHud(): void {
 }
 
 function viewportSize(): { width: number; height: number } {
-  return { width: window.innerWidth, height: window.innerHeight };
+  /*
+   * ⚠️ Measured from the board itself, not from `window`.
+   *
+   * On a phone the map is only the top 56vh and the rest of the screen is the
+   * HUD column. Sizing the renderer to the whole window there would draw a
+   * full-height world into a short canvas, squashing it, and would stretch the
+   * effects overlay across the interface underneath.
+   *
+   * three.js is told `setSize(w, h, false)`, which means CSS owns the display
+   * size and nothing here fights it. So this only has to report what CSS
+   * already decided, and the mobile breakpoint stays in one place: the
+   * stylesheet. Falls back to the window before layout has happened.
+   */
+  const rect = canvas.getBoundingClientRect();
+  return {
+    width: Math.round(rect.width) || window.innerWidth,
+    height: Math.round(rect.height) || window.innerHeight,
+  };
 }
 
 function fitCanvas(): void {
@@ -2899,6 +2916,15 @@ window.addEventListener('keydown', (e) => {
 });
 
 window.addEventListener('resize', fitCanvas);
+/*
+ * ⚠️ Rotating a phone fires `resize` before the new layout has settled, so a
+ * fit computed at that instant measures the old board. `orientationchange`
+ * plus a frame is the pair that gets the right numbers, and running both is
+ * harmless because `fitCanvas` is idempotent.
+ */
+window.addEventListener('orientationchange', () => {
+  requestAnimationFrame(() => requestAnimationFrame(fitCanvas));
+});
 el.endTurn.addEventListener('click', doEndTurn);
 el.openLibrary.addEventListener('click', () => library.toggle());
 el.faceProctor.addEventListener('click', () => void faceTheProctor());
