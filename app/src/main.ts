@@ -12,6 +12,10 @@ import {
   type CityRankInfo,
   canAttack,
   canFoundCity,
+  dataAtFounding,
+  settleSites,
+  turnsToFirstCitizen,
+  type SettleSite,
   canRaid,
   raidCity,
   ruinAt,
@@ -730,6 +734,8 @@ const slot = localSlot();
 let selectedUnitId: string | undefined;
 let reach: ReadonlyMap<string, ReachableTile> | undefined;
 let attackTargets: Set<string> | undefined;
+/** Where the selected Architect could build, best first. Empty otherwise. */
+let settleSuggestions: readonly SettleSite[] = [];
 let hover: Hex | undefined;
 let dirty = true;
 
@@ -755,6 +761,7 @@ function log(message: string, tone: 'good' | 'bad' | 'plain' = 'plain'): void {
 function refreshSelection(): void {
   reach = undefined;
   attackTargets = undefined;
+  settleSuggestions = [];
 
   const unit = selectedUnitId ? state.units.get(selectedUnitId) : undefined;
   if (!unit || unit.factionId !== state.activeFactionId) {
@@ -778,6 +785,17 @@ function refreshSelection(): void {
   }
   attackTargets = targets;
 
+  /*
+   * Where this Architect could build, if it is one.
+   *
+   * ⚠️ Founding is the most consequential and least explained decision in the
+   * game: the site is permanent, the difference between a good one and a bad
+   * one is enormous, and nothing on screen used to say which was which. A
+   * player who did not already know that Data is what makes a city grow
+   * settled where they happened to be standing.
+   */
+  settleSuggestions = settleSites(state, unit);
+
   // ⚠️ The unit's name is NOT translated: Pipeline Runner and Direct Lake
   // Titan are jokes built on Fabric terminology, and a German Fabric user says
   // them in English. The words around them are ordinary and are translated.
@@ -787,6 +805,50 @@ function refreshSelection(): void {
     `${unit.movesLeft}/${type.movement} ${t('moves')}  ` +
     `${t('strength')} ${type.strength}` +
     (unit.fortified ? `  (${t('fortified')})` : '');
+
+  /*
+   * The advice, in the words that matter: how fast will it grow.
+   *
+   * Data is this game's food. It never leaves the city that made it and it is
+   * the only thing that adds citizens, so "six turns to the next citizen" says
+   * more about a site than any score could.
+   */
+  const best = settleSuggestions[0];
+  if (best) {
+    /*
+     * ⚠️ The tile underfoot is measured directly, not looked up in the list.
+     *
+     * The list is the best five sites, and where the Architect happens to be
+     * standing is frequently not one of them, which is precisely when the
+     * comparison matters most. Fetching it from the list meant the hint
+     * disappeared exactly when the player most needed to know what they would
+     * be giving up by building here.
+     */
+    const hereData = canFoundCity(state, unit) ? dataAtFounding(state, unit.hex) : undefined;
+    const grows = (turns: number | undefined): string =>
+      turns === undefined
+        ? t('will not grow')
+        : plural(turns, '{n} turn to grow', '{n} turns to grow');
+    const summary = (data: number): string =>
+      `${data} Data, ${grows(turnsToFirstCitizen(data))}`;
+
+    el.selDetail.textContent +=
+      best.distance === 0
+        ? `  ·  ${t('good site')}: ${summary(best.dataAtFounding)}`
+        : /*
+           * ⚠️ Both stated, neither called better.
+           *
+           * An earlier version labelled the top-scored site "better site",
+           * and was caught on screen recommending 2 Data and nine turns over
+           * the 3 Data and six turns underfoot. The score and the growth rate
+           * are not the same thing, the player is the one choosing, and a
+           * recommendation that argues with its own numbers is worse than
+           * numbers on their own.
+           */
+          `  ·  ${t('best nearby ({n} away)', { n: best.distance })}: ` +
+          summary(best.dataAtFounding) +
+          (hereData === undefined ? '' : `  ·  ${t('here')}: ${summary(hereData)}`);
+  }
 
   el.actFound.disabled = !canFoundCity(state, unit);
   el.actRaid.disabled = raidTarget(unit.id) === undefined;
@@ -2878,6 +2940,7 @@ function frame(now: number): void {
       selectedUnitId,
       reachable: reach,
       attackTargets,
+      settleSites: settleSuggestions.map((s) => s.hex),
       hover,
       unitOffset: unitWorldOffset,
       unitOpacity: (id) => effects.opacityOf(id),

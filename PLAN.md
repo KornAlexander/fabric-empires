@@ -279,6 +279,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D341–D346 | The trailer, re-cut at the graded look | Recorded in full in section 43.5 |
 | D347–D352 | The empire studies something, whether or not you told it to | Recorded in full in section 44.5 |
 | D353–D359 | The opening was singing over itself | Recorded in full in section 45.5 |
+| D360–D366 | Somewhere to build | Recorded in full in section 46.6 |
 
 ### 28. Cheat codes
 
@@ -4055,6 +4056,139 @@ out.
 - The measured line starts are pinned to this recording. Regenerating the
   anthem, which section 39 contemplates, would need them measured again. The
   script that does it is not kept; the numbers are in the source.
+
+---
+
+### 46. Somewhere to build
+
+Asked for: propose tiles around the Architect to found on, and weight city
+growth more heavily. Together with a question about how growth works at all,
+which is answered in section 46.1 because the answer is the design.
+
+#### 46.1 Data is the food, and nothing eats it
+
+The whole growth rule, in four lines of engine:
+
+- Every city collects **Data** from the tiles it works. Data is the only
+  resource that **stays local**: Compute, Capacity and Trust go to the empire
+  treasury, Data goes into that city's `growthStore`.
+- A new citizen costs `10 + population * 8`. So the first costs **18**, the
+  second 26, the ninth 82. Growth gets harder as a city grows.
+- Each citizen works **one more tile**, so more Data compounds into more of
+  everything else.
+- One citizen per turn, however large the windfall.
+
+⚠️ **Subsistence is not deducted.** `subsistenceNeed` is `population + 1`, and
+it does exactly one thing: while a city is below it, Data counts **triple**
+when choosing which tiles to work. It is a thumb on the scale for the tile
+picker, not an upkeep. The turn pipeline adds the whole Data output to the
+store. So "turns to the next citizen" is simply `18 / Data per turn`, and the
+advice says that rather than a number quietly reduced by a rule that does not
+exist.
+
+⚠️ **And the test for that found the trap.** `hungry` is `data < need`, a
+strict comparison, so a size-one city on 2 Data is *exactly* at subsistence,
+stops favouring Data, and picks the highest-value tile available. On a map with
+a Capacity vent in range it will take the vent, collect no extra Data, and grow
+at 2 a turn. That is the shape of the mistake a player makes by eye, and it
+turned up first in a test written to check something else.
+
+#### 46.2 Founding was the least explained decision in the game
+
+An Architect can settle almost anywhere, the site is permanent, the difference
+between a good one and a bad one is enormous, and nothing on screen said which
+was which. A player either already knew that Data is what makes a city grow, or
+they built where they were standing.
+
+`settleSites` now proposes up to five, best first, drawn on the map in a green
+nothing else uses and summarised in the panel as the number that matters: how
+many turns to the next citizen.
+
+Two constraints it respects:
+
+- ⚠️ **Explored tiles only.** Advice pointing at ground behind the fog is the
+  game handing over the shape of the map through the back door.
+- The same elbow-room rule founding itself applies, so nothing is ever proposed
+  that would then be refused.
+
+The numbers come from **`workedTiles`**, the real picker, rather than from an
+estimate of it. Reusing it means the figure shown cannot drift from the figure
+the game produces, including the subsistence quirk above.
+
+#### 46.3 ⚠️ The advice contradicted itself on screen
+
+First working version, in the panel:
+
+> better site 2 away: 2 Data, 9 turns to grow  (here: 3 Data, 6 turns to grow)
+
+The "better" site grew **three turns slower** than the tile underfoot. The
+score summed Data across the whole two-hex work radius, which describes a
+city's eventual ceiling, while a size-one city works its centre and exactly one
+other tile. The two can point in opposite directions.
+
+Fixed twice over. The score now weights **what the city collects on its first
+turn** at four times, alongside the neighbourhood total. And the interface
+stopped claiming anything: it reports the best nearby site and the current one
+side by side and lets the player choose, because a recommendation that argues
+with its own numbers is worse than numbers on their own.
+
+#### 46.4 ⚠️ Then the retune inverted the feature, and the test caught it
+
+Adding the founding term, I dropped `GROWTH_WEIGHT` from 2.6 to 1.6 to make
+room for it. That silently reversed the entire point of the advice:
+
+> expected 66.4 to be greater than 72.09999999999998
+
+A Raw File Plain is 2 Data; a Geothermal Vent is 3 Capacity at a weight of 1.3.
+So a plains tile only outranks a vent tile while `2 × GROWTH_WEIGHT > 3.9`, a
+floor of **1.95**. At 1.6 the recommendation preferred exactly the trap it
+exists to warn about. It is 2.4 now, and the arithmetic is asserted directly
+rather than left as a magic number.
+
+#### 46.5 ⚠️ Three wrong probes for one working feature
+
+The patches were on the map from the first run. My check reported zero, twice:
+
+1. Comparing raw `color.r/g/b` against sRGB values, which three.js has already
+   converted to linear. `#8fd694` reads as 0.27, not 0.56.
+2. Reading `color` at all. `overlayMaterial` builds a **black, additively
+   blended** material and puts the patch colour in **`emissive`**, so every
+   overlay on the map reports as black.
+
+Reading the material's actual definition found five patches immediately. Worth
+recording because "the check says zero" is indistinguishable from "the feature
+does not work" until you go and read what you are measuring.
+
+#### 46.6 Decisions
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D360 | ⚠️ **Sites are scored with the real yield functions** | `workedTiles` is subsistence aware, and that quirk is what decides whether a site grows. An estimate would disagree with the game exactly where it matters |
+| D361 | ⚠️ **Growth is weighted above wealth, with a stated floor** | A site that cannot feed itself collects a little of everything forever. The floor is 1.95, derived from plains against vents, and asserted |
+| D362 | ⚠️ **What the city collects on turn one is weighted separately** | Neighbourhood totals describe a ceiling; a size-one city works two tiles. Scoring only the total recommended slower-growing sites |
+| D363 | The interface reports, it does not recommend | It was caught calling a 9-turn site better than a 6-turn one. Two rows of numbers cannot contradict themselves |
+| D364 | ⚠️ **Explored tiles only** | Proposing a site behind the fog is the game telling the player what is out there |
+| D365 | Five proposals, ranked by brightness on the map | More than a handful is a menu. Drawing the ranking means it can be taken without reading anything |
+| D366 | A fifth overlay colour | Blue, orange, red and yellow already mean four things. A fifth meaning needs a fifth colour |
+
+#### 46.7 Verified
+
+- 943 tests, 16 new, including that Data-rich ground outscores Capacity-rich
+  ground on a fully painted work radius rather than on whatever the generator
+  happened to put two hexes away.
+- Driven in a real game: the panel reads *best nearby (1 away): 3 Data, 6 turns
+  to grow · here: 3 Data, 6 turns to grow*, five green patches are on the map,
+  and selecting a non-settler clears both.
+
+#### 46.8 Open
+
+- The advice looks one Architect ahead. It has no opinion about spacing a
+  second city against a first beyond the minimum legal distance, and no opinion
+  at all about whether founding here is better than walking three more turns.
+- ⚠️ The subsistence comparison being strict (`data < need`) means a city
+  sitting exactly at subsistence stops chasing food. That is the existing rule
+  and is left alone, but the advice now makes its consequences visible, which
+  may be the first time anyone notices it.
 
 ---
 

@@ -10,3 +10,4 @@ export * from './victory.js';
 export * from './sack.js';
 export * from './rank.js';
 export * from './vision.js';
+export * from './settle.js';

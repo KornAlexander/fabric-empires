@@ -55,6 +55,14 @@ export interface Scene3DView {
   readonly selectedUnitId?: string | undefined;
   readonly reachable?: ReadonlyMap<string, ReachableTile> | undefined;
   readonly attackTargets?: ReadonlySet<string> | undefined;
+  /**
+   * Tiles proposed as somewhere to found a city, best first.
+   *
+   * Drawn brightest at the head of the list, so the ranking is visible on the
+   * map rather than only in a panel: the point of the advice is that it can be
+   * taken without reading anything.
+   */
+  readonly settleSites?: readonly Hex[] | undefined;
   readonly hover?: Hex | undefined;
   /** World-space display offset for a unit that is mid-animation. */
   readonly unitOffset?: ((unitId: string) => { x: number; z: number } | undefined) | undefined;
@@ -182,6 +190,15 @@ const MOVE_COLOUR = '#4ea8ff';
 const MOVE_STOP_COLOUR = '#ffb64d';
 const ATTACK_COLOUR = '#ff5a48';
 const SELECT_COLOUR = '#ffd166';
+/*
+ * Settle proposals.
+ *
+ * ⚠️ Green, and deliberately not any of the four above. Blue already means
+ * "you can walk here", orange "and that ends your turn", red "you can attack
+ * this" and yellow "this is selected". A fifth meaning needs a fifth colour or
+ * it is not a meaning.
+ */
+const SETTLE_COLOUR = '#8fd694';
 
 export function createScene3D(
   canvas: HTMLCanvasElement,
@@ -643,6 +660,17 @@ export function createScene3D(
           const tile = state.map.tiles.get(key);
           if (tile) addPatch(tile.hex, ATTACK_COLOUR, 0.22, 0.045);
         }
+      }
+      /*
+       * Settle proposals, above the movement patches so they read as advice
+       * rather than as reachable ground. The best site is drawn at full
+       * strength and the rest fade, which puts the ranking on the map.
+       */
+      if (view.settleSites) {
+        view.settleSites.forEach((hex, index) => {
+          const strength = index === 0 ? 0.34 : Math.max(0.1, 0.26 - index * 0.05);
+          addPatch(hex, SETTLE_COLOUR, strength, 0.05 + (index === 0 ? 0.012 : 0));
+        });
       }
       if (view.hover && state.map.tiles.has(hexKey(view.hover))) {
         addPatch(view.hover, HOVER_COLOUR, 0.1, 0.05);
