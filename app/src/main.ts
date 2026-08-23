@@ -53,9 +53,12 @@ import {
   normaliseSeed,
   previewAttack,
   ASSAULT_TACTICS,
+  DEFAULT_STANCE,
+  DEFENCE_STANCES,
   DEFAULT_TACTIC,
   MAX_WALL_LEVEL,
   type AssaultTactic,
+  type DefenceStance,
   reachable,
   researchCost,
   researchProgress,
@@ -1668,6 +1671,7 @@ async function doEndTurn(): Promise<void> {
   const incoming = raids[0];
 
   let defenderChallengeScore = 0;
+  let defenceStance: DefenceStance = DEFAULT_STANCE;
   if (incoming && incoming.intent.kind === 'raid') {
     const who = state.factions.get(incoming.factionId)?.label ?? 'The enemy';
     const topicId = battleTopicFor(incoming.factionId);
@@ -1689,11 +1693,20 @@ async function doEndTurn(): Promise<void> {
     const colour = state.factions.get(incoming.factionId)?.colour ?? '#b5533f';
     const defender = unitAt(state, target);
     const city = cityAt(state, target);
+    /*
+     * ⚠️ Translated, because it is spliced into translated sentences.
+     *
+     * This was `your ${label}`, built in English and then dropped into both
+     * the raid banner and the stance question. In a German game it read "Das
+     * Ziel ist your Profiler": the outer sentence translated, the piece inside
+     * it did not. The possessive is gone rather than translated, because
+     * "dein" and "deine" depend on a gender the unit table does not carry.
+     */
     const what = city
       ? city.name
       : defender
-        ? `your ${unitType(defender.typeId).label}`
-        : 'your border';
+        ? t(unitType(defender.typeId).label)
+        : t('your border');
 
     log(`${who} is at your gates. Hold them.`, 'bad');
     scene.focus(target);
@@ -1713,13 +1726,52 @@ async function doEndTurn(): Promise<void> {
     // enough that it never becomes the thing standing between turns.
     await wait(1500);
 
+    /*
+     * How the player meets it (19.4, D143).
+     *
+     * ⚠️ **Asked before the question, not after.** The question decides how
+     * well the defence goes; the stance decides what kind of defence it is,
+     * and being asked to commit after already knowing the answer would turn a
+     * decision into a formality.
+     *
+     * ⚠️ Asked on every raid rather than only against walls, which is where
+     * the attacker's tactic dialog draws its line. The reason they differ:
+     * storming a wall that is not there is not a choice, but a defender always
+     * has one. A dug-in unit in the open can still brace or come out, and
+     * `fortifyShare` scales whatever cover it does have.
+     */
+    const stanceLabels: Record<DefenceStance, { label: string; detail: string }> = {
+      hold: {
+        label: t('Hold the line'),
+        detail: t('Stand behind what you built. Nothing is risked and nothing is gained.'),
+      },
+      sally: {
+        label: t('Sally out'),
+        detail: t('Open the gates. Your cover counts for nothing, and you hit back far harder.'),
+      },
+      brace: {
+        label: t('Brace'),
+        detail: t('Everything into cover. Much harder to hurt, and you do not hit back at all.'),
+      },
+    };
+    defenceStance = await choice.ask(
+      t('{who} is at your gates. How do you meet them?', { who }),
+      t('The target is {what}.', { what }),
+      DEFENCE_STANCES.map((id, i) => ({
+        id,
+        label: stanceLabels[id].label,
+        detail: stanceLabels[id].detail,
+        primary: i === 0,
+      })),
+    );
+
     if (topicId) {
       defenderChallengeScore = await askBattle(topicId, 2, timeLimit(BATTLE_TIME_MS));
     }
     raidAlert.hide();
   }
 
-  const result = endTurn(state, { dueTopics, defenderChallengeScore });
+  const result = endTurn(state, { dueTopics, defenderChallengeScore, defenceStance });
   const { report } = result;
   /*
    * ⚠️ **The result is held back until the raid has been watched.**
@@ -2060,6 +2112,24 @@ async function presentEnemyTurn(
       log(`You held. A raider from ${who} was destroyed.`, 'good');
     } else {
       log(`${who} raided you for ${battle?.damageToDefender ?? 0}.`, 'bad');
+    }
+
+    /*
+     * What the stance bought, said out loud.
+     *
+     * ⚠️ Exactly the argument the block below makes about the answer, applied
+     * to the choice made moments earlier. Sallying promises "you hit back far
+     * harder" and then reported nothing at all, so the one stance whose entire
+     * point is the counter was indistinguishable from holding. The engine was
+     * applying the damage the whole time, which is the worst version of this:
+     * a mechanic that works and cannot be seen is a mechanic nobody uses.
+     *
+     * Not said when the raider died, because "a raider was destroyed" above
+     * already carries it and twice is noise.
+     */
+    const struckBack = battle?.damageToAttacker ?? 0;
+    if (struckBack > 0 && !battle?.attackerDestroyed) {
+      log(t('Your defenders struck back for {damage}.', { damage: String(struckBack) }), 'good');
     }
 
     // Say what the answer bought, once, on the first raid of the turn. The

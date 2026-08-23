@@ -12,7 +12,7 @@
  * between "falls back gracefully" and "half the game is quietly English".
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { lang, plural, setLang, t, translatedKeys } from '../src/i18n.js';
@@ -22,20 +22,35 @@ afterEach(() => setLang('en'));
 const source = (relative: string): string =>
   readFileSync(resolve(process.cwd(), `app/src/${relative}`), 'utf8');
 
+/**
+ * Every `.ts` file under `app/src`, found rather than listed.
+ *
+ * ⚠️ **This used to be eight filenames written out by hand**, and the list is
+ * what failed. `ui/raidAlert.ts` was never on it, so the banner that names the
+ * attacking faction sat there in English inside a German game and every test
+ * passed: a file that calls `t()` nowhere contributes no literals, so a
+ * hand-kept list cannot notice that a whole module was never translated. It is
+ * the same failure as every other list in this project that was maintained in
+ * two places.
+ *
+ * Walking the tree means a new UI file is covered the day it is written, which
+ * is the only moment anybody remembers what its strings say.
+ */
+function appSourceFiles(dir = ''): string[] {
+  const here = resolve(process.cwd(), 'app/src', dir);
+  const out: string[] = [];
+  for (const entry of readdirSync(here, { withFileTypes: true })) {
+    const rel = dir ? `${dir}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) out.push(...appSourceFiles(rel));
+    else if (entry.name.endsWith('.ts')) out.push(rel);
+  }
+  return out;
+}
+
 /** Every string literal handed to `t(...)` anywhere in the app. */
 function literalsPassedToT(): string[] {
-  const files = [
-    'main.ts',
-    'i18n.ts',
-    'ui/setupScreen.ts',
-    'ui/duoModal.ts',
-    'ui/coursePanel.ts',
-    'ui/coachPanel.ts',
-    'questionShop.ts',
-    'intro.ts',
-  ];
   const found = new Set<string>();
-  for (const file of files) {
+  for (const file of appSourceFiles()) {
     const code = source(file);
     // t('...') and plural(n, '...', '...') with single quotes only, which is
     // the house style for these strings.

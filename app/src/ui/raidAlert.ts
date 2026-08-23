@@ -20,6 +20,8 @@
  * not showing it.
  */
 
+import { t } from '../i18n.js';
+
 export interface RaidAlertDetail {
   /** Attacking faction's display name. */
   readonly faction: string;
@@ -62,14 +64,27 @@ export function createRaidAlert(): RaidAlert {
 
       const head = document.createElement('div');
       head.className = 'fe-raid-head';
-      head.textContent = `${detail.faction} is attacking`;
+      head.textContent = t('{faction} is attacking', { faction: detail.faction });
       body.append(head);
 
       const line = document.createElement('div');
       line.className = 'fe-raid-target';
+      /*
+       * ⚠️ Two keys rather than one with a conditional "s".
+       *
+       * English pluralises by appending a letter and German does not: the
+       * plural of Front is Fronten, so a translated string with an "s" glued
+       * on by JavaScript cannot be right in both. Whichever language loses is
+       * the one nobody proof-read.
+       */
       line.textContent =
         detail.alsoComing > 0
-          ? `${detail.target}, and ${detail.alsoComing} more front${detail.alsoComing === 1 ? '' : 's'}`
+          ? detail.alsoComing === 1
+            ? t('{target}, and one more front', { target: detail.target })
+            : t('{target}, and {n} more fronts', {
+                target: detail.target,
+                n: String(detail.alsoComing),
+              })
           : detail.target;
       body.append(line);
 
@@ -78,7 +93,7 @@ export function createRaidAlert(): RaidAlert {
         topic.className = 'fe-raid-topic';
         // The whole point of the faction system, said out loud at the moment
         // it matters: this is why you are about to be asked this.
-        topic.textContent = `They will test you on: ${detail.topic}`;
+        topic.textContent = t('They will test you on: {topic}', { topic: detail.topic });
         body.append(topic);
       }
 

@@ -71,6 +71,70 @@ export function chooseTactic(
   }
   return best;
 }
+
+/**
+ * How an antagonist meets an attack (D143).
+ *
+ * ⚠️ **Without this the AI defends one way where the player has three**, which
+ * is exactly the asymmetry `chooseTactic` was written to close, seen from the
+ * other side. A defender that always holds makes two of the three stances
+ * something only the player ever experiences.
+ *
+ * The rule is survival first, and it is deliberately simple:
+ *
+ *   Brace when the blow would be fatal and enduring it might not be. Bracing
+ *         cannot win, but a defender that is dead has no later.
+ *   Sally when there is little left to defend with, or when the counter would
+ *         finish the attacker outright. Giving up a wall costs nothing if the
+ *         wall is already down.
+ *   Hold  otherwise, which is what defending always was.
+ *
+ * ⚠️ It will not sally when that turns a survivable blow into a fatal one.
+ * A stance is chosen by comparing what each actually costs this defender, not
+ * by a table, for the same reason `chooseTactic` scores progress rather than
+ * reading a preference off the tactic's description.
+ */
+export function chooseStance(
+  state: GameState,
+  attackerId: string,
+  target: Hex,
+): DefenceStance {
+  const defendingUnit = unitAt(state, target);
+  const city = cityAt(state, target);
+  if (!defendingUnit && !city) return DEFAULT_STANCE;
+
+  const hp = defendingUnit ? defendingUnit.hp : (city?.hp ?? 0);
+  const attacker = state.units.get(attackerId);
+  if (!attacker) return DEFAULT_STANCE;
+
+  let best: DefenceStance = DEFAULT_STANCE;
+  let bestScore = -Infinity;
+
+  for (const id of DEFENCE_STANCES) {
+    const preview = previewAttack(state, attackerId, target, { defenceStance: id });
+    if (!preview) continue;
+
+    const survived = hp - preview.expectedDamageToDefender;
+    const kills = preview.expectedDamageToAttacker >= attacker.hp;
+
+    /*
+     * Staying alive dominates everything else. A stance that leaves the
+     * defender standing is worth more than any amount of damage returned by
+     * one that does not, because a destroyed defender never gets to use the
+     * damage it dealt.
+     */
+    const alive = survived > 0 ? 1000 : 0;
+    // Finishing the attacker ends the siege, which is worth more than chipping.
+    const finish = kills ? 500 : 0;
+    const score = alive + finish + survived + preview.expectedDamageToAttacker * 0.5;
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = id;
+    }
+  }
+  return best;
+}
 import { findPath, reachable } from './movement.js';
 import { musterTile } from './production.js';
 import { absorbWithWalls, maxWallHp, mendedBy, wallWork, WALL_MEND_PER_CYCLE } from './walls.js';
@@ -80,6 +144,11 @@ import {
   TACTICS,
   type AssaultTactic,
 } from './assault.js';
+import {
+  DEFAULT_STANCE,
+  DEFENCE_STANCES,
+  type DefenceStance,
+} from './defence.js';
 
 /**
  * The antagonist's turn.
@@ -482,7 +551,10 @@ export function garrisonPhase(state: GameState, factionId: string): AiTurnResult
 export function runFactionTurn(
   state: GameState,
   factionId: string,
-  options: { readonly defenderChallengeScore?: number } = {},
+  options: {
+    readonly defenderChallengeScore?: number;
+    readonly defenceStance?: DefenceStance;
+  } = {},
 ): AiTurnResult {
   const events: AiEvent[] = [];
   const restoreTo = state.activeFactionId;
@@ -513,6 +585,13 @@ export function runFactionTurn(
         // Without this every AI attack used the default, so a player's walls
         // were never escaladed and never sapped.
         tactic: chooseTactic(current, id, intent.target),
+        /*
+         * The stance belongs to whoever is being hit, which here is the
+         * player, so it is passed in rather than chosen. An AI city defending
+         * against the player picks its own in `chooseStance`, on the other
+         * side of this call.
+         */
+        defenceStance: options.defenceStance ?? 'hold',
       });
       if (!fought.ok) break;
       current = fought.result.state;

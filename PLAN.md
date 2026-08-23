@@ -305,6 +305,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D488–D492 | Eight panels, four corners, one phone | Recorded in full in section 69 |
 | D493–D497 | The unit table was a statement about DP-600 | Recorded in full in section 70 |
 | D498–D502 | Fullscreen, and a skier | Recorded in full in section 71 |
+| D503–D510 | The defender stops being a number | Recorded in full in section 72 |
 
 ### 28. Cheat codes
 
@@ -5940,6 +5941,131 @@ v            -> on
 v            -> off
 v in the seed field -> nothing, correctly
 ```
+
+---
+
+## 72. The defender stops being a number
+
+Section 19.4 and D143: *"today the defender is a number; in Stronghold the
+defender is the more interesting side to play"*. Attacking a city has been a
+decision since section 59. Defending was one question and then arithmetic, so
+half of every siege was a spectator sport.
+
+Three stances, and each one loses something:
+
+| stance | strength | fortification | counter |
+| --- | --- | --- | --- |
+| **Hold** | 1 | 1 | 1 |
+| **Sally** | 0.85 | **0** | 1.8, floor 1 |
+| **Brace** | 1.35 | 1.6 | **0** |
+
+⚠️ **"Wait it out" from 19.4 is deliberately absent.** It needs the multi-turn
+siege state of 19.5 step 2, which was cut and carries its own cut trigger. A
+stance that silently did nothing would be worse than three that do something.
+
+### 72.1 ⚠️ Two of the three numbers were wrong, and measurement said so
+
+The first draft was written by reasoning about what each stance *should* feel
+like. Both non-default stances came out broken, and neither would have been
+obvious from reading the code:
+
+- **Brace was strictly worse than holding.** Its toughness lived entirely in
+  `fortifyShare`, so against an unwalled target it was a pure strength penalty:
+  **100 damage taken against holding's 98**. A stance that is never worth
+  picking is a lie in a menu.
+- **Sally cancelled its own risk.** Written with `strength: 1.3` it made the
+  defender harder to hurt *and* hit harder at once, and `chooseStance` picked
+  it in every situation it was offered. A stance the AI always takes is a
+  default with extra steps.
+
+Sally's strength is now **below 1**, which says the true thing: you left a
+prepared position and you are standing in the open. Brace's toughness moved
+into `strength` so it means something without a wall.
+
+⚠️ A third apparent bug was my own test: comparing `100 - hp` against the
+preview reads as a preview/resolve split when the counter kills the attacker
+and there is nothing left to subtract from.
+
+### 72.2 The choice is asked before the question
+
+The banner names the attacker, then the stance is asked, then the question.
+The question decides how *well* the defence goes; the stance decides what kind
+of defence it is, and asking after the answer is known would make it a
+formality.
+
+Asked on every raid rather than only against walls, which is where the
+attacker's dialog draws its line. They differ because storming a wall that is
+not there is not a choice, but a defender always has one: a unit in the open
+can still brace or come out.
+
+### 72.3 ⚠️ "Das Ziel ist your Profiler"
+
+The dialog worked on the first try in the deployed game and immediately showed
+a bug that had nothing to do with it. The target was built as
+`` `your ${label}` `` in English and spliced into a translated sentence, so a
+German player read **"Das Ziel ist your Profiler"**. The raid banner above it
+was worse: `${faction} is attacking` was never translated at all.
+
+The possessive is gone rather than translated, because *dein* and *deine*
+depend on a gender the unit table does not carry.
+
+⚠️ The plural needed two keys rather than one with a conditional `s`. English
+pluralises by appending a letter and German does not: the plural of *Front* is
+*Fronten*, so a string with an `s` glued on by JavaScript cannot be right in
+both, and the language that loses is whichever nobody proof-read.
+
+### 72.4 ⚠️ The root cause: a list of eight filenames
+
+The i18n test checks that every literal handed to `t()` has a German
+translation. It found nothing wrong, because it scanned a **hand-written list
+of eight files** and `ui/raidAlert.ts` was not on it.
+
+A file that calls `t()` nowhere contributes no literals, so a hand-kept list
+cannot notice that an entire module was never translated. That is the same
+failure as the duplicated moods, the duplicated anthem timings and the
+duplicated ask-and-reveal loop: a fact maintained in two places, where the copy
+makes the original look checked.
+
+The list now walks the tree: **8 files became 42**, and `ui/raidAlert.ts` was
+the one newly covered file that translates anything, which is exactly the file
+that was silently English.
+
+### 72.5 ⚠️ The counter was applied and never mentioned
+
+Sallying promises "you hit back far harder". The engine did it, and the log
+said nothing, so the one stance whose entire point is the counter was
+indistinguishable from holding.
+
+This is section 55 again: a rule that is correct, tested, and invisible where
+it ships. The line right below it in the same function already made the
+argument for the *answer*, that "the connection is invisible if it is never
+stated", and the stance simply never got the same courtesy.
+
+### 72.6 Decisions
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D503 | Three stances, each losing something | A stance that is only "tougher" collapses into "always pick the toughest". Sally throws away the wall you paid for; brace can never end a siege, only postpone it |
+| D504 | ⚠️ **Sally's strength is below 1** | Above 1 it made the defender harder to hurt while hitting harder, so it cancelled its own risk and the AI took it every time |
+| D505 | ⚠️ **Brace's toughness is in `strength`, not only `fortifyShare`** | With the bonus in the fortification alone it did nothing for an unwalled defender and measured *worse than holding* |
+| D506 | `counterFloor`, so a sallying city counters at all | Cities counter only against escalade, so multiplying the existing counter would multiply zero and the option would read as broken |
+| D507 | The stance is asked before the question | Committing after the answer is known is not a decision |
+| D508 | ⚠️ **The i18n scan walks the tree instead of listing files** | The list is what failed. An untranslated module is invisible to a test that only inspects files somebody remembered to add |
+| D509 | Two plural keys, never a conditional letter | *Fronten*, not *Fronts*. A suffix glued on in JavaScript can only be right in one language |
+| D510 | ⚠️ **The counter is reported** | It was being applied the whole time, which is the worst version: a mechanic that works and cannot be seen is one nobody uses |
+
+### 72.7 Verified where it ships
+
+1056 tests. Then the **deployed** game, same attacker, two stances:
+
+```
+Sally   "Deine Verteidiger schlugen fuer 43 zurueck."
+        "A raider from The Silo Horde was destroyed."
+Brace   raided for 10, then 13, then 14.  No counter line at all.
+```
+
+Brace takes roughly a third of the damage and returns nothing; sally returns 43
+and kills raiders. The trade is real and the player can see it.
 
 ---
 

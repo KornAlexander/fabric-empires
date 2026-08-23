@@ -14,6 +14,7 @@ import { isCivilian, cityKind, unitType, type City, type Unit } from '../entitie
 import { cityAt, tileAt, unitAt, type GameState } from '../state/index.js';
 import { absorbWithWalls, wallDefenceBonus } from './walls.js';
 import { tacticProfile, tacticStrength, type AssaultTactic } from './assault.js';
+import { counterShare, stanceProfile, type DefenceStance } from './defence.js';
 import { grantFoothold, razeCityAt } from './sack.js';
 import type { ResourceId } from '../map/index.js';
 
@@ -111,6 +112,14 @@ export interface SideOptions {
   readonly challengeScore?: number;
   readonly techBonus?: number;
   readonly attacking?: boolean;
+  /**
+   * How this side is meeting the attack.
+   *
+   * Ignored when attacking. Defaults to `hold`, which is a no-op on every
+   * number here, so an omitted stance fights exactly the fight this function
+   * fought before stances existed.
+   */
+  readonly stance?: DefenceStance;
 }
 
 export function unitCombatSide(
@@ -122,15 +131,20 @@ export function unitCombatSide(
   const tile = tileAt(state, unit.hex);
   // Terrain and fortification protect a defender; they do not help an attack.
   const defending = options.attacking !== true;
+  const stance = stanceProfile(defending ? options.stance : 'hold');
   const terrainBonus = defending && tile ? terrain(tile.terrain).defenceBonus : 0;
-  const fortifyBonus = defending && unit.fortified ? FORTIFY_DEFENCE_BONUS : 0;
+  // ⚠️ The stance scales the dug-in bonus, not the ground. Coming out to fight
+  // gives up the position you prepared; it does not flatten the hill.
+  const fortifyBonus =
+    defending && unit.fortified ? FORTIFY_DEFENCE_BONUS * stance.fortifyShare : 0;
   const techBonus = options.techBonus ?? 0;
   const modifier = challengeModifier(options.challengeScore ?? 0);
 
   const factor = hpFactor(unit.hp, type.maxHp);
   const effective =
-    type.strength * factor * (1 + terrainBonus) * (1 + fortifyBonus) * (1 + techBonus) +
-    modifier;
+    (type.strength * factor * (1 + terrainBonus) * (1 + fortifyBonus) * (1 + techBonus) +
+      modifier) *
+    stance.strength;
 
   return {
     baseStrength: type.strength,
@@ -165,8 +179,11 @@ export function cityCombatSide(
   const modifier = challengeModifier(options.challengeScore ?? 0);
   // Walls sit in `fortifyBonus` because that is what they are: a defensive
   // work rather than a property of the ground. Scaled by how much of the wall
-  // is still standing, so battering it down actually helps the besieger.
-  const wallBonus = wallDefenceBonus(city);
+  // is still standing, so battering it down actually helps the besieger, and
+  // then by the stance, because a garrison that comes out through the gate has
+  // chosen to stop standing behind it.
+  const stance = stanceProfile(options.stance);
+  const wallBonus = wallDefenceBonus(city) * stance.fortifyShare;
 
   return {
     baseStrength,
@@ -177,7 +194,7 @@ export function cityCombatSide(
     challengeModifier: modifier,
     effective: Math.max(
       1,
-      baseStrength * factor * (1 + terrainBonus + wallBonus) + modifier,
+      (baseStrength * factor * (1 + terrainBonus + wallBonus) + modifier) * stance.strength,
     ),
   };
 }
@@ -284,6 +301,13 @@ export interface AttackOptions {
    * what an attack did before tactics existed.
    */
   readonly tactic?: AssaultTactic;
+  /**
+   * How the defender meets it.
+   *
+   * Defaults to `hold`, which is a no-op on every number, so every existing
+   * caller and every replay fights the fight it fought before.
+   */
+  readonly defenceStance?: DefenceStance;
 }
 
 /**
@@ -318,10 +342,12 @@ export function previewAttack(
       techBonus: 0,
       attacking: false,
       challengeScore: options.defenderChallengeScore ?? 0,
+      stance: options.defenceStance ?? 'hold',
     });
   } else {
     defenderSide = cityCombatSide(state, cityAt(state, target)!, {
       challengeScore: options.defenderChallengeScore ?? 0,
+      stance: options.defenceStance ?? 'hold',
     });
   }
 
@@ -347,17 +373,41 @@ export function previewAttack(
       tacticStrengthNow,
     ),
     // A ranged attacker takes nothing back, which is the entire reason to
-    // build one. A city does not counterattack a melee strike either, unless
-    // the tactic is the one that puts men on the parapet.
-    expectedDamageToAttacker:
-      ranged
-        ? 0
-        : targetKind === 'city'
-          ? Math.round(
-              damageFrom(defenderSide.effective, attackerSide.effective) * tactic.cityCounter,
-            )
-          : damageFrom(defenderSide.effective, attackerSide.effective),
+    // build one. Beyond that the counter is the attacker's tactic and the
+    // defender's stance together: a city counters if either the besieger put
+    // men on the parapet or the garrison came out to meet them.
+    expectedDamageToAttacker: counterDamage(
+      ranged,
+      targetKind,
+      defenderSide.effective,
+      attackerSide.effective,
+      1,
+      tactic.cityCounter,
+      options.defenceStance,
+    ),
   };
+}
+
+/**
+ * Return damage, shared by the preview and the resolution.
+ *
+ * ⚠️ **Shared on purpose.** Section 59 found the preview and the resolution
+ * had silently drifted apart once each grew its own copy of the tactic
+ * arithmetic: sap previewed 33 damage and resolved for 17. The stance adds a
+ * second factor to the same sum, so it is written once and called twice.
+ */
+function counterDamage(
+  ranged: boolean,
+  targetKind: CombatTargetKind,
+  defenderEffective: number,
+  attackerEffective: number,
+  roll: number,
+  tacticCityCounter: number,
+  stance: DefenceStance | undefined,
+): number {
+  if (ranged) return 0;
+  const share = counterShare(stanceProfile(stance), targetKind, tacticCityCounter);
+  return Math.round(damageFrom(defenderEffective, attackerEffective, roll) * share);
 }
 
 export interface AttackResult {
@@ -419,14 +469,15 @@ export function resolveAttack(
     attackRoll,
     tacticStrength(tactic, wallStanding),
   );
-  const damageToAttacker = preview.ranged
-    ? 0
-    : preview.targetKind === 'city'
-      ? Math.round(
-          damageFrom(preview.defender.effective, preview.attacker.effective, defenceRoll) *
-            tactic.cityCounter,
-        )
-      : damageFrom(preview.defender.effective, preview.attacker.effective, defenceRoll);
+  const damageToAttacker = counterDamage(
+    preview.ranged,
+    preview.targetKind,
+    preview.defender.effective,
+    preview.attacker.effective,
+    defenceRoll,
+    tactic.cityCounter,
+    options.defenceStance,
+  );
 
   const units = new Map(state.units);
   const cities = new Map(state.cities);

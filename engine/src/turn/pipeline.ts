@@ -19,6 +19,7 @@ import { runFactionTurn, garrisonPhase, type AiEvent } from '../rules/ai.js';
 import { rememberVisible } from '../rules/vision.js';
 import { productionPhase, type ProductionEvent } from '../rules/production.js';
 import { checkOutcome, type Outcome } from '../rules/victory.js';
+import type { DefenceStance } from '../rules/defence.js';
 import type { GameState } from '../state/index.js';
 
 export interface TurnOptions {
@@ -39,6 +40,15 @@ export interface TurnOptions {
    * app's job, exactly as it is for research (D35).
    */
   readonly defenderChallengeScore?: number | undefined;
+  /**
+   * How the player meets the raid, when one is coming.
+   *
+   * Same reasoning as the score above: the engine stays pure, so the choice
+   * arrives as data rather than a callback. Defaults to `hold`, which is a
+   * no-op on every number in combat, so a caller that does not offer the
+   * choice fights the raid exactly as it always did.
+   */
+  readonly defenceStance?: DefenceStance | undefined;
 }
 
 export interface TurnReport {
@@ -288,6 +298,7 @@ export function endTurn(state: GameState, options: TurnOptions = {}): TurnResult
     enemyEvents.push(...raised.events);
     const played = runFactionTurn(raised.state, id, {
       defenderChallengeScore: options.defenderChallengeScore ?? 0,
+      defenceStance: options.defenceStance ?? 'hold',
     });
     world = played.state;
     enemyEvents.push(...played.events);

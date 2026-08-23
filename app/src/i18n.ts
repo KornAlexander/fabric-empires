@@ -231,7 +231,29 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
       'Über die Brüstung. Der größte Teil des Schlags trifft die Stadt selbst, und die Verteidiger lassen dich dafür bezahlen.',
     'Sap the walls': 'Die Mauern untergraben',
     'Under it. The fastest way through masonry, and almost no use once the breach is open.':
-      'Darunter hindurch. Der schnellste Weg durch Mauerwerk, und fast nutzlos, sobald die Bresche offen ist.',  'Those questions could not be prepared.':
+      'Darunter hindurch. Der schnellste Weg durch Mauerwerk, und fast nutzlos, sobald die Bresche offen ist.',
+    // Defence stances. "Ausfall" is the period word for a sortie out of a
+    // besieged place, which is exactly what sallying is.
+    '{who} is at your gates. How do you meet them?':
+      '{who} steht vor deinen Toren. Wie stellst du dich?',
+    'The target is {what}.': 'Das Ziel ist {what}.',
+    'your border': 'deine Grenze',
+    // The banner that names the raid, above the stance question.
+    '{faction} is attacking': '{faction} greift an',
+    '{target}, and one more front': '{target}, und eine weitere Front',
+    '{target}, and {n} more fronts': '{target}, und {n} weitere Fronten',
+    'They will test you on: {topic}': 'Sie prüfen dich zu: {topic}',
+    'Your defenders struck back for {damage}.':
+      'Deine Verteidiger schlugen für {damage} zurück.',
+    'Hold the line': 'Die Stellung halten',
+    'Stand behind what you built. Nothing is risked and nothing is gained.':
+      'Bleib hinter dem, was du gebaut hast. Nichts gewagt, nichts gewonnen.',
+    'Sally out': 'Einen Ausfall wagen',
+    'Open the gates. Your cover counts for nothing, and you hit back far harder.':
+      'Öffne die Tore. Deine Deckung zählt dann nicht mehr, dafür schlägst du viel härter zurück.',
+    'Brace': 'In Deckung gehen',
+    'Everything into cover. Much harder to hurt, and you do not hit back at all.':
+      'Alles in Deckung. Viel schwerer zu treffen, aber du schlägst überhaupt nicht zurück.',  'Those questions could not be prepared.':
     'Diese Fragen konnten nicht vorbereitet werden.',
   'That file could not be read. Excel and CSV both work.':
     'Diese Datei konnte nicht gelesen werden. Excel und CSV funktionieren beide.',
