@@ -276,6 +276,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D311–D323 | The films had no sound | Recorded in full in section 40.6 |
 | D324–D334 | Photoreal, measured against a photograph | Recorded in full in section 41.9 |
 | D335–D340 | A fortified unit could never get up again | Recorded in full in section 42.5 |
+| D341–D346 | The trailer, re-cut at the graded look | Recorded in full in section 43.5 |
 
 ### 28. Cheat codes
 
@@ -3714,6 +3715,111 @@ for a unit that had already walked.
   forget.
 - Nothing in the interface distinguishes "dug in" from "dug in and about to be
   attacked". The defence bonus is invisible until a fight resolves.
+
+---
+
+### 43. The trailer, re-cut at the graded look
+
+The proposal on the table was a four-way choice, with Sora 2 text-to-video or a
+Sora 2 animation of generated key art as the "photoreal" options, and recording
+the game as the "perfect style match but effortful" one.
+
+The choice was made on evidence rather than on the table, and the table had a
+row in it that is wrong.
+
+#### 43.1 ⚠️ Anchoring Sora on your own art does not give you photoreal
+
+The suggested route was: generate key art in the project's style, feed it to
+Sora 2 as an `input_reference`, get an animated photoreal version. Rated "good
+style match, low effort".
+
+**That was measured yesterday and it does not do this** (section 41.2, D325).
+Handing Sora 2 a frame of this game came back **in the game's own low-poly
+style with more trees on it**. An image reference preserves the look rather
+than replacing it, so the output is "your art, slightly prettier": neither
+photoreal nor actually your game. It is a particularly awkward failure because
+the result is plainly *nicer* than the input, so it feels like progress.
+
+#### 43.2 The premise had gone stale by a day
+
+"I want photoreal, therefore a video model" assumes the renderer is not
+photoreal. As of section 41 it is measurably much closer: saturation 0.433 to
+**0.306** against a photograph's 0.245, blacks 0.193 to **0.156**, and the
+aerial-perspective gap **79 percent closed**.
+
+So recording the game now gives photoreal *and* a perfect style match, which is
+the combination the table said was unavailable. It also keeps D59: the film is
+a screen recording of a feature rather than a thing made for marketing, and a
+generated clip would show a world that is nobody's.
+
+The existing trailer was recorded on 22 August at 22:05, **before the grade
+landed**, so it was showing the over-saturated, atmosphere-free version.
+
+#### 43.3 What is in it
+
+One continuous take with the beats time-stamped by the recorder, so the cut is
+arithmetic rather than scrubbing. 31.2 seconds, three beats:
+
+| | Beat | Why |
+| --- | --- | --- |
+| 1 | The world, 15.5 s | Opening shots 1 to 3 at the new grade. This is the part that stops a scroll |
+| 2 | A real exam question, 8.5 s | The argument of the project in one frame |
+| 3 | Title, 7.2 s | Opening shot 4, with the fog falling under the card |
+
+⚠️ **The question beat is cropped to a push-in, and it had to be.** The panel
+measures 634x199 in a 1600x900 frame. At full frame the text of a real DP-600
+question is unreadable in a feed preview, which defeats the only beat that
+shows what the game is *for*. The crop is 16:9 around the measured rectangle,
+so the push does not distort.
+
+The anthem is arranged so the film and the music end together: its opening and
+first build under the landscape, a 1.5 s crossfade at 25 s, then the last bars
+under the title. Measured, the level lifts from about −21 dB to −16.6 dB
+exactly where the title card starts.
+
+#### 43.4 ⚠️ Two things checked rather than assumed
+
+**The founding cinematic was cut, on a number.** A beat showing the first city
+being founded is obviously desirable, and it measured **63 percent black** for
+its first second: the orbit starts at camera height 3.4 on turn one, when
+nothing behind the fort has been explored. It only clears 1.5 s in, by which
+point the shot is over. That is worse than my own bar from section 41, so it
+went.
+
+**A "defect" that was not one.** Checking flagged two bright frames with a
+bright top edge, late in their beats, which looked like a stray flash or a
+seek artifact. Fast and accurate ffmpeg seeks agreed **exactly**, so it was
+real content: the grey fog-of-war lid falling under the title card, which the
+opening does on purpose (32.4). The heuristic was wrong, not the film.
+
+#### 43.5 Decisions
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D341 | ⚠️ **No video model in the trailer** | An image-anchored Sora shot returns your own style, and an unanchored one shows a world that is not the player's. D59 and D325 both say the same thing here |
+| D342 | Re-cut rather than kept | The old take predates the grade by twelve hours and shows the over-saturated version of a picture that has since been fixed |
+| D343 | ⚠️ **The question beat is a push-in** | Legible on a monitor is not legible in a feed. A trailer whose only explanatory beat cannot be read has no explanatory beat |
+| D344 | The founding beat was dropped on a measurement | 63 percent black. A dark, brief, half-legible beat is worse than one fewer beat |
+| D345 | Two files, 1600x900 and 1280x720 | Discord's default attachment limit is 10 MB. A trailer nobody can upload is a trailer nobody sees. 16.5 MB and 5.5 MB |
+| D346 | English interface, forced at boot | The first take came out in German because the language toggle persists in localStorage and the lane had been left that way. The audience is international |
+
+#### 43.6 Verified
+
+- Every beat sampled and measured: none is mostly black outside the
+  deliberate fades, and the audio peaks at −2.9 dB with no clipping.
+- ⚠️ The first take had to be thrown away twice, once for the German interface
+  and once for an `ffmpeg` `concat` that refused to join a cropped segment
+  because its sample aspect ratio was 1:1 while the source webm's was 405:404.
+  The error names the filter and not the cause, so it is written into the cut
+  script.
+
+#### 43.7 Open
+
+- There is still no beat showing a city being built, for the reason above. It
+  needs a recording from a later turn, when there is explored ground behind the
+  camera, rather than from turn one.
+- Both files carry the anthem, so both inherit its non-commercial terms and
+  both stay out of the repository. See MUSIC-LICENSING.md.
 
 ---
 
