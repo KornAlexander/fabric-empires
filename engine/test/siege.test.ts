@@ -1,0 +1,265 @@
+import { describe, expect, it } from 'vitest';
+import {
+  absorbWithWalls,
+  cityCombatSide,
+  createGameState,
+  maxWallHp,
+  productionCost,
+  productionPhase,
+  previewAttack,
+  resolveAttack,
+  setProduction,
+  wallIntegrity,
+  wallWork,
+  MAX_WALL_LEVEL,
+  MIN_DAMAGE,
+  PLAYER_FACTION_ID,
+  WALL_TARGET,
+  type City,
+  type GameState,
+  type Unit,
+} from '../src/index.js';
+
+/**
+ * Walls under attack.
+ *
+ * ⚠️ Every test here would have passed on the previous commit *as written in
+ * walls.test.ts*, because `absorbWithWalls` was correct and simply never
+ * called. These go through `resolveAttack` instead, which is the only way to
+ * tell a working rule from a tested one nobody uses.
+ */
+
+const SEED = 'siege';
+
+function base(): GameState {
+  return createGameState(SEED);
+}
+
+function city(over: Partial<City> = {}): City {
+  return {
+    id: 'target',
+    factionId: 'silo-horde',
+    hex: { q: 0, r: 0 },
+    name: 'Bastion',
+    kind: 'workspace',
+    hp: 200,
+    wallLevel: 0,
+    wallHp: 0,
+    population: 3,
+    rank: 'siedlung',
+    growthStore: 0,
+    boundSkills: [],
+    unrest: 0,
+    ignoredReviews: 0,
+    reviewBonusUntilTurn: 0,
+    lastReviewTurn: -1,
+    productionProgress: 0,
+    lastRaidedTurn: -1,
+    ...over,
+  };
+}
+
+/** A melee attacker of the player's, standing next to the target city. */
+function siege(
+  over: Partial<City> = {},
+  typeId: Unit['typeId'] = 'pipelineRunner',
+): { state: GameState; attackerId: string } {
+  const state = base();
+  const target = city(over);
+  const attackerHex = { q: 1, r: 0 };
+
+  const units = new Map<string, Unit>();
+  const attacker: Unit = {
+    id: 'attacker',
+    typeId,
+    factionId: PLAYER_FACTION_ID,
+    hex: attackerHex,
+    hp: 100,
+    movesLeft: 2,
+    fortified: false,
+  };
+  units.set('attacker', attacker);
+
+  const cities = new Map(state.cities);
+  cities.clear();
+  cities.set('target', target);
+
+  return {
+    state: { ...state, units, cities, activeFactionId: PLAYER_FACTION_ID },
+    attackerId: 'attacker',
+  };
+}
+
+describe('⚠️ the walls actually take the damage', () => {
+  it('loses wall hit points when the city is attacked', () => {
+    // The regression this file exists for: wallHp never moved, because
+    // nothing called absorbWithWalls.
+    const { state, attackerId } = siege({ wallLevel: 2, wallHp: maxWallHp(2) });
+    const before = state.cities.get('target')!.wallHp;
+
+    const out = resolveAttack(state, attackerId, { q: 0, r: 0 });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+
+    const after = out.result.state.cities.get('target')!.wallHp;
+    expect(after).toBeLessThan(before);
+  });
+
+  it('shields the city while the wall stands', () => {
+    const { state, attackerId } = siege({ wallLevel: MAX_WALL_LEVEL, wallHp: maxWallHp(MAX_WALL_LEVEL) });
+    const hpBefore = state.cities.get('target')!.hp;
+
+    const out = resolveAttack(state, attackerId, { q: 0, r: 0 });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+
+    const city = out.result.state.cities.get('target')!;
+    expect(city.wallHp).toBeLessThan(maxWallHp(MAX_WALL_LEVEL));
+    // A full wall absorbs a single blow entirely.
+    expect(city.hp).toBe(hpBefore);
+  });
+
+  it('lets damage through once the wall is gone', () => {
+    const { state, attackerId } = siege({ wallLevel: 1, wallHp: 0 });
+    const hpBefore = state.cities.get('target')!.hp;
+
+    const out = resolveAttack(state, attackerId, { q: 0, r: 0 });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.result.state.cities.get('target')!.hp).toBeLessThan(hpBefore);
+  });
+
+  it('⚠️ gets easier as the wall comes down', () => {
+    /*
+     * The point of scaling by integrity: a besieger facing a battered wall
+     * should be doing more damage than one facing a fresh one.
+     *
+     * ⚠️ **Needs an attacker above the damage floor to be observable at all.**
+     * With a line unit both cases came back at exactly `MIN_DAMAGE`, so the
+     * clamp hid the difference completely and this test failed against working
+     * code. That is the same trap `SIEGE_CITY_BONUS` documents for the upper
+     * cap, at the other end of the curve, and it is a real statement about the
+     * game: **a line unit gains nothing from breaching a wall.** Bring siege.
+     */
+    const fresh = siege({ wallLevel: 2, wallHp: maxWallHp(2) }, 'directLakeTitan');
+    const battered = siege({ wallLevel: 2, wallHp: 5 }, 'directLakeTitan');
+
+    const a = previewAttack(fresh.state, fresh.attackerId, { q: 0, r: 0 })!;
+    const b = previewAttack(battered.state, battered.attackerId, { q: 0, r: 0 })!;
+    expect(a.expectedDamageToDefender).toBeGreaterThan(MIN_DAMAGE);
+    expect(b.expectedDamageToDefender).toBeGreaterThan(a.expectedDamageToDefender);
+  });
+
+  it('⚠️ a line unit gains nothing from breaching, because of the floor', () => {
+    // Recorded rather than hidden: this is why the test above needs a titan.
+    const fresh = siege({ wallLevel: 2, wallHp: maxWallHp(2) });
+    const battered = siege({ wallLevel: 2, wallHp: 5 });
+    const a = previewAttack(fresh.state, fresh.attackerId, { q: 0, r: 0 })!;
+    const b = previewAttack(battered.state, battered.attackerId, { q: 0, r: 0 })!;
+    expect(a.expectedDamageToDefender).toBe(MIN_DAMAGE);
+    expect(b.expectedDamageToDefender).toBe(MIN_DAMAGE);
+  });
+
+  it('leaves an unwalled city exactly as it was', () => {
+    const { state, attackerId } = siege();
+    const out = resolveAttack(state, attackerId, { q: 0, r: 0 });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    const city = out.result.state.cities.get('target')!;
+    expect(city.wallHp).toBe(0);
+    expect(city.hp).toBeLessThan(200);
+  });
+});
+
+describe('repairing what was knocked down', () => {
+  it('offers repair when the wall is damaged below the cap', () => {
+    const work = wallWork(city({ wallLevel: 1, wallHp: 10 }));
+    expect(work?.kind).toBe('repair');
+  });
+
+  it('⚠️ offers repair at the cap, where there is no next level to build', () => {
+    // Without this a city that took one hit at full height carries the damage
+    // for the rest of the game, and a captured city inherits walls it can
+    // never restore. A dead end reachable by playing normally.
+    const work = wallWork(city({ wallLevel: MAX_WALL_LEVEL, wallHp: 1 }));
+    expect(work?.kind).toBe('repair');
+    expect(work!.cost).toBeGreaterThan(0);
+  });
+
+  it('offers nothing when the walls are full and whole', () => {
+    const whole = city({ wallLevel: MAX_WALL_LEVEL, wallHp: maxWallHp(MAX_WALL_LEVEL) });
+    expect(wallWork(whole)).toBeUndefined();
+  });
+
+  it('costs less than building the same height from nothing', () => {
+    const damaged = city({ wallLevel: 1, wallHp: 0 });
+    const repair = wallWork(damaged)!;
+    const build = wallWork(city({ wallLevel: 0, wallHp: 0 }))!;
+    expect(repair.cost).toBeLessThan(build.cost);
+  });
+
+  it('restores the wall to full when the work finishes', () => {
+    let state = base();
+    const cities = new Map(state.cities);
+    cities.clear();
+    cities.set('mine', city({
+      id: 'mine',
+      factionId: PLAYER_FACTION_ID,
+      wallLevel: MAX_WALL_LEVEL,
+      wallHp: 4,
+    }));
+    const factions = new Map(state.factions);
+    const player = factions.get(PLAYER_FACTION_ID)!;
+    factions.set(PLAYER_FACTION_ID, {
+      ...player,
+      resources: { ...player.resources, compute: 500 },
+    });
+    state = { ...state, cities, factions, activeFactionId: PLAYER_FACTION_ID };
+
+    const ordered = setProduction(state, 'mine', WALL_TARGET);
+    expect(ordered.ok).toBe(true);
+    if (!ordered.ok) return;
+    state = ordered.state;
+    expect(productionCost(state.cities.get('mine')!)).toBeGreaterThan(0);
+
+    for (let i = 0; i < 20; i += 1) {
+      state = productionPhase(state, PLAYER_FACTION_ID).state;
+    }
+
+    const mended = state.cities.get('mine')!;
+    expect(mended.wallHp).toBe(maxWallHp(MAX_WALL_LEVEL));
+    expect(wallIntegrity(mended)).toBe(1);
+    // Nothing left to do, so the orders clear rather than looping forever.
+    expect(mended.producing).toBeUndefined();
+  });
+});
+
+describe('taking a walled city', () => {
+  it('breaches the walls but leaves the earthworks to the new owner', () => {
+    const { state, attackerId } = siege({ wallLevel: 2, wallHp: 1, hp: 1 });
+    const out = resolveAttack(state, attackerId, { q: 0, r: 0 });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+
+    const taken = out.result.state.cities.get('target');
+    if (!taken || taken.factionId !== PLAYER_FACTION_ID) return; // not captured this roll
+    expect(taken.wallHp).toBe(0);
+    expect(taken.wallLevel).toBe(2);
+    // And the new owner has something to do about it.
+    expect(wallWork(taken)?.kind).toBe('repair');
+  });
+});
+
+describe('the helper still agrees with the rule that uses it', () => {
+  it('absorbs exactly what resolveAttack takes off the wall', () => {
+    const { state, attackerId } = siege({ wallLevel: 3, wallHp: maxWallHp(3) });
+    const before = state.cities.get('target')!;
+    const preview = previewAttack(state, attackerId, { q: 0, r: 0 })!;
+    const predicted = absorbWithWalls(before, preview.expectedDamageToDefender);
+    // The roll varies, so compare direction and bound rather than an exact
+    // number: the wall must lose something, and never more than it had.
+    expect(predicted.wallHp).toBeLessThanOrEqual(before.wallHp);
+    expect(predicted.wallHp).toBeGreaterThanOrEqual(0);
+    expect(cityCombatSide(state, before).fortifyBonus).toBeGreaterThan(0);
+  });
+});

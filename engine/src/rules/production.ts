@@ -10,7 +10,7 @@ import {
   UNIT_TYPE_IDS,
 } from '../entities/index.js';
 import { canStandOn } from './movement.js';
-import { maxWallHp, nextWallCost, MAX_WALL_LEVEL } from './walls.js';
+import { maxWallHp, wallWork } from './walls.js';
 import { tileAt, unitAt, type GameState } from '../state/index.js';
 
 /**
@@ -95,8 +95,8 @@ export function setProduction(
     return { ok: false, reason: 'Not your city' };
   }
   if (isWallTarget(typeId)) {
-    if (nextWallCost(city.wallLevel) === undefined) {
-      return { ok: false, reason: 'The walls are already at their full height' };
+    if (wallWork(city) === undefined) {
+      return { ok: false, reason: 'The walls are at their full height and undamaged' };
     }
   } else if (!unitUnlocked(state, typeId)) {
     return { ok: false, reason: `${unitType(typeId).label} has not been researched` };
@@ -122,7 +122,7 @@ export function cancelProduction(state: GameState, cityId: string): ProductionRe
 export function productionCost(city: City): number {
   if (!city.producing) return 0;
   if (isWallTarget(city.producing)) {
-    return nextWallCost(city.wallLevel) ?? 0;
+    return wallWork(city)?.cost ?? 0;
   }
   return unitCost(unitType(city.producing));
 }
@@ -215,14 +215,17 @@ export function productionPhase(state: GameState, factionId: string): Production
     // it comes back to full height, and the orders are kept so a player who
     // wants a fortress does not have to ask three times.
     if (isWallTarget(city.producing)) {
-      const level = Math.min(MAX_WALL_LEVEL, city.wallLevel + 1);
+      const work = wallWork(city);
+      // The cost check above already refused zero, so there is work here.
+      const level = work?.kind === 'raise' ? work.level : city.wallLevel;
       const raised = {
         ...city,
         wallLevel: level,
         wallHp: maxWallHp(level),
         productionProgress: 0,
       };
-      if (nextWallCost(level) === undefined) {
+      // Stop when there is nothing left to build or mend, rather than looping.
+      if (wallWork(raised) === undefined) {
         delete (raised as { producing?: ProductionTarget }).producing;
       }
       cities.set(id, raised);

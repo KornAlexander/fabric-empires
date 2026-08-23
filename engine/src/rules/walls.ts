@@ -97,3 +97,43 @@ export function absorbWithWalls(
   const absorbed = Math.min(city.wallHp, damage);
   return { wallHp: city.wallHp - absorbed, toCity: damage - absorbed };
 }
+
+/**
+ * Repairing is cheaper than building, per hit point.
+ *
+ * Half rate: the stone is already quarried and the line already walked. It
+ * also means a defender under siege has a cheaper move available than a
+ * besieger, which is the asymmetry a siege is supposed to have.
+ */
+export const WALL_REPAIR_RATE = 0.5;
+
+export type WallWork =
+  | { readonly kind: 'raise'; readonly cost: number; readonly level: number }
+  | { readonly kind: 'repair'; readonly cost: number; readonly level: number };
+
+/**
+ * What ordering walls in this city would actually do, and what it costs.
+ *
+ * ⚠️ **Repair exists because otherwise damage becomes permanent.** Raising a
+ * level restores the wall to full by construction, so a battered wall below
+ * the cap heals itself the next time it is built up. At the cap there is no
+ * next level, so without this a city that took one hit would carry that damage
+ * for the rest of the game and a captured city would inherit walls it could
+ * never restore. That is a dead end reachable by playing normally.
+ *
+ * Returns nothing when the walls are at full height and undamaged, which is
+ * the one state with no work to do.
+ */
+export function wallWork(city: City): WallWork | undefined {
+  const missing = maxWallHp(city.wallLevel) - city.wallHp;
+  if (missing > 0) {
+    return {
+      kind: 'repair',
+      cost: Math.max(1, Math.ceil(missing * (WALL_COST_STEP / WALL_HP_PER_LEVEL) * WALL_REPAIR_RATE)),
+      level: city.wallLevel,
+    };
+  }
+  const raise = nextWallCost(city.wallLevel);
+  if (raise === undefined) return undefined;
+  return { kind: 'raise', cost: raise, level: city.wallLevel + 1 };
+}

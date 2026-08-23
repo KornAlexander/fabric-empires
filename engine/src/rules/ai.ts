@@ -3,7 +3,18 @@ import { isCivilian, unitType, type UnitTypeId } from '../entities/index.js';
 import type { GameState } from '../state/index.js';
 import { cityAt, unitAt } from '../state/index.js';
 import { moveUnit } from './actions.js';
-import { canAttack, resolveAttack, type CombatLog } from './combat.js';
+import { canAttack, previewAttack, resolveAttack, type CombatLog } from './combat.js';
+
+/**
+ * How many turns of pounding an antagonist will accept before it looks
+ * elsewhere.
+ *
+ * Generous on purpose. A real siege should take several turns, so this must
+ * not talk the AI out of a fight it would actually win: it exists to stop the
+ * pathological case where the arithmetic says never, not to make antagonists
+ * cautious.
+ */
+export const HOPELESS_ASSAULT_TURNS = 12;
 import { findPath, reachable } from './movement.js';
 import { musterTile } from './production.js';
 
@@ -178,6 +189,29 @@ export function planUnitAction(state: GameState, unitId: string): AiIntent | und
       const city = cityAt(state, hex);
       const defender = unitAt(state, hex);
       const kind: 'unit' | 'city' = !defender && city ? 'city' : 'unit';
+
+      /*
+       * ⚠️ **Do not batter a fortress that cannot be broken** (section 19.2).
+       *
+       * Cities outrank units, so without this an army that reaches a walled
+       * capital stands there hitting it at the damage floor for the rest of
+       * the game while a soft target waits one hex away. Walls made that
+       * reachable: they roughly double the defence, and the floor is
+       * `MIN_DAMAGE`.
+       *
+       * The test is how long the target would take at the rate actually being
+       * achieved, which is a number the engine already computes for the
+       * player's own odds display. Nothing here guesses at wall levels.
+       */
+      if (kind === 'city' && city) {
+        const preview = previewAttack(state, unitId, hex);
+        if (preview) {
+          const perHit = preview.expectedDamageToDefender;
+          const shield = city.wallHp + city.hp;
+          if (perHit <= 0 || shield / perHit > HOPELESS_ASSAULT_TURNS) continue;
+        }
+      }
+
       // Lower is better: cities first, then whatever is closest to dying.
       const score = (kind === 'city' ? 0 : 1_000) + (defender?.hp ?? city?.hp ?? 0);
       if (!best || score < best.score || (score === best.score && hexKey(hex) < hexKey(best.hex))) {

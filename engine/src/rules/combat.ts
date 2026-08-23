@@ -12,7 +12,7 @@ import { terrain } from '../map/index.js';
 import { createRng, type Rng } from '../rng/index.js';
 import { isCivilian, cityKind, unitType, type City, type Unit } from '../entities/index.js';
 import { cityAt, tileAt, unitAt, type GameState } from '../state/index.js';
-import { wallDefenceBonus } from './walls.js';
+import { absorbWithWalls, wallDefenceBonus } from './walls.js';
 import { grantFoothold, razeCityAt } from './sack.js';
 import type { ResourceId } from '../map/index.js';
 
@@ -398,7 +398,17 @@ export function resolveAttack(
   } else {
     const city = cityAt(state, target)!;
     defenderId = city.id;
-    const cityHp = city.hp - damageToDefender;
+    /*
+     * ⚠️ **The walls take it first, and this is what makes a siege a siege.**
+     *
+     * Until this was wired, nothing in the game ever reduced `wallHp`. Walls
+     * changed the odds and then stood forever at full integrity, so
+     * `wallDefenceBonus` never decayed and the rule that battering them down
+     * helps was unreachable code with passing tests behind it. A tested helper
+     * nobody calls is not a feature.
+     */
+    const { wallHp, toCity } = absorbWithWalls(city, damageToDefender);
+    const cityHp = city.hp - toCity;
     if (cityHp <= 0 && !preview.ranged) {
       // Only a melee unit can walk in and take the city. Bombardment alone
       // never captures anything, which is what keeps siege units support
@@ -414,10 +424,14 @@ export function resolveAttack(
           factionId: attacker.factionId,
           hp: Math.round(city.hp * 0.25),
           population: Math.max(1, city.population - 1),
+          // The walls were breached to get in. The level stands, so the new
+          // owner inherits the earthworks and can mend them, which is what
+          // `wallWork`'s repair branch exists for.
+          wallHp: 0,
         });
       }
     } else {
-      cities.set(city.id, { ...city, hp: Math.max(1, cityHp) });
+      cities.set(city.id, { ...city, hp: Math.max(1, cityHp), wallHp });
     }
   }
 

@@ -39,7 +39,7 @@ import {
   productionCost,
   isWallTarget,
   maxWallHp,
-  nextWallCost,
+  wallWork,
   WALL_TARGET,
   type ProductionTarget,
   PRODUCTION_CAP_PER_TURN,
@@ -2102,9 +2102,14 @@ function refreshCities(): void {
       // through a boolean, because TypeScript cannot carry a type guard's
       // result across a separate variable.
       const orders = city.producing;
-      const label = isWallTarget(orders)
-        ? t('Walls level {level}', { level: String(city.wallLevel + 1) })
-        : unitType(orders).label;
+      const work = isWallTarget(orders) ? wallWork(city) : undefined;
+      const label = work
+        ? work.kind === 'repair'
+          ? t('Repair walls (level {level})', { level: String(work.level) })
+          : t('Walls level {level}', { level: String(work.level) })
+        : isWallTarget(orders)
+          ? t('Walls level {level}', { level: String(city.wallLevel) })
+          : unitType(orders).label;
       const cost = productionCost(city);
       const bar = document.createElement('div');
       bar.className = 'bar';
@@ -2132,13 +2137,17 @@ function refreshCities(): void {
     picker.append(none);
     // Walls first, because they are the one thing in the list that is not a
     // soldier and would otherwise be lost at the bottom of twelve unit names.
-    const wallPrice = nextWallCost(city.wallLevel);
-    if (wallPrice !== undefined) {
+    // ⚠️ `wallWork` decides whether this is a new level or mending the one
+    // that is there, so the label cannot just say `wallLevel + 1`.
+    const work = wallWork(city);
+    if (work !== undefined) {
       const option = document.createElement('option');
       option.value = WALL_TARGET;
-      option.textContent = `${t('Walls level {level}', {
-        level: String(city.wallLevel + 1),
-      })} (${wallPrice})`;
+      const text =
+        work.kind === 'repair'
+          ? t('Repair walls (level {level})', { level: String(work.level) })
+          : t('Walls level {level}', { level: String(work.level) });
+      option.textContent = `${text} (${work.cost})`;
       option.selected = city.producing === WALL_TARGET;
       picker.append(option);
     }

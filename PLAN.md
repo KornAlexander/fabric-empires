@@ -287,6 +287,8 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D390–D397 | The gate that was only ever described | Recorded in full in section 51 |
 | D398–D403 | Deployed, and what the platform decided for us | Recorded in full in section 52 |
 | D404–D411 | The deployment was distributing the soundtrack | Recorded in full in section 53 |
+| D412–D418 | Walls: the first piece of the siege | Recorded in full in section 54 |
+| D419–D423 | The walls were never actually being hit | Recorded in full in section 55 |
 
 ### 28. Cheat codes
 
@@ -4689,6 +4691,57 @@ nothing without one, and its units carry `q`/`r` at the top level rather than a
   itself at a fortress forever. It also never builds them.
 - `unitCount()` in the browser harness returns 0 while units exist. Unrelated
   to walls, but it is wrong and something may be relying on it.
+
+---
+
+## 55. The walls were never actually being hit
+
+Section 54 shipped walls with `absorbWithWalls` written, tested and **called by
+nothing**. In the deployed game `wallHp` had exactly one writer, production, and
+no reader ever reduced it. So walls stood at full integrity forever,
+`wallDefenceBonus` never decayed, and D415's rule that battering them down helps
+was unreachable code sitting behind passing tests.
+
+⚠️ **A tested helper nobody calls is not a feature**, and the tests said
+otherwise because they tested the helper rather than the game.
+
+| ID | Decision |
+|---|---|
+| D419 | **Damage lands on the walls first.** `resolveAttack` runs the city branch through `absorbWithWalls`, so a blow is soaked while the wall stands and only the remainder reaches the city. `wallHp` now has a second writer, which is what makes a siege progress instead of repeating |
+| D420 | ⚠️ **Wiring damage exposed a dead end, so repair had to exist.** Raising a level restores the wall to full by construction, so a battered wall *below* the cap heals when it is next built up. At the cap there is no next level: without repair, one hit at full height was permanent for the rest of the game. `wallWork(city)` now returns `raise` or `repair`, and `nextWallCost` alone is no longer the question anyone asks |
+| D421 | **Repair costs half the rate of building.** The stone is quarried and the line is walked. It also hands the defender a cheaper move than the besieger, which is the asymmetry a siege ought to have |
+| D422 | **Capture breaches the walls but leaves the earthworks**: `wallHp: 0`, `wallLevel` intact. The new owner inherits something worth mending, and D420 is what makes mending possible. Without repair this would have been a permanently ruined wall on every captured city |
+| D423 | **The AI stops battering a fortress it cannot break** (19.2's explicit warning). It divides the target's remaining `wallHp + hp` by the damage its own preview says it is achieving, and looks elsewhere past `HOPELESS_ASSAULT_TURNS = 12`. Deliberately generous: this exists to stop the arithmetic-says-never case, not to make antagonists timid |
+
+### What the tests found that the code did not say
+
+⚠️ **`MIN_DAMAGE` hides the whole mechanic from a line unit.** The test for
+"gets easier as the wall comes down" failed against correct code: a Pipeline
+Runner against a two-level wall returned exactly **10** both fresh and battered,
+because the floor clamps it either way. Switching the attacker to a Direct Lake
+Titan showed the effect immediately.
+
+That is not a test problem, it is a statement about the game: **a line unit
+gains nothing from breaching a wall.** It is now asserted in both directions, so
+the floor case is recorded rather than quietly worked around. It is the same
+trap `SIEGE_CITY_BONUS` documents at the upper cap, at the other end of the
+curve, and it is a real argument for building siege units.
+
+### Verified against the deployed build
+
+13 new tests, **994 total**, all going through `resolveAttack` rather than the
+helper, which is the only way to tell a working rule from a tested one nobody
+uses. Then on the live URL: a level-one wall at `40/40`, the picker offering
+`Mauern Stufe 2 (72)` as a **raise** because the wall is whole, and the shipped
+bundle confirmed to contain the repair string.
+
+### Left open
+
+- **The AI still never builds walls.** It will no longer suicide into one, but
+  antagonist cities stay soft, so walls remain something only the player uses.
+- Siege state itself (19.5 step 2) and the assault set piece (step 3) are still
+  ahead. What exists now is a wall that can be built, broken, mended and taken.
+- `unitCount()` in the browser harness still returns 0 while units exist.
 
 ---
 
