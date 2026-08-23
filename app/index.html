@@ -49,11 +49,14 @@
       /* The capture-or-raze decision, asked at the moment the walls fall. */
       .fe-choice {
         position: fixed; inset: 0; z-index: 40;
-        display: flex; align-items: center; justify-content: center;
+        /* See the note on .fe-setup: centring clips content taller than the box. */
+        display: flex; align-items: flex-start; justify-content: center;
+        overflow: auto; padding: 16px 0;
         background: rgba(6, 9, 12, 0.72); backdrop-filter: blur(3px);
       }
       .fe-choice-card {
         width: min(520px, 92vw);
+        margin: auto;
         background: var(--panel); border: 1px solid var(--border);
         border-radius: 12px; padding: 18px 20px;
       }
@@ -74,12 +77,28 @@
 
       /* The setup screen, shown before the world is built. */      .fe-setup {
         position: fixed; inset: 0; z-index: 60;
-        display: flex; align-items: center; justify-content: center;
+        /*
+          ⚠️ `align-items: flex-start` plus `margin: auto` on the card, NOT
+          `align-items: center`.
+
+          Centring a flex child that is taller than its scrolling container
+          clips the overflow at the TOP and makes it unreachable: the browser
+          will not scroll above the start of the content box. Measured here at
+          800px tall, with 1293px of card: the container reported scrollTop 0
+          while the card's own top sat at -319, so the title, the blurb and the
+          "first five minutes" list simply could not be seen or scrolled to.
+
+          `margin: auto` on the child centres it when there IS room and
+          collapses to normal flow when there is not, which is the behaviour
+          centring is usually assumed to have.
+        */
+        display: flex; align-items: flex-start; justify-content: center;
         background: radial-gradient(ellipse at 50% 30%, #14202a 0%, #070a0d 70%);
         overflow: auto; padding: 24px 0;
       }
       .fe-setup-card {
         width: min(760px, 92vw);
+        margin: auto;
         background: var(--panel); border: 1px solid var(--border);
         border-radius: 14px; padding: 26px 30px;
       }
@@ -91,6 +110,25 @@
         margin: 0 0 20px; color: var(--muted);
         font-size: 12px; line-height: 1.6; max-width: 56ch;
       }
+      /*
+        The first five minutes. Set apart from the blurb because it is
+        instructions rather than flavour, and somebody skimming for "what do I
+        do" should find it without reading the paragraph above it.
+      */
+      .fe-setup-try {
+        margin: 0 0 20px; padding: 12px 14px; max-width: 60ch;
+        border: 1px solid var(--border); border-left: 3px solid var(--accent);
+        border-radius: 8px; background: rgba(255, 255, 255, 0.03);
+      }
+      .fe-setup-try h3 {
+        margin: 0 0 8px; font-size: 12px; font-weight: 600;
+        letter-spacing: 0.06em; text-transform: uppercase; color: var(--text);
+      }
+      .fe-setup-try ul { margin: 0; padding-left: 18px; }
+      .fe-setup-try li {
+        color: var(--muted); font-size: 12px; line-height: 1.6; margin-bottom: 4px;
+      }
+      .fe-setup-try li:last-child { margin-bottom: 0; }
       .fe-setup-group { margin-bottom: 18px; }
       .fe-setup-section {
         margin: 22px 0 10px; font-size: 13px; font-weight: 600;

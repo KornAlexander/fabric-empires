@@ -88,9 +88,14 @@ export function createChoiceModal(): ChoiceModal {
       // Focus the recommended option so Enter is a sane default and the
       // keyboard works at all, which matters because the rest of the game is
       // playable without the mouse.
+      //
+      // ⚠️ preventScroll. The recommended option is not always the first one,
+      // and a plain focus() scrolls it into view, which on a short screen
+      // pushes the question this dialog is asking off the top.
       const first = list.querySelector<HTMLButtonElement>('.primary') ??
         list.querySelector<HTMLButtonElement>('button');
-      first?.focus();
+      first?.focus({ preventScroll: true });
+      root.scrollTop = 0;
     });
 
   return { ask, open: () => showing };

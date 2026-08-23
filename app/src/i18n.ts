@@ -319,6 +319,14 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
   'Beyond the map': 'Jenseits der Karte',
   'The DP-600 outline is the tech tree. Rival factions each hold one branch of it: beat them and take what they know, or burn it and stay ignorant.':
     'Der DP-600-Lehrplan ist der Technologiebaum. Jede gegnerische Fraktion hält einen Zweig davon: besiege sie und nimm dir ihr Wissen, oder brenne es nieder und bleibe unwissend.',
+  // The first five minutes, for somebody who has only opened the link.
+  'If you only have five minutes': 'Wenn du nur fünf Minuten hast',
+  'Every advance is a question. Pick a topic, answer it, and the next units unlock.':
+    'Jeder Fortschritt ist eine Frage. Wähle ein Thema, beantworte es, und die nächsten Einheiten werden frei.',
+  'Attack a walled city. You choose how to go in, and the defender chooses how to meet you.':
+    'Greife eine ummauerte Stadt an. Du wählst, wie du hineingehst, und der Verteidiger wählt, wie er dich empfängt.',
+  'At 100 percent readiness the Proctor sets a 40 question exam. Passing it wins the game.':
+    'Bei 100 Prozent Bereitschaft stellt der Prüfer eine Prüfung mit 40 Fragen. Wer sie besteht, gewinnt das Spiel.',
 
   /*
    * Engine option text.

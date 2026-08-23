@@ -308,6 +308,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D503–D510 | The defender stops being a number | Recorded in full in section 72 |
 | D511–D515 | The screen you look at most was in the wrong language | Recorded in full in section 73 |
 | D516–D519 | Auditing the learning loop, and finding it sound | Recorded in full in section 74 |
+| D520–D526 | The first screen opened halfway through itself | Recorded in full in section 75 |
 
 ### 28. Cheat codes
 
@@ -6237,6 +6238,161 @@ nothing.
 | D517 | ⚠️ **`dueAt` documents that it is the real clock only** | Measuring the loop through it makes a working feature look broken, which is the specific way a correct thing gets changed by someone being careful |
 | D518 | Research and retention stay separate numbers | Already the tested design, and right: unlocking a topic is not knowing it. Blending them would let an empire buy its way to a readiness figure |
 | D519 | ⚠️ **Whether the Proctor should require research stays open** | It is the same question as the hollow victory in 65 and has the same answer: gating the exam on empire progress changes what the game is about, and that is the author's call |
+
+---
+
+## 75. The first screen opened halfway through itself
+
+### 75.1 What this was meant to be
+
+A judge will never read the README. The repository is private and nothing is
+being submitted; the only thing a judge sees is the deployed URL. So the
+explaining has to happen inside the game, on the screen that opens first.
+
+The plan was small: a box on the setup screen, "If you only have five minutes",
+with the three sentences that make the game legible.
+
+- Every advance is a question. Pick a topic, answer it, and the next units unlock.
+- Attack a walled city. You choose how to go in, and the defender chooses how to meet you.
+- At 100 percent readiness the Proctor sets a 40 question exam. Passing it wins the game.
+
+That took a few minutes. The rest of this section is about the fact that
+**nobody would have seen it**, and that finding out was worth more than the box.
+
+### 75.2 The box was rendering, and it was 319 pixels above the ceiling
+
+The DOM said the block existed, contained the right German text, and stood
+175 pixels tall. Everything a "did it render?" check asks for, it answered yes.
+
+Then the measurement that mattered:
+
+```
+setup.scrollTop     0
+setup.scrollHeight  1293
+setup.clientHeight  800
+tryBox.top       -319
+```
+
+Scrolled fully to the top, the box was 319 pixels **above** the top of the
+screen. So was the blurb. So was the title. `scrollIntoView({block:'center'})`
+did nothing at all: top stayed at -319.
+
+The cause is a CSS behaviour that is easy to state and easy to forget:
+
+> `align-items: center` on a scrolling container does not centre a child
+> taller than the container. It clips it at the **top**, and the clipped part
+> is unreachable, because the overflow sits above the scroll origin.
+
+The game had shipped with its own title unreachable at 800 pixels of height.
+This was not caused by the new box. The box made the card tall enough to
+cross the threshold, which is a different thing: it was a latent bug with a
+trigger, and the trigger was "add three sentences".
+
+### 75.3 The same pattern, in four places
+
+Grepping for the shape found `align-items: center; justify-content: center` in
+four overlays. The other three were **worse**, not better: none of them set
+`overflow` at all, so a tall card would be clipped at both ends with no
+scrolling possible in either direction.
+
+| Overlay | Scrolls? | Risk |
+| --- | --- | --- |
+| `.fe-setup` | yes | the measured bug |
+| `.fe-choice` (stance, attack plan) | no | three options with descriptions on a short screen |
+| `.fe-end` | no | title, summary, stats, cheat disclosure |
+| `.fe-backdrop` (question modal) | no | ⚠️ **the tallest thing in the game** |
+
+The question modal is a stem, four options, a verdict, an explanation and a
+documentation link. It is also the screen the player sees most often, and the
+one that just became reachable on a phone in section 69. Measured after the
+fix, on a 390x700 viewport, an answered question is **811 pixels tall in a
+700 pixel viewport**. Before the fix that overflow had nowhere to go.
+
+The canonical repair, applied to all four: `align-items: flex-start` on the
+container plus `overflow: auto`, and `margin: auto` on the card so it still
+centres whenever there is room for it.
+
+### 75.4 Then the screen scrolled itself to the bottom anyway
+
+With the clipping fixed, the setup screen still opened wrong:
+
+```
+openedAtScrollTop  1086   (of 1786)
+```
+
+Reachable now, but the reader arrived at the bottom. The cause is one line at
+the end of the builder:
+
+```ts
+play.focus();
+```
+
+Focusing the play button is what makes Enter start the game, which is worth
+keeping. But the button is the last thing on the card, and `focus()` scrolls
+the focused element into view. On a card taller than the screen, focusing the
+final button **is** a scroll-to-bottom command. The first screen of the game
+opened halfway through itself.
+
+The same line existed in the question modal, where it is worse than cosmetic.
+`continueButton.focus()` fires the moment the player answers, so at 390x700
+the modal top went to **-127**: the player was shown the bottom of the
+explanation at the exact instant they should have been reading the verdict.
+The verdict is where the game teaches. It was scrolling past it.
+
+The fix keeps the keyboard affordance and drops the side effect:
+
+```ts
+continueButton.focus({ preventScroll: true });
+backdrop.scrollTop = 0;
+```
+
+### 75.5 Twice in one session is a rule, not a coincidence
+
+This is the same failure as the duplicated-fact family in 64, 67, 68, 72 and
+73, wearing different clothes. There, a fact lived in two places. Here, a
+single call does two things, one of them invisible, and the invisible one only
+misbehaves once some other change makes the container tall.
+
+So it gets a test rather than a third comment. `app/test/overlays.test.ts`
+asserts two mechanical properties across `app/src/ui`:
+
+1. no `.focus(` without `preventScroll` (excluding `scene.focus(`, which is a
+   camera move, matched by shape rather than by filename so the rule survives
+   the code moving);
+2. no `position: fixed` block that sets `overflow: auto` and still uses
+   `align-items: center`.
+
+It has the "did the scan cover anything?" guard that section 73 taught, and it
+found two more offenders on its first run, in `cheatConsole.ts` and
+`coachPanel.ts`. The coach one is a real bug in miniature: focus returns to the
+input when a reply arrives, which yanks the reader back down from the reply
+they were reading.
+
+### 75.6 Verified
+
+On the deployed build, not locally.
+
+| Check | Before | After |
+| --- | --- | --- |
+| Setup screen opens at | scrollTop 1086 of 1786 | **scrollTop 0** |
+| Title at scrollTop 0 | top -319, unreachable | **top 51, visible** |
+| Guided path box | unreachable | **top 174, visible** |
+| Answered question, 390x700 | modal top -127 | **top 16, scrollable** |
+| Enter still starts / continues | yes | **yes**, focus unchanged |
+
+Tests 52 files green.
+
+### 75.7 Decisions
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D520 | The judge-facing explanation goes in the game, not the README | The repo is private and nothing is submitted, so the deployed URL is the entire surface a judge sees |
+| D521 | ⚠️ **Scrolling overlays anchor with `flex-start`, never `center`** | Centring clips a too-tall child at the top, where it cannot be scrolled to. The game shipped with its own title unreachable at 800px |
+| D522 | `margin: auto` on the card keeps the centring that was wanted | The intent was never wrong, only the mechanism. An auto margin resolves to 0 exactly when there is no room, which is precisely when centring must stop |
+| D523 | All four overlays fixed, not just the one that broke | The other three could not scroll at all, so they were the more dangerous version of the same bug, waiting for content to grow |
+| D524 | ⚠️ **`focus({ preventScroll: true })` plus an explicit scroll position** | Focus is a keyboard affordance that quietly doubles as a scroll command, and the thing we focus is always the last button on the card |
+| D525 | ⚠️ **The verdict scrolls to the top, not the Continue button** | The explanation is the moment the game teaches. Answering a question and being shown the bottom of the answer is the learning loop failing silently |
+| D526 | The rule becomes a test, because this bit twice in one session | Two unrelated files, one cause, one afternoon. A comment would have been the third place to not read |
 
 ---
 

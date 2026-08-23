@@ -24,12 +24,26 @@ const STYLE = `
 .fe-backdrop {
   position: fixed; inset: 0; z-index: 50;
   background: rgba(4, 6, 10, 0.72);
-  display: flex; align-items: center; justify-content: center;
+  /*
+    ⚠️ Scrollable, and anchored to the top rather than centred.
+
+    This is the tallest thing in the game: a stem, four options, a verdict, an
+    explanation and a documentation link. Centred inside a container that could
+    not scroll at all, a long question on a phone is clipped at both ends with
+    no way to reach either. An auto margin on the card keeps it centred
+    whenever there is room for it.
+
+    ⚠️ No backticks in this comment. The whole stylesheet is a template
+    literal, so one would end the string and the error lands on a later line.
+  */
+  display: flex; align-items: flex-start; justify-content: center;
+  overflow: auto; padding: 16px 0;
   backdrop-filter: blur(3px);
 }
 .fe-backdrop[hidden] { display: none; }
 .fe-modal {
   width: min(680px, 92vw);
+  margin: auto;
   background: #10141c; color: #e8eaf0;
   border: 1px solid rgba(255,255,255,0.14); border-radius: 14px;
   padding: 20px 22px; box-shadow: 0 24px 70px rgba(0,0,0,0.6);
@@ -394,7 +408,19 @@ export function createQuestionModal(): QuestionModal {
     for (const button of modal.querySelectorAll('.fe-foot button.act')) {
       if (button !== continueButton) (button as HTMLButtonElement).disabled = true;
     }
-    continueButton.focus();
+    /*
+      ⚠️ preventScroll, then back to the top of the verdict.
+
+      The verdict is the moment the game teaches: right or wrong, then why,
+      then the documentation link. Focusing Continue is what lets Enter carry
+      on, but a plain focus() scrolls the button into view and the button is
+      the last thing in the modal. Measured on a 390x700 phone: an answered
+      question is 811px tall in a 700px viewport, and focusing Continue put
+      the modal top at -127, so the player was shown the bottom of the
+      explanation the instant they answered.
+    */
+    continueButton.focus({ preventScroll: true });
+    backdrop.scrollTop = 0;
 
     return new Promise<void>((resolve) => {
       function close(): void {

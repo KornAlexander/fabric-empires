@@ -127,6 +127,37 @@ export function createSetupScreen(): SetupScreen {
       );
       card.append(blurb);
 
+      /*
+       * The first five minutes, on the screen everybody passes through.
+       *
+       * ⚠️ **The deployed URL is the only thing most people will ever see.**
+       * The repository is private, so a README explaining the idea reaches
+       * nobody, and the blurb above says what the game *is* without saying
+       * what to *do*. Somebody who clicks Begin gets a hex map and has to
+       * discover the three things that make this different from any other
+       * strategy game by accident.
+       *
+       * Three lines, because a fourth would be a manual and nobody reads a
+       * manual on the way into a game.
+       */
+      const tryThis = document.createElement('div');
+      tryThis.className = 'fe-setup-try';
+      const tryHead = document.createElement('h3');
+      tryHead.textContent = t('If you only have five minutes');
+      tryThis.append(tryHead);
+
+      const tips = document.createElement('ul');
+      const tip = (text: string): void => {
+        const item = document.createElement('li');
+        item.textContent = text;
+        tips.append(item);
+      };
+      tip(t('Every advance is a question. Pick a topic, answer it, and the next units unlock.'));
+      tip(t('Attack a walled city. You choose how to go in, and the defender chooses how to meet you.'));
+      tip(t('At 100 percent readiness the Proctor sets a 40 question exam. Passing it wins the game.'));
+      tryThis.append(tips);
+      card.append(tryThis);
+
       const section = (label: string): HTMLElement => {
         const heading = document.createElement('h2');
         heading.className = 'fe-setup-section';
@@ -319,7 +350,19 @@ export function createSetupScreen(): SetupScreen {
       card.append(play);
 
       root.append(card);
-      play.focus();
+      /*
+        ⚠️ preventScroll, then explicitly to the top.
+
+        Focusing the play button is what makes Enter start the game, but a
+        plain focus() scrolls it into view, and the button is the last thing
+        on a card taller than the screen. Measured on the deployed build at
+        900x700: the setup screen opened at scrollTop 1086 of 1786, so the
+        title, the blurb and the whole "if you only have five minutes" box
+        were above the fold. The first screen of the game opened halfway
+        through itself.
+      */
+      play.focus({ preventScroll: true });
+      root.scrollTop = 0;
     });
 
   return {

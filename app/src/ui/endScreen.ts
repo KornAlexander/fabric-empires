@@ -28,13 +28,20 @@ export type EndOutcome = Outcome | { readonly kind: 'exam'; readonly summary: st
 const STYLE = `
 .fe-end {
   position: fixed; inset: 0; z-index: 60; display: none;
-  align-items: center; justify-content: center;
+  /*
+    ⚠️ flex-start plus margin auto, not centre. A centred child taller than its
+    container is clipped at the TOP and cannot be scrolled to. Measured, not
+    theoretical: the setup screen lost its own title and blurb that way.
+  */
+  align-items: flex-start; justify-content: center;
+  overflow: auto; padding: 16px 0;
   background: rgba(5, 8, 13, 0.72); backdrop-filter: blur(4px);
   font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; color: #e8eaf0;
 }
 .fe-end[data-open='true'] { display: flex; }
 .fe-end-card {
   width: min(460px, 92vw); padding: 26px 28px; text-align: center;
+  margin: auto;
   background: rgba(14, 18, 26, 0.96); border: 1px solid rgba(255,255,255,0.14);
   border-radius: 12px; box-shadow: 0 24px 70px rgba(0,0,0,0.55);
 }

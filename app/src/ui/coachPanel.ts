@@ -141,7 +141,10 @@ export function createCoachPanel(): CoachPanel {
       history.push({ role: 'assistant', content: reply.text });
     }
     busy = false;
-    input.focus();
+    // preventScroll: this fires after a reply arrives, and the reader is
+    // most likely partway up the transcript reading it. Do not yank them
+    // back down to the input.
+    input.focus({ preventScroll: true });
   }
 
   send.addEventListener('click', () => void ask());

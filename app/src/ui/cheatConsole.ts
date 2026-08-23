@@ -94,7 +94,9 @@ export function createCheatConsole(options: CheatConsoleOptions): CheatConsole {
       root.style.display = showing ? 'block' : 'none';
       if (showing) {
         input.value = '';
-        input.focus();
+        // preventScroll: the console opens over the board, and focusing the
+        // input should not move whatever is behind it.
+        input.focus({ preventScroll: true });
       } else {
         input.blur();
       }
