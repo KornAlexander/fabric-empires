@@ -186,9 +186,27 @@ function refreshPhase(state: GameState, factionId: string): GameState {
     if (unit.factionId !== factionId) continue;
     units.set(id, {
       ...unit,
-      // A fortified unit stays put until ordered elsewhere, so it keeps no
-      // movement and does not appear in the "units still to move" list.
-      movesLeft: unit.fortified ? 0 : unitType(unit.typeId).movement,
+      /*
+       * ⚠️ **Every unit, including the fortified ones, and that is the fix
+       * for a deadlock rather than a preference.**
+       *
+       * This line used to read `unit.fortified ? 0 : ...`, on the reasoning
+       * that a dug-in unit should not turn up in the "units still to move"
+       * nag. That reasoning was sound and the implementation was redundant:
+       * `idleUnits` already filters on `!u.fortified`, so the nag was never
+       * relying on this.
+       *
+       * What it did instead was strand the unit for ever. `moveUnit` clears
+       * the fortified flag, which is the documented way to wake up, but it
+       * rejects a unit with no movement several lines before it gets there.
+       * A fortified unit therefore never had the movement it needed to
+       * trigger its own wake-up, and the only thing on the map that could
+       * clear the flag was an enemy raid.
+       *
+       * Nothing else reads a fortified unit's movement: the defence bonus in
+       * `combat.ts` keys off the flag alone.
+       */
+      movesLeft: unitType(unit.typeId).movement,
     });
   }
   return { ...state, units };

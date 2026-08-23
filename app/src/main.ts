@@ -35,6 +35,7 @@ import {
   PRODUCTION_CAP_PER_TURN,
   endTurn,
   fortifyUnit,
+  wakeUnit,
   foundCity,
   hexKey,
   hexNeighbour,
@@ -789,7 +790,13 @@ function refreshSelection(): void {
 
   el.actFound.disabled = !canFoundCity(state, unit);
   el.actRaid.disabled = raidTarget(unit.id) === undefined;
-  el.actFortify.disabled = type.strength === 0 || unit.fortified;
+  // The one action that reverses itself, so it is labelled by what it will do
+  // next rather than by what it is.
+  el.actFortify.disabled = type.strength === 0;
+  el.actFortify.textContent = unit.fortified ? t('Wake') : t('Fortify');
+  el.actFortify.title = unit.fortified
+    ? t('Stand down, and move again this turn (h)')
+    : t('Dig in for +40% defence, ending this turn (h)');
   el.actSkip.disabled = unit.movesLeft <= 0;
   refreshCouncil();
 }
@@ -1293,9 +1300,23 @@ function doFound(): void {
   select(undefined);
 }
 
+/**
+ * Dig in, or stand down again.
+ *
+ * ⚠️ **One button, both directions.** It used to fortify and then disable
+ * itself, which said "there is no way back" to anybody reading the interface,
+ * and for a long time that was accurate: a fortified unit was stranded for the
+ * rest of the game. Ordering it to move wakes it too, and that is the first
+ * thing a 4X player tries, but an action that has visibly greyed itself out is
+ * not an invitation to try anything.
+ */
 function doFortify(): void {
   if (!selectedUnitId) return;
-  const result = fortifyUnit(state, selectedUnitId);
+  const unit = state.units.get(selectedUnitId);
+  if (!unit) return;
+  const result = unit.fortified
+    ? wakeUnit(state, selectedUnitId)
+    : fortifyUnit(state, selectedUnitId);
   if (!result.ok) {
     log(result.reason, 'bad');
     return;
@@ -2868,6 +2889,15 @@ declare global {
       playerCityCount: () => number;
       resources: () => Record<string, number>;
       selected: () => string | undefined;
+      unitById: (id: string) =>
+        | {
+            typeId: string;
+            hp: number;
+            movesLeft: number;
+            movement: number;
+            fortified: boolean;
+          }
+        | undefined;
       selectFirstIdle: () => void;
       hexAt: (x: number, y: number) => Hex;
       screenOf: (hex: Hex) => { x: number; y: number };
@@ -2985,6 +3015,25 @@ window.__fabricEmpires = {
     [...state.cities.values()].filter((c) => c.factionId === PLAYER_FACTION_ID).length,
   resources: () => ({ ...state.factions.get(PLAYER_FACTION_ID)!.resources }),
   selected: () => selectedUnitId,
+  /**
+   * One unit, flattened.
+   *
+   * ⚠️ A fortified unit is deliberately skipped by next-idle cycling, so the
+   * selection panel cannot be steered back onto it and a browser check has no
+   * other way to ask what happened to it across a turn.
+   */
+  unitById: (id: string) => {
+    const unit = state.units.get(id);
+    return unit
+      ? {
+          typeId: unit.typeId,
+          hp: unit.hp,
+          movesLeft: unit.movesLeft,
+          movement: unitType(unit.typeId).movement,
+          fortified: unit.fortified,
+        }
+      : undefined;
+  },
   selectFirstIdle: () => selectNextIdle(),
   hexAt: (x, y) => scene.hexAt(x, y) ?? { q: 0, r: 0 },
   screenOf: (hex) => scene.project(scene.groundAt(hex)),

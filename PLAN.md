@@ -275,6 +275,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D299–D310 | A score that runs under the game | Recorded in full in section 39.6 |
 | D311–D323 | The films had no sound | Recorded in full in section 40.6 |
 | D324–D334 | Photoreal, measured against a photograph | Recorded in full in section 41.9 |
+| D335–D340 | A fortified unit could never get up again | Recorded in full in section 42.5 |
 
 ### 28. Cheat codes
 
@@ -3599,6 +3600,120 @@ above.
   confirmed identical before the change, and untouched.
 - The reference is one generated aerial, not a corpus. Three frames of it are
   enough to spot a 1.77× difference and not enough to trust a 5 percent one.
+
+---
+
+### 42. A fortified unit could never get up again
+
+Asked as a question: *if I fortify a soldier, can I still wake him, or is that
+a bug?* It was a bug, and it had been one since fortifying was written.
+
+#### 42.1 Three correct decisions that deadlocked
+
+Every piece of it is defensible on its own, which is exactly why it survived.
+
+1. `fortifyUnit` sets `movesLeft: 0`. Correct: digging in should cost the rest
+   of your turn.
+2. The refresh phase gave a fortified unit `0` movement every turn, so it would
+   not appear in the "units still to move" nag. A reasonable goal.
+3. `moveUnit` clears the `fortified` flag, so being ordered elsewhere wakes
+   you. This is the documented rule and the first thing any 4X player tries.
+
+Put together they deadlock. **`moveUnit` rejects a unit with no movement six
+lines before it reaches the line that would have cleared the flag.** A
+fortified unit therefore never had the movement it needed to trigger its own
+wake-up. The only thing on the entire map that could clear the flag was
+`sack.ts`, where being raided by an enemy knocks a unit out of its position.
+
+So the wake-up path was real, was correct, and was **unreachable**. Fortifying
+a soldier removed it from the game.
+
+#### 42.2 ⚠️ The redundant line was the load-bearing one
+
+The fix is to delete a condition rather than to add machinery, because point 2
+above was **already true without it**:
+
+```ts
+export function idleUnits(state, factionId) {
+  return [...state.units.values()].filter(
+    (u) => u.factionId === factionId && u.movesLeft > 0 && !u.fortified,
+  );
+}
+```
+
+`idleUnits` filters on `!u.fortified` independently. The nag never needed the
+movement to be zero, and nothing else read it either: the defence bonus in
+`combat.ts` keys off the flag alone, and the antagonists never fortify. The
+refresh phase now hands every unit its movement, fortified or not.
+
+#### 42.3 ⚠️ A test was holding the bug in place
+
+`turn.test.ts` had this, named *"leaves fortified units dug in rather than
+waking them up"*:
+
+```ts
+expect(next.units.get(scout.id)!.fortified).toBe(true);
+expect(next.units.get(scout.id)!.movesLeft).toBe(0);
+```
+
+The first line is the design. The second is the defect, **written down as
+though it were the design**, which is the most effective way there is to
+preserve one. The name gives it away on a second reading: staying dug in is a
+statement about the flag, and the flag is asserted on the line above.
+
+It now asserts the movement is restored *and* that the unit still does not
+nag, which is what the old behaviour was actually for.
+
+#### 42.4 The button said there was no way back
+
+`el.actFortify.disabled = type.strength === 0 || unit.fortified` — fortify,
+then grey yourself out. For a long time that was an accurate description of the
+situation. Even with the engine fixed it would have been misleading, because an
+action that has visibly disabled itself is not an invitation to try moving.
+
+It is now one button that reverses: **Fortify** becomes **Wake**
+(*Befestigen* / *Aufwecken*), with a title that says what it will do next.
+`wakeUnit` stands the unit down without moving it, for the case where you want
+to attack out of a position rather than hold it.
+
+⚠️ **Waking does not refund the turn spent digging in.** Fortifying costs the
+rest of that turn; changing your mind on the same turn leaves you with the
+nothing you just spent. Otherwise fortify-then-wake is a free movement reset
+for a unit that had already walked.
+
+#### 42.5 Decisions
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D335 | ⚠️ **The refresh phase gives fortified units their movement** | Without it, the documented wake-up (`moveUnit` clears the flag) can never execute, and the unit is stranded for the rest of the game |
+| D336 | Staying dug in is the flag, not the movement | The defence bonus and the nag both read the flag. Nothing read the movement, so zeroing it bought nothing and cost everything |
+| D337 | ⚠️ **The old test was updated, not deleted** | It asserted two things and only one of them was the bug. Deleting it would have thrown away the correct half, which is that the flag survives a turn |
+| D338 | One button that reverses, rather than a second button | Fortify greying itself out told the player there was no way back, which was true and is the thing being fixed |
+| D339 | Waking does not refund the turn | Otherwise it is a free movement reset for a unit that has already walked |
+| D340 | The label has one owner | `data-i18n` removed from the button: `refreshSelection` writes the text, so a static translation pass cannot overwrite it with the wrong half of the toggle |
+
+#### 42.6 Verified
+
+- 907 tests, 13 new in `fortify.test.ts`. The regression test is written as
+  the original symptom rather than as a statement about flags: fortify, play
+  **ten turns**, then walk away.
+- Driven in a real browser. The button reads *Befestigen*, becomes *Aufwecken*
+  once dug in, and both states are enabled. After ending a turn the unit reads
+  `movesLeft: 3` of `3` **and** `fortified: true`: still dug in, still holding
+  its bonus, and free to leave.
+- ⚠️ Two of my own new tests failed first for reasons that were facts about the
+  test rather than the game: `reachable` includes the tile the unit is standing
+  on, so "cannot go anywhere" is a set of size **one**, and moving to the first
+  entry of that set returns *"Already there"*.
+
+#### 42.7 Open
+
+- A fortified unit is still skipped by next-idle cycling, so it can only be
+  re-selected by clicking it. That is conventional for the genre and is left
+  alone, but it does mean a unit dug in and forgotten is genuinely easy to
+  forget.
+- Nothing in the interface distinguishes "dug in" from "dug in and about to be
+  attacked". The defence bonus is invisible until a fight resolves.
 
 ---
 

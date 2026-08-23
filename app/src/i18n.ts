@@ -65,6 +65,11 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
   // Orders ----------------------------------------------------------------
   'Found city': 'Stadt gründen',
   Fortify: 'Befestigen',
+  Wake: 'Aufwecken',
+  'Dig in for +40% defence, ending this turn (h)':
+    'Eingraben für +40% Verteidigung, beendet diesen Zug (h)',
+  'Stand down, and move again this turn (h)':
+    'Stellung aufgeben und in diesem Zug wieder bewegen (h)',
   Raid: 'Plündern',
   Raze: 'Niederbrennen',
   Capture: 'Erobern',

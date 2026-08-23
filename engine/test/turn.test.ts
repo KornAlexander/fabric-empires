@@ -327,7 +327,24 @@ describe('turns', () => {
 
     const next = endTurn(fortified.state).state;
     expect(next.units.get(scout.id)!.fortified).toBe(true);
-    expect(next.units.get(scout.id)!.movesLeft).toBe(0);
+    /*
+     * ⚠️ **This used to assert `movesLeft` was 0, and that assertion was the
+     * bug written down as though it were the design.**
+     *
+     * Staying dug in is about the flag, which is what the defence bonus and
+     * the end-of-turn nag both read, and the flag is still set above. Refusing
+     * the unit its movement as well made it impossible to ever leave: the
+     * documented way to wake up is to be ordered elsewhere, `moveUnit` clears
+     * the flag to do exactly that, and `moveUnit` rejects a unit with no
+     * movement before it ever reaches that line.
+     *
+     * So a fortified unit was stranded for the rest of the game, and this test
+     * held it there. See `fortify.test.ts`.
+     */
+    expect(next.units.get(scout.id)!.movesLeft).toBe(unitType(scout.typeId).movement);
+    // And it still does not nag, which was the only thing the old behaviour
+    // was actually for.
+    expect(idleUnits(next, PLAYER_FACTION_ID).map((u) => u.id)).not.toContain(scout.id);
   });
 
   it('reports bankruptcy instead of letting the treasury go negative', () => {

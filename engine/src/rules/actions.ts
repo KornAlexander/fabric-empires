@@ -163,6 +163,29 @@ export function fortifyUnit(state: GameState, unitId: string): ActionResult {
   };
 }
 
+/**
+ * Stand down, without going anywhere.
+ *
+ * Ordering a fortified unit to move already wakes it (`moveUnit` clears the
+ * flag), which is the usual way out and the one every 4X player tries first.
+ * This is for the other case: staying exactly where you are but giving up the
+ * dug-in bonus, usually because you are about to attack out of the position
+ * rather than hold it.
+ *
+ * ⚠️ **It does not refund the turn spent digging in.** Fortifying costs the
+ * rest of that turn, so waking on the same turn leaves the unit with the zero
+ * movement it just spent. Refunding it would make fortify-then-wake a free way
+ * to reset a unit that had already walked.
+ */
+export function wakeUnit(state: GameState, unitId: string): ActionResult {
+  const unit = state.units.get(unitId);
+  if (!unit) return fail('No such unit');
+  if (unit.factionId !== state.activeFactionId) return fail('Not your unit');
+  if (!unit.fortified) return fail('Not fortified');
+
+  return { ok: true, state: replaceUnit(state, { ...unit, fortified: false }) };
+}
+
 /** Spend the rest of a unit's turn without moving it. */
 export function skipUnit(state: GameState, unitId: string): ActionResult {
   const unit = state.units.get(unitId);
