@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  chooseTactic,
   createGameState,
   maxWallHp,
   previewAttack,
@@ -147,16 +148,34 @@ describe('each tactic is best at something', () => {
 });
 
 describe('⚠️ no tactic dominates', () => {
-  it('sap loses its advantage once the breach is open', () => {
-    // With no wall left, wallShare is irrelevant and sap is just a unit with a
-    // bonus it cannot spend. If it still won here it would be a free upgrade.
-    const open = field('pipelineRunner', { wallLevel: 0, wallHp: 0 });
-    const sap = resolveAttack(open.state, open.attackerId, { q: 0, r: 0 }, { tactic: 'sap' });
-    const esc = resolveAttack(open.state, open.attackerId, { q: 0, r: 0 }, { tactic: 'escalade' });
-    if (!sap.ok || !esc.ok) throw new Error('attack refused');
-    // Both now land on the town directly; neither is shielded by masonry.
-    expect(sap.result.state.cities.get('target')!.hp).toBeLessThan(200);
-    expect(esc.result.state.cities.get('target')!.hp).toBeLessThan(200);
+  it('⚠️ sap becomes the WORST way in once the breach is open', () => {
+    /*
+     * The previous version of this test only asserted that both tactics did
+     * *some* damage to an unwalled city, which is true of anything, and that
+     * weakness is exactly how the contradiction survived: with a single
+     * strength number, a sapper's masonry bonus kept applying after the wall
+     * was gone, so `sap` was quietly the best tactic in every situation and its
+     * own description ("almost no use once the breach is open") was a lie.
+     */
+    const open = field('directLakeTitan', { wallLevel: 2, wallHp: 0 });
+    const hpAfter = (tactic: 'batter' | 'escalade' | 'sap'): number => {
+      const out = resolveAttack(open.state, open.attackerId, { q: 0, r: 0 }, { tactic });
+      if (!out.ok) throw new Error(out.reason);
+      return out.result.state.cities.get('target')!.hp;
+    };
+    // Higher remaining hit points means less was achieved.
+    expect(hpAfter('sap')).toBeGreaterThan(hpAfter('batter'));
+    expect(hpAfter('sap')).toBeGreaterThan(hpAfter('escalade'));
+  });
+
+  it('and is still the best way in while the wall stands', () => {
+    const walled = field('directLakeTitan');
+    const wallAfter = (tactic: 'batter' | 'sap'): number => {
+      const out = resolveAttack(walled.state, walled.attackerId, { q: 0, r: 0 }, { tactic });
+      if (!out.ok) throw new Error(out.reason);
+      return out.result.state.cities.get('target')!.wallHp;
+    };
+    expect(wallAfter('sap')).toBeLessThan(wallAfter('batter'));
   });
 
   it('escalade trades worse against a fresh wall than against a broken one', () => {
@@ -221,6 +240,40 @@ describe('⚠️ the odds shown are the odds fought', () => {
       expect(Number.isInteger(city.wallHp)).toBe(true);
       expect(Number.isInteger(city.hp)).toBe(true);
     }
+  });
+});
+
+describe('⚠️ the AI gets the same three choices', () => {
+  /*
+   * Without a chooser every antagonist attack used the default, so a player who
+   * walled up was never escaladed and never sapped. Walls were strictly better
+   * for the player than for the seven factions that also build them, which is
+   * the same asymmetry as the AI not building walls at all, one layer up.
+   */
+  it('saps a standing wall, because that is what moves the siege along', () => {
+    const { state, attackerId } = field('directLakeTitan');
+    expect(chooseTactic(state, attackerId, { q: 0, r: 0 })).toBe('sap');
+  });
+
+  it('stops sapping once the breach is open', () => {
+    const { state, attackerId } = field('directLakeTitan', { wallLevel: 2, wallHp: 0 });
+    expect(chooseTactic(state, attackerId, { q: 0, r: 0 })).not.toBe('sap');
+  });
+
+  it('⚠️ never picks a tactic that would kill the attacker', () => {
+    // Escalade against a fresh wall costs a full counterattack, which is lethal
+    // to most of the roster. An AI that storms a fortress with scouts is not
+    // aggressive, it is broken.
+    const { state, attackerId } = field('pipelineRunner');
+    const chosen = chooseTactic(state, attackerId, { q: 0, r: 0 });
+    const cost = previewAttack(state, attackerId, { q: 0, r: 0 }, { tactic: chosen })!
+      .expectedDamageToAttacker;
+    expect(cost).toBeLessThan(state.units.get(attackerId)!.hp);
+  });
+
+  it('leaves an unwalled city alone and just attacks it', () => {
+    const { state, attackerId } = field('pipelineRunner', { wallLevel: 0, wallHp: 0 });
+    expect(chooseTactic(state, attackerId, { q: 0, r: 0 })).toBe(DEFAULT_TACTIC);
   });
 });
 

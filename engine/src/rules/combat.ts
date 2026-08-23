@@ -13,7 +13,7 @@ import { createRng, type Rng } from '../rng/index.js';
 import { isCivilian, cityKind, unitType, type City, type Unit } from '../entities/index.js';
 import { cityAt, tileAt, unitAt, type GameState } from '../state/index.js';
 import { absorbWithWalls, wallDefenceBonus } from './walls.js';
-import { tacticProfile, type AssaultTactic } from './assault.js';
+import { tacticProfile, tacticStrength, type AssaultTactic } from './assault.js';
 import { grantFoothold, razeCityAt } from './sack.js';
 import type { ResourceId } from '../map/index.js';
 
@@ -316,6 +316,10 @@ export function previewAttack(
   // Tactics only exist against a city. Against a unit there is no wall to go
   // over, under or through, so the profile is never consulted.
   const tactic = targetKind === 'city' ? tacticProfile(options.tactic) : tacticProfile('batter');
+  // Sap is a bonus against masonry, not against people. Once the breach is
+  // open it is the worst way in, which is what its own description promises.
+  const wallStanding = targetKind === 'city' && (cityAt(state, target)?.wallHp ?? 0) > 0;
+  const tacticStrengthNow = tacticStrength(tactic, wallStanding);
 
   return {
     attacker: attackerSide,
@@ -323,7 +327,7 @@ export function previewAttack(
     targetKind,
     ranged,
     expectedDamageToDefender: damageFrom(
-      attackerSide.effective * siegeMultiplier * tactic.strength,
+      attackerSide.effective * siegeMultiplier * tacticStrengthNow,
       defenderSide.effective,
     ),
     // A ranged attacker takes nothing back, which is the entire reason to
@@ -390,9 +394,11 @@ export function resolveAttack(
    * true only because nothing had ever differed between them before.
    */
   const tactic = tacticProfile(preview.targetKind === 'city' ? options.tactic : 'batter');
+  const wallStanding =
+    preview.targetKind === 'city' && (cityAt(state, target)?.wallHp ?? 0) > 0;
 
   const damageToDefender = damageFrom(
-    preview.attacker.effective * siegeMultiplier * tactic.strength,
+    preview.attacker.effective * siegeMultiplier * tacticStrength(tactic, wallStanding),
     preview.defender.effective,
     attackRoll,
   );

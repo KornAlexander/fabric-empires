@@ -34,8 +34,19 @@ export interface TacticProfile {
    * the old behaviour and no existing balance moves.
    */
   readonly wallShare: number;
-  /** Multiplier on the attacker's effective strength. */
+  /** Multiplier on the attacker's effective strength while a wall stands. */
   readonly strength: number;
+  /**
+   * Multiplier once there is no wall left to work on.
+   *
+   * ⚠️ **Sap needed this, or its own description was a lie.** With a single
+   * strength number a sapper's large bonus kept applying after the breach was
+   * open, which made `sap` the best tactic in every situation and the other two
+   * decoration. The card says "almost no use once the breach is open"; this is
+   * what makes that true. Nothing changes for the other two, because neither of
+   * them was ever about the masonry.
+   */
+  readonly strengthOpen: number;
   /**
    * How much of a full counterattack the attacker takes back from the city.
    *
@@ -50,22 +61,31 @@ export interface TacticProfile {
 }
 
 export const TACTICS: Readonly<Record<AssaultTactic, TacticProfile>> = Object.freeze({
-  batter: Object.freeze({ id: 'batter', wallShare: 1, strength: 1, cityCounter: 0 }),
+  batter: Object.freeze({
+    id: 'batter', wallShare: 1, strength: 1, strengthOpen: 1, cityCounter: 0,
+  }),
   /*
    * Costly on purpose. Escalade is the tactic that ignores the thing the
    * defender paid for, so it has to hurt: it takes a full counter, exactly as
    * though the city were a unit fighting back, while every other way of
    * attacking a city is free.
    */
-  escalade: Object.freeze({ id: 'escalade', wallShare: 0.2, strength: 0.85, cityCounter: 1 }),
+  escalade: Object.freeze({
+    id: 'escalade', wallShare: 0.2, strength: 0.85, strengthOpen: 0.85, cityCounter: 1,
+  }),
   /*
-   * Sappers are not stormtroopers. The strength bonus is large because it is
-   * spent entirely on masonry: with `wallShare` at 1 nothing reaches the city
-   * until the wall is gone, and after that this is simply a weak attack with a
-   * bonus it can no longer use well.
+   * Sappers are not stormtroopers. The bonus is spent entirely on masonry, and
+   * once the masonry is gone they are a worse choice than walking in.
    */
-  sap: Object.freeze({ id: 'sap', wallShare: 1, strength: 1.55, cityCounter: 0 }),
+  sap: Object.freeze({
+    id: 'sap', wallShare: 1, strength: 1.55, strengthOpen: 0.7, cityCounter: 0,
+  }),
 });
+
+/** The strength multiplier that applies to this city right now. */
+export function tacticStrength(profile: TacticProfile, wallStanding: boolean): number {
+  return wallStanding ? profile.strength : profile.strengthOpen;
+}
 
 export const DEFAULT_TACTIC: AssaultTactic = 'batter';
 

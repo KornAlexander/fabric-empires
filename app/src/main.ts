@@ -3214,7 +3214,7 @@ declare global {
       showcase: (typeIds: string[], centre: Hex) => string[];
       quality: (level: 'high' | 'low') => void;
       spawnEnemyAdjacent: (unitId: string) => Hex | undefined;
-      plantWalledCity: (unitId: string, wallLevel?: number) => Hex | undefined;
+      plantWalledCity: (unitId: string, wallLevel?: number, wallHp?: number) => Hex | undefined;
       clickHex: (hex: Hex) => void;
       endTurn: () => Promise<void>;
     };
@@ -3627,7 +3627,7 @@ window.__fabricEmpires = {
     }
     return undefined;
   },
-  plantWalledCity: (unitId: string, wallLevel = MAX_WALL_LEVEL) => {
+  plantWalledCity: (unitId: string, wallLevel = MAX_WALL_LEVEL, wallHp?: number) => {
     /*
      * Test affordance: a walled enemy city, next door.
      *
@@ -3657,7 +3657,11 @@ window.__fabricEmpires = {
         kind: 'workspace',
         hp: 200,
         wallLevel: level,
-        wallHp: maxWallHp(level),
+        // ⚠️ An override so a **breached** wall can be planted directly. The
+        // rule that sap is useless once the breach is open only applies at
+        // `wallHp === 0`, and reaching that through the interface means
+        // battering a wall down one blow and one question at a time.
+        wallHp: wallHp === undefined ? maxWallHp(level) : Math.max(0, Math.min(maxWallHp(level), wallHp)),
         population: 3,
         rank: 'siedlung',
         growthStore: 0,

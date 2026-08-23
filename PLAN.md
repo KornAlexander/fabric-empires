@@ -294,6 +294,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D434–D437 | The walls were a locked door, and every test agreed they were fine | Recorded in full in section 58 |
 | D438–D441 | Tactics: going at a wall is a decision | Recorded in full in section 59 |
 | D442–D444 | Opening the door that had never been opened | Recorded in full in section 60 |
+| D445–D448 | The AI gets the same three choices, and sap stops lying | Recorded in full in section 61 |
 
 ### 28. Cheat codes
 
@@ -4988,6 +4989,56 @@ themselves correct.
 **The engine is not the game.** A rule needs reaching where it ships, and if
 reaching it is hard, that is a reason to build the affordance rather than a
 reason to skip the check.
+
+---
+
+## 61. The AI gets the same three choices, and sap stops lying
+
+Tactics shipped with **one** user: the player. Every antagonist attack took the
+default, so a player who walled up was never escaladed and never sapped. Walls
+were strictly better for the player than for the seven factions that also build
+them, which is D424's asymmetry one layer up.
+
+Writing the chooser exposed a contradiction in the tactic it was supposed to
+pick.
+
+| ID | Decision |
+|---|---|
+| D445 | ⚠️ **Sap's own description was a lie.** With a single strength number, a sapper's masonry bonus kept applying after the breach was open, so `sap` was quietly the strongest tactic in *every* situation and the other two were decoration. The card says "almost no use once the breach is open". `strengthOpen` makes that true: 1.55 against masonry, **0.7 against people** |
+| D446 | ⚠️ **The test that should have caught it asserted nothing.** "Sap loses its advantage once the breach is open" only checked that both tactics did *some* damage to an unwalled city, which is true of anything at all. Rewritten to compare them, and it now fails if sap is not the **worst** way through an open breach |
+| D447 | **`chooseTactic` scores progress, not damage.** While the wall stands only wall damage moves a siege along; once it is down only damage to the town does. Scoring raw damage would have picked sap forever, including after the breach where it is now the worst choice |
+| D448 | ⚠️ **The AI will not pick a tactic that kills the attacker.** Escalade against a fresh wall costs a full counterattack, which is lethal to most of the roster. An AI that storms a fortress with scouts is not aggressive, it is broken |
+
+### ⚠️ The damage clamp has now hidden a mechanic four times
+
+`MIN_DAMAGE` is 10, and a starting Profiler against a walled city is pinned to
+it. So far that has concealed: wall integrity scaling (55), sap's strength (59),
+the city's counter ceiling (59), and now sap's post-breach penalty, which
+measured **exactly 10** in the live game where the engine says it should be
+lower than battering.
+
+That is no longer just a testing annoyance. It is a statement about play:
+**for the unit the player starts with, most of the combat system is invisible.**
+A first siege shows no difference between battering and sapping, so the tactic
+prompt is asking a question whose answer does not yet matter.
+
+Worth deciding before submission, and deliberately **not** fixed here, because
+lowering the floor would rebalance every fight in the game and the siege work is
+still settling. Options, cheapest first: soften `MIN_DAMAGE` against cities
+only; scale the floor with the attacker's strength; or say so in the prompt, so
+a player learns *why* their scout cannot exploit a breach.
+
+### Verified
+
+1027 tests. In the live game: the dialog offers all three against a breached
+wall, and sap through an open breach took 10 off the town and nothing off the
+wall, which is correct and, being the floor, **does not distinguish it from
+battering**. The distinction is proven in the engine with a unit that is not
+clamped; it could not be shown in the browser with the unit available.
+
+⚠️ `plantWalledCity` gained a `wallHp` override so an already-breached wall can
+be reached at all. Battering one down through the interface is a dozen turns of
+questions, and the rule only applies at zero.
 
 ---
 

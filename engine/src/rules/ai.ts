@@ -15,9 +15,71 @@ import { canAttack, previewAttack, resolveAttack, type CombatLog } from './comba
  * cautious.
  */
 export const HOPELESS_ASSAULT_TURNS = 12;
+
+/**
+ * Which way an antagonist goes at a wall.
+ *
+ * ⚠️ **Without this the AI had one tactic where the player has three.** Every
+ * antagonist attack used the default, so a player who walled up was never
+ * escaladed and never sapped: walls were strictly better for the player than
+ * for the seven factions that also build them. Same asymmetry as the AI not
+ * building walls at all (D424), one layer up.
+ *
+ * The rule is progress, not damage. While the wall stands, only wall damage
+ * moves the siege along; once it is down, only damage to the town does. Scoring
+ * raw damage would pick sap forever, including after the breach where it is the
+ * worst choice in the game.
+ *
+ * ⚠️ And it will not choose a tactic that kills the attacker. Escalade against
+ * a fresh wall costs a full counterattack, which is lethal to most of the
+ * roster, and an AI that storms a fortress with scouts is not aggressive, it is
+ * broken.
+ */
+export function chooseTactic(
+  state: GameState,
+  unitId: string,
+  target: Hex,
+): AssaultTactic {
+  const city = cityAt(state, target);
+  const unit = state.units.get(unitId);
+  if (!city || !unit || city.wallLevel <= 0) return DEFAULT_TACTIC;
+
+  const wallStanding = city.wallHp > 0;
+  const ranged = unitType(unit.typeId).range > 1;
+
+  let best: AssaultTactic = DEFAULT_TACTIC;
+  let bestScore = -Infinity;
+
+  for (const id of ASSAULT_TACTICS) {
+    // You cannot storm a parapet from a mile away, and a ranged attacker takes
+    // no counter, so allowing it would be a free bypass (D441).
+    if (id === 'escalade' && ranged) continue;
+
+    const preview = previewAttack(state, unitId, target, { tactic: id });
+    if (!preview) continue;
+    if (preview.expectedDamageToAttacker >= unit.hp) continue;
+
+    const split = absorbWithWalls(city, preview.expectedDamageToDefender, TACTICS[id].wallShare);
+    const progress = wallStanding ? city.wallHp - split.wallHp : split.toCity;
+    // Damage taken is a real cost, so a tactic that trades badly loses ties.
+    const score = progress - preview.expectedDamageToAttacker * 0.25;
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = id;
+    }
+  }
+  return best;
+}
 import { findPath, reachable } from './movement.js';
 import { musterTile } from './production.js';
-import { maxWallHp, mendedBy, wallWork, WALL_MEND_PER_CYCLE } from './walls.js';
+import { absorbWithWalls, maxWallHp, mendedBy, wallWork, WALL_MEND_PER_CYCLE } from './walls.js';
+import {
+  ASSAULT_TACTICS,
+  DEFAULT_TACTIC,
+  TACTICS,
+  type AssaultTactic,
+} from './assault.js';
 
 /**
  * The antagonist's turn.
@@ -447,6 +509,10 @@ export function runFactionTurn(
 
       const fought = resolveAttack(current, id, intent.target, {
         defenderChallengeScore: options.defenderChallengeScore ?? 0,
+        // ⚠️ The antagonists get the same three choices the player does.
+        // Without this every AI attack used the default, so a player's walls
+        // were never escaladed and never sapped.
+        tactic: chooseTactic(current, id, intent.target),
       });
       if (!fought.ok) break;
       current = fought.result.state;
