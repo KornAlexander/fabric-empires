@@ -5,6 +5,7 @@ import type {
   QuestionResult,
   QuestionUi,
 } from '@fabric-empires/learn';
+import { t } from '../i18n.js';
 
 /**
  * The question modal.
@@ -138,7 +139,19 @@ export function createQuestionModal(): QuestionModal {
     // `boss` is the Proctor, which is why the kind is styled rather than
     // printed plain: the exam should not look like an ordinary skirmish.
     const kind = el('span', `fe-kind ${request.kind === 'battle' || request.kind === 'boss' ? request.kind : ''}`);
-    kind.textContent = request.kind === 'boss' ? 'The Proctor' : request.kind;
+    /*
+     * ⚠️ The other kinds used to be rendered raw, so a German player was shown
+     * the literal identifiers `research` and `review` in the header of the one
+     * screen they spend the whole game looking at.
+     */
+    kind.textContent =
+      request.kind === 'boss'
+        ? t('The Proctor')
+        : request.kind === 'research'
+          ? t('Research')
+          : request.kind === 'unrest'
+            ? t('Unrest')
+            : t('Battle');
     const skill = el('span', 'fe-skill');
     skill.textContent = question.sourceSkillBullet;
     const timerLabel = el('span', 'fe-timer');
@@ -176,17 +189,28 @@ export function createQuestionModal(): QuestionModal {
     const foot = el('div', 'fe-foot');
     const pauseButton = el('button', 'act');
     pauseButton.type = 'button';
-    pauseButton.textContent = 'Pause';
+    pauseButton.textContent = t('Pause');
     const submitButton = el('button', 'act primary');
     submitButton.type = 'button';
-    submitButton.textContent = 'Submit';
+    submitButton.textContent = t('Submit');
     submitButton.disabled = true;
+    /*
+     * ⚠️ Stable ids, because these labels are now translated.
+     *
+     * The test harness found this button with `textContent === 'Submit'`,
+     * which worked for exactly as long as the interface was English. Keying
+     * automation on words a player reads is the same mistake as keying a
+     * selector on a placeholder that rotates: it breaks the moment the text
+     * does its job.
+     */
+    pauseButton.dataset.act = 'pause';
+    submitButton.dataset.act = 'submit';
     foot.append(pauseButton, submitButton);
 
     modal.append(head, bar, stem);
     if (multi) {
       const hint = el('div', 'fe-hint');
-      hint.textContent = `Choose ${needed}.`;
+      hint.textContent = t('Choose {n}.', { n: String(needed) });
       modal.append(hint);
     }
     modal.append(options, foot);
@@ -257,12 +281,12 @@ export function createQuestionModal(): QuestionModal {
         if (finished) return;
         if (pausedAt === undefined) {
           pausedAt = performance.now();
-          pauseButton.textContent = 'Resume';
-          timerLabel.textContent = 'paused';
+          pauseButton.textContent = t('Resume');
+          timerLabel.textContent = t('paused');
         } else {
           pausedFor += performance.now() - pausedAt;
           pausedAt = undefined;
-          pauseButton.textContent = 'Pause';
+          pauseButton.textContent = t('Pause');
         }
       });
 
@@ -302,11 +326,11 @@ export function createQuestionModal(): QuestionModal {
     const title = el('h3');
     title.textContent = result.correct
       ? result.score >= 1
-        ? 'Correct, and quickly'
-        : 'Correct'
+        ? t('Correct, and quickly')
+        : t('Correct')
       : result.given === undefined
-        ? 'Out of time'
-        : 'Not quite';
+        ? t('Out of time')
+        : t('Not quite');
     verdict.append(title);
 
     // Mark the options: green on the right answer, red on a wrong pick. A
@@ -348,7 +372,7 @@ export function createQuestionModal(): QuestionModal {
     link.href = result.question.learnUrl;
     link.target = '_blank';
     link.rel = 'noreferrer noopener';
-    link.textContent = 'Read the documentation';
+    link.textContent = t('Read the documentation');
     source.append(link);
     source.append(
       document.createTextNode(`  ${result.question.cluster}  ${result.question.sourceSkillBullet}`),
@@ -358,7 +382,8 @@ export function createQuestionModal(): QuestionModal {
     const foot = el('div', 'fe-foot');
     const continueButton = el('button', 'act primary');
     continueButton.type = 'button';
-    continueButton.textContent = 'Continue';
+    continueButton.textContent = t('Continue');
+    continueButton.dataset.act = 'continue';
     foot.append(continueButton);
     verdict.append(foot);
 

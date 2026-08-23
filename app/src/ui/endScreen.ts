@@ -1,4 +1,5 @@
 import type { Outcome } from '@fabric-empires/engine';
+import { t } from '../i18n.js';
 
 /**
  * How a game ended.
@@ -125,9 +126,9 @@ export function createEndScreen(onNewGame: () => void): EndScreen {
       <h2 data-f="title"></h2>
       <p data-f="summary"></p>
       <div class="fe-end-stats">
-        <div><b data-f="turn">-</b><span>turns</span></div>
-        <div><b data-f="skills">-</b><span>skills</span></div>
-        <div><b data-f="cities">-</b><span>cities</span></div>
+        <div><b data-f="turn">-</b><span data-f="turns-label">turns</span></div>
+        <div><b data-f="skills">-</b><span data-f="skills-label">skills</span></div>
+        <div><b data-f="cities">-</b><span data-f="cities-label">cities</span></div>
       </div>
       <p class="fe-end-cheats" data-f="cheats" hidden></p>
       <button type="button" data-f="again">New empire</button>
@@ -154,11 +155,44 @@ export function createEndScreen(onNewGame: () => void): EndScreen {
       root.classList.toggle('win', outcome.kind !== 'defeat');
       root.classList.toggle('lose', outcome.kind === 'defeat');
       const kind = field('kind');
-      if (kind) kind.textContent = outcome.kind === 'defeat' ? 'Defeat' : 'Victory';
+      if (kind) kind.textContent = outcome.kind === 'defeat' ? t('Defeat') : t('Victory');
+
+      /*
+       * ⚠️ The static labels are translated here rather than in the markup.
+       *
+       * This whole screen was English inside a German game: a player who had
+       * just won read "VICTORY / turns / skills / cities / New empire" with
+       * German on every side of it. It was invisible to the i18n test because
+       * a file that never calls `t()` has no literals for it to check, and the
+       * test only walked a hand-written list of files that did.
+       *
+       * Set on every show, because the language can change between games.
+       */
+      const label = (name: string, text: string): void => {
+        const node = field(name);
+        if (node) node.textContent = text;
+      };
+      label('turns-label', t('turns'));
+      label('skills-label', t('skills'));
+      label('cities-label', t('cities'));
+      label('again', t('New empire'));
       const title = field('title');
-      if (title) title.textContent = TITLES[outcome.kind];
+      if (title) title.textContent = t(TITLES[outcome.kind]);
       const summary = field('summary');
-      if (summary) summary.textContent = outcome.summary;
+      /*
+       * ⚠️ The engine writes its summaries in English as the canonical form
+       * and the app translates on the way to the screen, which is the rule the
+       * rest of the interface already follows. `t()` passes anything it does
+       * not recognise straight through, so an unmapped sentence degrades to
+       * English rather than to nothing.
+       *
+       * ⚠️ Known gap: the mastery summary interpolates the topic count into
+       * the sentence in the engine, so it arrives here already assembled and
+       * cannot be looked up. Translating it needs the engine to emit a key and
+       * its parameters instead of finished prose, which is a larger change
+       * than this one.
+       */
+      if (summary) summary.textContent = t(outcome.summary);
       const turn = field('turn');
       if (turn) turn.textContent = String(stats.turn);
       const skills = field('skills');
@@ -174,10 +208,11 @@ export function createEndScreen(onNewGame: () => void): EndScreen {
           const unique = [...new Set(used)];
           const touchedReadiness = unique.some((code) => READINESS_HELP.has(code));
           cheats.textContent =
-            `This empire had help: ${unique.join(', ')}. ` +
+            t('This empire had help: {codes}.', { codes: unique.join(', ') }) +
+            ' ' +
             (touchedReadiness
-              ? 'That includes the readiness figure, which was granted rather than earned.'
-              : 'Your readiness figure did not, and never does.');
+              ? t('That includes the readiness figure, which was granted rather than earned.')
+              : t('Your readiness figure did not, and never does.'));
         }
       }
       root.dataset.open = 'true';

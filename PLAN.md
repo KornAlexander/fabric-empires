@@ -306,6 +306,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D493–D497 | The unit table was a statement about DP-600 | Recorded in full in section 70 |
 | D498–D502 | Fullscreen, and a skier | Recorded in full in section 71 |
 | D503–D510 | The defender stops being a number | Recorded in full in section 72 |
+| D511–D515 | The screen you look at most was in the wrong language | Recorded in full in section 73 |
 
 ### 28. Cheat codes
 
@@ -6066,6 +6067,97 @@ Brace   raided for 10, then 13, then 14.  No counter line at all.
 
 Brace takes roughly a third of the damage and returns nothing; sally returns 43
 and kills raiders. The trade is real and the player can see it.
+
+---
+
+## 73. The screen you look at most was in the wrong language
+
+Section 72 found `ui/raidAlert.ts` sitting untranslated because the i18n test
+scanned a hand-written list of files. Widening the scan to the whole tree fixed
+the *list*. It did not find the rest of the problem, and this section is the
+rest of the problem.
+
+### 73.1 ⚠️ The test could never have found these
+
+Every check in `i18n.test.ts` inspects strings handed to `t()`. A string
+assigned straight to `textContent` never reaches `t()`, contributes no key, and
+is therefore **invisible to a test whose entire subject is keys**.
+
+Two files had no `t()` call at all:
+
+| file | what a German player read |
+| --- | --- |
+| `ui/questionModal.ts` | `THE PROCTOR`, `research`, `Pause`, `Submit`, `Correct, and quickly`, `Not quite`, `Read the documentation`, `Continue` |
+| `ui/endScreen.ts` | `VICTORY`, `turns`, `skills`, `cities`, `New empire`, and the cheat disclosure |
+
+⚠️ The question modal is **the screen a player sees more than any other**: it is
+where every single question in the game is asked and answered. It was in
+English, in a German game, and 1056 tests were green.
+
+⚠️ Worse, `request.kind` was rendered raw for anything that was not the
+Proctor, so the header of that screen said the literal identifier **`research`**.
+
+### 73.2 ⚠️ Translating the buttons would have broken the harness
+
+`answerOpen` found the submit button with `b.textContent === 'Submit'`.
+
+That worked for exactly as long as the interface was English. Translating the
+modal would have silently broken every automated playthrough in German, and the
+symptom would have been `answerOpen` returning `undefined`, which its own
+comment already warns has two very different causes.
+
+It is the same mistake as keying a Suno selector on a placeholder that rotates:
+**automation must not depend on the words a player reads**, because those words
+have a job and doing it changes them. The three action buttons now carry
+`data-act="pause|submit|continue"` and the harness matches on that.
+
+### 73.3 The guard that would have caught it
+
+Widening the file list was necessary and insufficient: a module with no `t()`
+still contributes nothing to check. So the test now looks for **the opposite of
+a translation** as well, prose reaching `textContent` on a line that never
+mentions `t(`.
+
+It found three more on its first run, including the blurb on the **first screen
+of every game**, which was a hardcoded English copy of the campaign's own
+`blurb` field.
+
+⚠️ Known gap, deliberately left: the mastery victory summary interpolates the
+topic count in the **engine**, so it arrives already assembled and cannot be
+looked up. Translating it means the engine emitting a key and its parameters
+rather than finished prose, which is a bigger change than this one.
+
+### 73.4 Decisions
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D511 | ⚠️ **The test hunts untranslated prose, not only missing keys** | Every check it had inspected `t()` calls, so a file that never called `t()` was perfectly invisible. Widening the file list in section 72 did not help, because the problem was never which files were read |
+| D512 | ⚠️ **Automation keys on `data-act`, never on the label** | A visible word is a thing that changes. Translating the modal would have broken every playthrough in German and reported it as "no modal open" |
+| D513 | `request.kind` is mapped to words, not printed | A header reading `research` is a leaked identifier in any language |
+| D514 | "Pause" joins the list of words that are the same in German | The identical-translation check is right to be suspicious, and the way to answer it is a named exception rather than a worse word |
+| D515 | Engine summaries are translated on the way to the screen | The engine writes canonical English (D35 keeps it ignorant of language), so `t()` at the boundary is the existing rule, and it degrades to English rather than to nothing |
+
+### 73.5 Verified where it ships
+
+1057 tests, 1 new. Then the **deployed** game in German:
+
+```
+DER PRÜFER          (was THE PROCTOR)
+Abschicken / Weiter (data-act=submit / continue)
+Nicht ganz          (was Not quite)
+Zur Dokumentation   (was Read the documentation)
+
+SIEG
+Der Prüfer ist zufrieden
+40 von 40 richtig, 100 Prozent. Der Prüfer hat keine Fragen mehr.
+5 RUNDEN   1/41 FÄHIGKEITEN   0 STÄDTE
+Dieses Reich hatte Hilfe: ... Dazu gehören die Lernwerte, die geschenkt
+und nicht verdient wurden.
+Neues Reich
+```
+
+⚠️ And **40 questions answered through `answerOpen`** afterwards, which is the
+proof that the harness survived its own labels being translated.
 
 ---
 

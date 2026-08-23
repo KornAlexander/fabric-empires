@@ -115,14 +115,58 @@ describe('⚠️ coverage', () => {
   it('has no German entry that is just the English again', () => {
     /*
      * A few are legitimately identical, and they are listed here so that
-     * adding a new one is a decision rather than an oversight. "Land" and
-     * "Standard" really are the same word in German; the rest are product
-     * terms that must not be translated at all.
+     * adding a new one is a decision rather than an oversight. "Land",
+     * "Standard" and "Pause" really are the same word in German; the rest are
+     * product terms that must not be translated at all.
      */
-    const allowed = new Set(['Standard', 'Land', 'Data', 'DAX']);
+    const allowed = new Set(['Standard', 'Land', 'Pause', 'Data', 'DAX']);
     setLang('de');
     const lazy = translatedKeys().filter((k) => !allowed.has(k) && t(k) === k);
     expect(lazy, 'these look untranslated').toEqual([]);
+  });
+
+  it('⚠️ writes no untranslated prose straight to the DOM', () => {
+    /*
+     * The gap every other test in this file was blind to.
+     *
+     * Everything above checks strings that were handed to `t()`. A string
+     * assigned straight to `textContent` never reaches `t()`, contributes no
+     * key, and is therefore invisible: `ui/endScreen.ts` and
+     * `ui/questionModal.ts` between them put an entire victory screen and the
+     * most-used screen in the game on display in English, inside a German
+     * game, with every test green.
+     *
+     * So this looks for the opposite of a translation: prose going to the DOM
+     * on a line that never mentions `t(`. Two words of three or more letters
+     * is the test for prose, which lets ids, class names and single product
+     * words through.
+     */
+    const assign = /\.(textContent|innerText|placeholder)\s*=\s*(['"`])(.+?)\2/gs;
+    const prose = /[A-Za-z]{3,}\s+[A-Za-z]{3,}/;
+
+    /*
+     * Names, not sentences. The game's own title is the same in both
+     * languages, and a campaign blurb is content that arrives already written
+     * in the language of its own course.
+     */
+    const allowed = new Set(['Fabric Empires']);
+
+    const offenders: string[] = [];
+    for (const file of appSourceFiles()) {
+      const code = source(file);
+      for (const m of code.matchAll(assign)) {
+        const text = m[3]!.trim();
+        if (!prose.test(text) || allowed.has(text)) continue;
+        // Interpolations of already-translated values are fine.
+        if (text.includes('${')) continue;
+        const lineStart = code.lastIndexOf('\n', m.index!) + 1;
+        const lineEnd = code.indexOf('\n', m.index! + m[0].length);
+        const line = code.slice(lineStart, lineEnd < 0 ? undefined : lineEnd);
+        if (line.includes('t(')) continue;
+        offenders.push(`${file}: ${text.slice(0, 60)}`);
+      }
+    }
+    expect(offenders, 'these reach the screen without being translated').toEqual([]);
   });
 
   it('⚠️ leaves the exam vocabulary in English', () => {

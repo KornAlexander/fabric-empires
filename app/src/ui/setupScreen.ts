@@ -122,8 +122,9 @@ export function createSetupScreen(): SetupScreen {
 
       const blurb = document.createElement('p');
       blurb.className = 'fe-setup-blurb';
-      blurb.textContent =
-        'The DP-600 outline is the tech tree. Rival factions each hold one branch of it: beat them and take what they know, or burn it and stay ignorant.';
+      blurb.textContent = t(
+        'The DP-600 outline is the tech tree. Rival factions each hold one branch of it: beat them and take what they know, or burn it and stay ignorant.',
+      );
       card.append(blurb);
 
       const section = (label: string): HTMLElement => {

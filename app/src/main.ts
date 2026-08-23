@@ -2228,7 +2228,7 @@ function describeTile(h: Hex | undefined): void {
   }
   const tile = state.map.tiles.get(hexKey(h));
   if (!tile) {
-    el.tileName.textContent = 'Beyond the map';
+    el.tileName.textContent = t('Beyond the map');
     el.tileDetail.innerHTML = '&nbsp;';
     return;
   }
@@ -2601,7 +2601,11 @@ async function faceTheProctor(): Promise<void> {
   endScreen.show(
     {
       kind: 'exam',
-      summary: `${result.correct} of ${result.asked} correct, ${percent} percent. The Proctor has no further questions.`,
+      summary: t('{correct} of {asked} correct, {percent} percent. The Proctor has no further questions.', {
+        correct: String(result.correct),
+        asked: String(result.asked),
+        percent: String(percent),
+      }),
     },
     {
       turn: state.turn,
@@ -3729,9 +3733,16 @@ window.__fabricEmpires = {
       nodes[options.indexOf(choice)]?.click();
     }
 
-    const submit = [...document.querySelectorAll<HTMLButtonElement>('.fe-modal button.act')].find(
-      (b) => b.textContent === 'Submit',
-    );
+    /*
+     * ⚠️ Found by `data-act`, not by the word on the button.
+     *
+     * This matched `textContent === 'Submit'`, which worked for exactly as
+     * long as the interface was English. Translating the modal would have
+     * silently broken every automated playthrough in German, and the symptom
+     * would have been `answerOpen` returning undefined, which the comment
+     * below already warns has two very different causes.
+     */
+    const submit = document.querySelector<HTMLButtonElement>('.fe-modal button[data-act="submit"]');
     if (!submit || submit.disabled) return undefined;
     submit.click();
 
@@ -3743,8 +3754,8 @@ window.__fabricEmpires = {
      * research permanently at 12/12 Compute.
      */
     for (let i = 0; i < 40; i++) {
-      const cont = [...document.querySelectorAll<HTMLButtonElement>('.fe-modal button.act')].find(
-        (b) => b.textContent === 'Continue',
+      const cont = document.querySelector<HTMLButtonElement>(
+        '.fe-modal button[data-act="continue"]',
       );
       if (cont) {
         cont.click();

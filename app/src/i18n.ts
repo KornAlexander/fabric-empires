@@ -280,6 +280,45 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
   'Codes used': 'Benutzte Codes',
   'Your readiness did not have help, and never does.':
     'Deine Lernwerte hatten keine Hilfe. Das haben sie nie.',
+  // The end screen itself. It was entirely untranslated until section 73.
+  'Your empire has fallen': 'Dein Reich ist gefallen',
+  'The region is yours': 'Die Gegend gehört dir',
+  'Every skill mastered': 'Jede Fähigkeit gemeistert',
+  'The Proctor is satisfied': 'Der Prüfer ist zufrieden',
+  turns: 'Runden',
+  skills: 'Fähigkeiten',
+  cities: 'Städte',
+  'New empire': 'Neues Reich',
+  'This empire had help: {codes}.': 'Dieses Reich hatte Hilfe: {codes}.',
+  '{correct} of {asked} correct, {percent} percent. The Proctor has no further questions.':
+    '{correct} von {asked} richtig, {percent} Prozent. Der Prüfer hat keine Fragen mehr.',
+  // Engine-written outcome summaries, translated on the way to the screen.
+  'Your empire has fallen. Nothing of it remains on the map.':
+    'Dein Reich ist gefallen. Nichts davon bleibt auf der Karte.',
+  'Every rival has been driven from the map. The region is yours.':
+    'Jeder Gegner wurde von der Karte vertrieben. Die Gegend gehört dir.',
+  'That includes the readiness figure, which was granted rather than earned.':
+    'Dazu gehören die Lernwerte, die geschenkt und nicht verdient wurden.',
+  'Your readiness figure did not, and never does.':
+    'Deine Lernwerte hatten keine Hilfe. Das haben sie nie.',
+  // The question modal, the screen a player sees more than any other.
+  'The Proctor': 'Der Prüfer',
+  Research: 'Forschung',
+  Unrest: 'Unruhe',
+  Battle: 'Kampf',
+  Pause: 'Pause',
+  Resume: 'Weiter',
+  Submit: 'Abschicken',
+  Continue: 'Weiter',
+  paused: 'pausiert',
+  'Choose {n}.': 'Wähle {n} aus.',
+  'Correct, and quickly': 'Richtig, und schnell',
+  'Out of time': 'Zeit abgelaufen',
+  'Not quite': 'Nicht ganz',
+  'Read the documentation': 'Zur Dokumentation',
+  'Beyond the map': 'Jenseits der Karte',
+  'The DP-600 outline is the tech tree. Rival factions each hold one branch of it: beat them and take what they know, or burn it and stay ignorant.':
+    'Der DP-600-Lehrplan ist der Technologiebaum. Jede gegnerische Fraktion hält einen Zweig davon: besiege sie und nimm dir ihr Wissen, oder brenne es nieder und bleibe unwissend.',
 
   /*
    * Engine option text.
