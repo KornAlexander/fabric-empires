@@ -284,6 +284,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D376–D381 | Say what kind of game this is, and check the claim | Recorded in full in section 48 |
 | D382–D384 | Build the shaders before the film, not during it | Recorded in full in section 49 |
 | D385–D389 | The fog was a hole in the world | Recorded in full in section 50 |
+| D390–D397 | The gate that was only ever described | Recorded in full in section 51 |
 
 ### 28. Cheat codes
 
@@ -1508,7 +1509,7 @@ Then the rails come off. Skippable, and a "replay tutorial" entry stays in the m
 - **Disclaimer in the README** (D33): all questions are original, written from the publicly published skills-measured outline; the project is not affiliated with, endorsed by, or sponsored by Microsoft certification; it reproduces no exam content.
 - **No tenant coordinates:** no workspace, item or capacity GUIDs, no `*.webapp.fabricapps.net` hosts, no UPNs, no `C:\Users\<name>` paths. Read from env with no default.
 - `tools/verify_publishable.py` runs in CI with shape-matching regex classes, not a list of identifiers I happened to notice: fabric SQL endpoints, `*.pbidedicated.windows.net`, `*.openai.azure.com`, `*.vault.azure.net`, any bare GUID, plus an allowlist where every entry quotes the offending text.
-  - ⚠️ **Specified, not written (D376).** The file does not exist, there is no `.github/workflows` for it to run in, and no npm script calls it. Everything above this line is a plan, not a control. Nothing scans for secrets, tenant GUIDs or local paths today. **This must exist before the repository goes public**, and it matters for the secrets, not for the trademarks.
+  - ✅ **Built (D390).** It exists, it runs in `npm run verify`, and it self-tests its own rules before it scans because a first run that passes proves nothing (D391). It scans `git ls-files` rather than the working tree, since only the published artefact can carry risk. There is still no `.github/workflows`, so "runs in CI" remains aspirational; `npm run verify` is where the gate actually sits.
 - ⚠️ `rayfin/.deployments.json` carries a `publishableKey`. **Gitignore it.**
 - `NOTICE.md` records AI art provenance (model, date, that prompts are committed) and audio provenance.
 - Grep the README and every PR body before publishing for German characters, customer names, and disclosure phrasing.
@@ -4480,6 +4481,59 @@ the readback was discarded rather than believed.
   `scene.fog` does. At a low sun the mist keeps a mid-day tone.
 - Fog geometry is now three times the vertices it was, still one merged mesh
   and one draw call per layer. Not measured against a weak GPU.
+
+---
+
+## 51. The gate that was only ever described
+
+D376 recorded that `tools/verify_publishable.py` did not exist while section 12
+described it as running in CI. This builds it, and building it turned up three
+further things that were described but not true.
+
+| ID | Decision |
+|---|---|
+| D390 | **The gate exists and runs in `npm run verify`.** Eleven shape-matching classes: bare GUID, Fabric SQL endpoint, `*.pbidedicated.windows.net`, `*.openai.azure.com`, `*.vault.azure.net`, `*.webapp.fabricapps.net`, local profile path, corporate UPN, key or token shapes, inline credential, and a third-party name class that **warns** (D47) and applies only to the marketing surface (D382). Scans `git ls-files`, never the working tree |
+| D391 | ⚠️ **The gate self-tests before it scans, because it passed on its first run.** A clean first result is indistinguishable from patterns that match nothing at all. Every rule now carries a sample it must catch, and the classes with a false-positive history carry samples they must not: `Civilian`, `amplitude`, "the old world", a hex colour, a version string. 11 caught, 7 correctly ignored. Proven end to end by injecting a GUID and a `C:\Users\...` path into a tracked file, watching it exit 1, and reverting |
+| D392 | Printed output is ASCII and stdout is forced to UTF-8. The first end-to-end run died with `UnicodeEncodeError` the moment it was piped, because a Windows console hands Python a cp1252 stdout and the last line ended in an emoji. **A gate that dies when somebody pipes it fails inside `npm run verify` for a reason unrelated to what it checks.** Emoji stay in the comments |
+| D393 | ⚠️ **`npm run serve:standalone` was broken, and it is the command the README gives a player to start the game.** It passed `--root app`, which `vite preview` does not accept; root is positional. It exited instantly. The README claim check had verified the script *existed*: **presence is not function**, and every other check this session ran through Vite's dev pipeline, which is not what anybody downloads |
+| D394 | A committed smoke test, `tools/smoke/play-bundle.mjs`, run with `npm run smoke` against the production preview. It boots the bundle, starts a game, and asserts a seed, cities, explored tiles, geometries, shader programs and a turn that advances. `playwright-core` only, launched on an installed Edge or Chrome, so no browser download and it stays out of `verify` |
+| D395 | ⚠️ **Two of its assertions were wrong before they were right.** `renderer.info.render.triangles` reported **1** on a fully drawn scene, because it reports the last `render()` call and with a post chain that is the final fullscreen quad; `info.memory` is cumulative and honest. And forbidding all 4xx failed on healthy output, since the standalone edition has no capacity host and `/api/*` returning 404 *is* the design |
+| D396 | ⚠️ **The first negative control passed.** Pointing the smoke test at `/does-not-exist` proved nothing: `vite preview` is an SPA server and returns `index.html` for any path, so the game booted normally. A `data:` URL is the real control, and it now reports nine specific failures instead of throwing |
+
+### Deployment: there is nothing to update
+
+⚠️ **Fabric Empires has never been deployed.** No `rayfin/`, no `rayfin.yml`,
+no `.deployments.json`, no rayfin dependencies. Section 13 describes capacity
+`prdsweden`, a workspace and `rayfin up` (D31); like the gate in D376, it was
+written down and not built.
+
+**No permanent URL was created (D397).** Three facts made that the wrong thing
+to do unilaterally:
+
+- ⚠️ Section 13's own warning: **`rayfin up` never deletes.** The URL is
+  permanent and goes in the submission.
+- Hosting converts a schedulable F8 into an effectively 24/7 capacity.
+- ⚠️ A Fabric App sits behind AAD in a single tenant. **Discord judges could
+  not open it.** The README already describes the game as running from static
+  files with no backend, so static hosting is both simpler and the only option
+  a stranger can actually play.
+
+What was done instead: the production bundle is current, and it is proven to
+boot, render and advance a turn.
+
+⚠️ **The bundle carries 14.3 MB of generated audio** (`anthem.mp3`,
+`ferrum-et-ignis.mp3`, `terra-nostra.mp3`). `.gitignore` keeps that out of the
+**repository** on licence grounds, and `NOTICE.md` and the README both say it is
+not here. Neither statement covers the **deployed artefact**, which is a
+distribution in its own right. Publishing the static build publishes the audio.
+Decide that deliberately against `MUSIC-LICENSING.md` before hosting, or build
+without `app/public/audio` for the public copy.
+
+### Left open
+
+- The hosting choice itself, and with it the submission URL.
+- `npm run smoke` is not in `verify`: it needs a built bundle and a running
+  server, so it is a release step rather than a commit step.
 
 ---
 
