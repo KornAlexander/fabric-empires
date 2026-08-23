@@ -286,7 +286,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D385–D389 | The fog was a hole in the world | Recorded in full in section 50 |
 | D390–D397 | The gate that was only ever described | Recorded in full in section 51 |
 | D398–D403 | Deployed, and what the platform decided for us | Recorded in full in section 52 |
-| D404–D409 | The deployment was distributing the soundtrack | Recorded in full in section 53 |
+| D404–D411 | The deployment was distributing the soundtrack | Recorded in full in section 53 |
 
 ### 28. Cheat codes
 
@@ -4602,6 +4602,8 @@ it properly turned the licence question from theoretical into live.
 | D407 | **`npm run build:public` strips the audio, and verifies that it did.** `tools/build/strip-audio.mjs` removes `app/dist/audio` and then sweeps the whole finished bundle for any remaining audio extension, failing the build if one survives. ⚠️ A silent no-op here would ship the soundtrack, and the entire lesson of this section is that the previous silent path also looked fine. 15.6 MB to **1.19 MB** |
 | D408 | `rayfin.yml` builds with `build:public`, so the deployed artefact cannot carry audio even if someone forgets. Verified against the live host afterwards: `/audio/anthem.mp3` now returns 27,544 bytes of `text/html` rather than 3.3 MB of `audio/mpeg`. **Static content is replaced on deploy**, so "rayfin up never deletes" is about items, not files |
 | D409 | ⚠️ **The audio probe now gets a 500, not a 404**, because the host errors on a missing file rather than reporting it missing. `audio.ts` and `soundtrack.ts` already treat any not-ok response as "no soundtrack" and fall through to silence, so the game is correct, and the smoke test encodes `/audio/*` as an expected absence alongside `/api/*`. But the browser still writes three failed requests to the console, and nothing in JavaScript can stop it. Cosmetic, and worth knowing before somebody opens devtools on the public URL and concludes it is broken |
+| D410 | ⚠️ **D403 said to strip the tenant host by hand, and it was committed and pushed on the very next deploy anyway.** The gate caught it, one step too late, because `verify` ran after the commit in the same chained command. **A rule that depends on remembering is a rule that fails on the day you are busy** — the same lesson as D376 and D406 in a third costume. `npm run deploy` now owns it: `rayfin up`, then strip every non-local redirect URI, then run the gate and exit on its status |
+| D411 | ⚠️ **`spawnSync` on a Windows `.cmd` shim needs `shell: true`.** Recent Node refuses to spawn `npx.cmd` directly, and it fails with a non-zero status and **no output whatsoever**, which is indistinguishable from a deploy that failed for a real reason. With a shell, arguments containing spaces must be quoted in the script, because the shell re-parses them and the workspace name has a space in it |
 
 ### The music still exists
 
@@ -4629,6 +4631,11 @@ failed inside Rollup for a reason that had nothing to do with Rollup. Edit
 - ⚠️ **Anonymous hosting is a property of the platform, not a setting chosen
   here.** It could change. Re-run the check in `D404` before relying on the URL
   in a submission.
+- ⚠️ **The hosting URL is in git history**, from the commit described in D410.
+  It is not a secret, since anyone can visit it, so this is untidiness rather
+  than exposure: the rule exists to keep one tenant's address out of every
+  clone. Worth a decision before the repository is made public, because history
+  goes public with it.
 
 ---
 
