@@ -15,7 +15,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DUCK, SOUNDTRACK, createSoundtrack, nextRotation, shuffle, type Track } from '../src/soundtrack.js';
+import { DUCK, MOODS, SOUNDTRACK, createSoundtrack, nextRotation, shuffle, type Track } from '../src/soundtrack.js';
 
 /**
  * A stand-in for `Audio`.
@@ -53,11 +53,33 @@ const TRACKS: readonly Track[] = [
   { file: 'audio/three.mp3', title: 'Three', mood: 'calm' },
 ];
 
-/** Answer HEAD requests: present files reply 200, the rest 404. */
+/**
+ * Answer probes the way the real static host does.
+ *
+ * ⚠️ A missing file is **200 with `text/html`**, not a 404. The Fabric host
+ * serves the single-page app for any unknown path, so "did the request
+ * succeed" cannot tell a present track from an absent one and the content type
+ * is the whole test. Modelling this faithfully is the point: the previous mock
+ * replied `{ ok: false }` for a missing file, which no deployment this game
+ * has ever run on actually does, and it agreed with a probe that could not
+ * work in production.
+ */
 const serve = (present: readonly string[]): void => {
   vi.stubGlobal(
     'fetch',
-    vi.fn((url: string) => Promise.resolve({ ok: present.includes(url) } as Response)),
+    vi.fn((url: string) =>
+      Promise.resolve({
+        ok: true,
+        headers: {
+          get: (name: string) =>
+            name.toLowerCase() === 'content-type'
+              ? present.includes(url)
+                ? 'audio/mpeg'
+                : 'text/html; charset=utf-8'
+              : null,
+        },
+      } as unknown as Response),
+    ),
   );
 };
 
@@ -342,7 +364,7 @@ describe('ducking under a cinematic', () => {
 describe('the score itself', () => {
   it('names a mood for every track, so state-reactive music stays possible', () => {
     for (const track of SOUNDTRACK) {
-      expect(['calm', 'tense']).toContain(track.mood);
+      expect(MOODS as readonly string[]).toContain(track.mood);
       expect(track.file.startsWith('audio/')).toBe(true);
       expect(track.title).not.toBe('');
     }

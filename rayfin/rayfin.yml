@@ -18,7 +18,7 @@ services:
   staticHosting:
     enabled: true
     folder: app/dist
-    buildCommand: npm run build:public
+    buildCommand: npm run build
     indexDocument: index.html
   storage:
     enabled: false

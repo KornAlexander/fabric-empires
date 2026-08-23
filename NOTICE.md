@@ -11,12 +11,28 @@ are generated at runtime from the world seed. The rule is recorded as D59 in
 PLAN.md and is the reason a clone of this repository is a few megabytes rather
 than a few hundred.
 
-## What deliberately does not ship
+The music is kept out of git for the same size reason, but it is no longer kept
+out of the **deployed build**. See below.
+
+## The music: owned outright, and it ships
+
+⚠️ **This section changed on 23 August 2026 and the change matters.** Every
+track was previously generated on Suno's free plan, where Suno owns the output
+and licenses it to you for personal, non-commercial use only. That is not a
+licence you can pass on, so the deployed build stripped the audio out entirely.
+
+The tracks have since been **regenerated on a Suno Pro subscription**, which
+grants commercial rights:
+
+> Commercial use rights **for new songs made**
+
+⚠️ Read that qualifier the way it is written. The grant attaches to songs made
+*while subscribed*; it is not retroactive. The old free-plan files did not
+become ours when the subscription started, so they were **replaced and removed**
+rather than relabelled. Nothing that predates the subscription survives
+anywhere in this project.
 
 ### The anthem, "Familia Nostra"
-
-The opening title sequence has a score. It is **not in this repository**, and
-the omission is about licensing rather than file size.
 
 - **Written for this project.** The Latin and German words are original, and so
   is the setting. `fabrica` is Latin for a craftsman's workshop and `texere`
@@ -26,38 +42,40 @@ the omission is about licensing rather than file size.
 - **Generated with [Suno](https://suno.com)** from those lyrics and a style
   prompt describing the genre. No existing recording, melody or artist was
   named in the prompt, and nothing here is derived from a specific song.
-- **Licensed for non-commercial use**, because it was generated on Suno's free
-  plan. Commercial rights require a paid plan. That is a poor fit for a public
-  repository under a permissive licence, so the file stays out of it.
+- **Owned**, having been generated under a Pro subscription.
 
 ⚠️ A fuller reading of Suno's terms, including the ones taking effect on
-3 September 2026 and what they mean for a free study app, is in
-[MUSIC-LICENSING.md](MUSIC-LICENSING.md).
+3 September 2026, is in [MUSIC-LICENSING.md](MUSIC-LICENSING.md).
 
-The game handles this gracefully rather than depending on it. `app/src/audio.ts`
-probes for `app/public/audio/anthem.mp3` at load; if the file is absent, which
-is the state of every fresh clone, every call is a no-op and the opening plays
-in silence. Nothing breaks and nothing is logged as an error.
+The game still handles absence gracefully rather than depending on the files.
+`app/src/audio.ts` probes for `app/public/audio/anthem.mp3` at load; if the file
+is absent, which is the state of every fresh clone, every call is a no-op and
+the opening plays in silence. Nothing breaks and nothing is logged as an error.
 
-To hear it, put your own `anthem.mp3` at that path.
+To hear it in a clone, put your own `anthem.mp3` at that path.
 
 ### The background score
 
 The game also has a soundtrack that runs under play: several orchestral tracks,
-shuffled, with a button in the resource bar to turn them off. Same story as the
-anthem, and the files are ignored by git for the same reason.
+shuffled, with a button in the resource bar to turn them off. The files are
+ignored by git for size, not for licence.
 
 - **Instrumental, deliberately.** Not a stylistic preference: sung words
   interfere with reading comprehension, and this game is read under a clock.
   The anthem sings because the title sequence has nothing to read. The score
   that plays for the next two hours does not. Recorded as D299 in PLAN.md.
-- **Generated with [Suno](https://suno.com)** on the free plan, so
-  non-commercial terms again.
+- **Generated with [Suno](https://suno.com)** under a Pro subscription, in a
+  shared early-baroque palette so the score sounds like one work. The exact
+  prompts are in `media/soundtrack-prompts.txt`.
 - `app/src/soundtrack.ts` names the tracks it looks for in `app/public/audio/`
   and probes each one at load. Whatever is missing is simply not in the
   playlist, and a clone with none of them has no music and no mute button
   rather than a broken one.
 
+⚠️ **Terra Nostra is currently a named slot with no file.** Its regeneration
+was stopped by a Cloudflare human verification challenge, which automation must
+not answer on a person's behalf. The gap is harmless by the design above, and
+generating the track fills it with no code change.
 To hear something, drop your own `.mp3` files at the paths listed in
 `SOUNDTRACK` in that file, or edit the list to name your own.
 

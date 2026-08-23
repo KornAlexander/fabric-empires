@@ -24,7 +24,6 @@
     "serve:capacity": "node tools/coach/server.mjs",
     "serve:standalone": "npx vite preview app --outDir dist",
     "smoke": "node tools/smoke/play-bundle.mjs",
-    "build:public": "npm run build && node tools/build/strip-audio.mjs",
     "deploy": "node tools/deploy.mjs"
   },
   "devDependencies": {

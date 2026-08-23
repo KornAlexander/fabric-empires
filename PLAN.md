@@ -296,6 +296,8 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D442–D444 | Opening the door that had never been opened | Recorded in full in section 60 |
 | D445–D448 | The AI gets the same three choices, and sap stops lying | Recorded in full in section 61 |
 | D449–D451 | A floor on effort, not on technique | Recorded in full in section 62 |
+| D452–D459 | A Pro subscription, and the backlog it unblocked | Recorded in full in section 63 |
+| D460–D467 | The soundtrack shipped, and the game could not hear it | Recorded in full in section 64 |
 
 ### 28. Cheat codes
 
@@ -5088,6 +5090,225 @@ Die Mauern berennen      104 ->  94   (10)
 
 The choice now matters on the first siege a player ever fights, with the unit
 they are given. That is the whole point of asking.
+
+---
+
+## 63. A Pro subscription, and the backlog it unblocked
+
+Ten sections in a row went to the siege. This one starts by stepping back,
+because a subscription changed a licensing answer and the answer was load
+bearing.
+
+### 63.1 The soundtrack is ownable now
+
+Section 53 stripped every track out of the public build. Not for weight, for
+licence: free-tier Suno output is Suno's, and section 12's rule is that nothing
+ships whose licence cannot be stated in one sentence. The game has been silent
+in public ever since, and the strip was the right call for the whole time it
+was in force.
+
+A Pro subscription moves the answer. Suno's pricing page and help centre agree:
+
+> Commercial use rights **for new songs made**
+
+⚠️ Read the qualifier. Ownership attaches to songs generated **while
+subscribed**; it is not retroactive. The three files on disk today were made on
+the free tier, and they stay Suno's however long the subscription runs. So this
+is not "unstrip the audio". It is **replace, then unstrip**, and the order is
+not negotiable: every existing take is disposed of, and the new ones stand on
+their own provenance.
+
+### 63.2 There is no Suno API, and that matters more than it looks
+
+The instruction was to try an API key first. There is no key to try. Suno sells
+three consumer plans and exposes no developer surface at all: nothing in the
+nav, the footer or the FAQ.
+
+Everything marketing itself as a "Suno API" is a third-party wrapper driving a
+logged-in session. Section 2 of `MUSIC-LICENSING.md` already quotes the clause
+that forbids exactly that:
+
+> you agree not to ... **grant access to** ... any portion of the Service
+
+⚠️ Which makes the shortcut self-defeating. The entire reason for regenerating
+is to hold a clean title to the music. Acquiring it through a route that
+breaches the terms granting it is not a clean title. **The browser is the only
+supported way to make a Suno song, so the browser is the way it gets made.**
+
+### 63.3 The clock is 3 September, not 31 August
+
+The contest deadline is not the binding constraint here.
+
+> **20 song downloads per month** (starting 9/3/26)
+
+Today is 23 August, so downloads are **unlimited for eleven more days** and
+capped at 20 a month afterwards. D306 picks takes by measurement rather than by
+ear, which means pulling every take of every track and comparing them, and a
+seven-track run at four takes each is 28 downloads. That does not fit in the
+September allowance and fits comfortably in the August one.
+
+D310 already said everything is downloaded the day it is generated. This is the
+same rule with a number attached.
+
+### 63.4 The rest of the backlog, phased
+
+Six questions went back with "all of it", "all of it phased" and "you decide".
+Taken literally that is more than the eight remaining days hold, so the value
+is in the ordering rather than the list. Each phase ships standalone, and the
+cut line can fall between any two of them without leaving rubble.
+
+| Phase | Work | Why here |
+| --- | --- | --- |
+| **A** | Suno regeneration, install, unstrip | Hard external deadline of 3 September, and it is a licensing defect until done |
+| **B** | Finish an Exam victory playthrough | Cheapest possible answer to "can this game be completed", and section 58 is the standing warning about assuming yes |
+| **C** | Rename the victory identifiers | Minutes, no migration, closes the IP question |
+| **D** | Defender options (19.4) | The largest remaining asymmetry: attacking has three tactics, defending has none |
+| **E** | Learning loop audit, then question quality | The premise of the entry, and the thing the contest is actually about |
+| **F** | Judge-facing guided path, then README and STORY | Nobody judges what they cannot find |
+| **G** | Demo video, assault set piece (19.3), siege state (19.5) | Genuinely optional. 19.5 already carries its own cut trigger |
+
+⚠️ **Nothing is submitted to the contest, and the repo stays private, until
+explicitly released.** The deployed URL being publicly reachable is fine and
+stays as it is.
+
+#### 63.5 Decisions
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D452 | ⚠️ **Pro ownership is not retroactive, so every free-tier take is replaced and deleted** | The help centre grants rights to songs "made while subscribed". Keeping the old files and relabelling them would be a licence claim resting on a subscription that did not exist when they were generated |
+| D453 | ⚠️ **No third-party Suno API, at any convenience cost** | The wrappers work by handing a session to a middleman, which is the one thing the terms name outright. A title obtained by breaching the terms that confer it is not a title. The browser is slower and it is the only route that survives being asked about |
+| D454 | Everything is regenerated before 3 September | Downloads go from unlimited to 20 a month, and choosing takes by measurement (D306) spends downloads faster than choosing by ear |
+| D455 | Replace the three, then finish the planned seven | The schedule in 39.5 already specifies Aqua Alta, Turris, Semina and Corona. The credits exist, the prompts pattern exists, and the download window closes once |
+| D456 | Audio returns to the public build **only after** the last free-tier file is gone | Otherwise the unstrip is the moment the licence defect becomes a published licence defect |
+| D457 | The bundle goes back to roughly 15 MB and that is accepted | It was stripped for licence, never for weight. Reintroducing a constraint that was never the real one would be cargo cult |
+| D458 | ⚠️ **Ordering is the deliverable, not the backlog** | "All of it" exceeds the days available. Phases that each ship standalone mean the deadline chooses the cut instead of the deadline finding a half-built feature |
+| D459 | Private until explicitly released | Publication is irreversible in a way that a deployment is not |
+
+---
+
+## 64. The soundtrack shipped, and the game could not hear it
+
+Section 63 planned the regeneration. This is what it actually found, and the
+find has nothing to do with music.
+
+### 64.1 Six of seven, and one refusal
+
+Every track was regenerated through the Suno web application on the Pro plan,
+Instrumental verified in the DOM each time. Six came back. **Terra Nostra did
+not, twice**, and the reason is worth stating plainly: a Cloudflare *"confirm
+you are a human"* challenge appeared in front of Create.
+
+⚠️ **That checkbox was not clicked, and would not be under any deadline.**
+Asserting personhood from a script is a false statement and defeats a bot
+control, and the entire purpose of regenerating was to hold a licence that
+survives being asked about. A title acquired by breaching the terms that grant
+it is not a title. The soundtrack loader already treats a missing file as an
+absent track, so the cost is one empty slot and a line in NOTICE.
+
+The first challenge cleared itself, which is why the other six went through and
+why the failure looked random rather than categorical.
+
+### 64.2 The palette was nearly lost, and the library saved it
+
+The prompts for the two existing beds were never written down; PLAN only
+recorded the *pattern* ("the 1600 orchestral palette, an explicit `no vocals`,
+a BPM"). Rewriting from that description produced generic romantic-orchestral
+colours: celesta, horn sections, cathedral film-score brass.
+
+⚠️ The real palette is **early baroque**: viola da gamba, recorder, lute,
+sackbut, natural trumpet, renaissance field drums. One generation went out with
+the wrong one before this was caught. The exact originals turned out to be
+recoverable, because **Suno stores the prompt next to the track**, so the two
+beds are now their original prompts verbatim plus a fade, and the four new ones
+are written in the same idiom. All seven are in `media/soundtrack-prompts.txt`
+so this cannot be lost again.
+
+### 64.3 Takes chosen by measurement, and 39.3 repeating itself
+
+Twelve takes, measured with ffmpeg for length, level, bucket spread, head and
+tail, exactly as D306 requires.
+
+| track | picked | why |
+| --- | --- | --- |
+| Familia Nostra | b | head −24.4 dB: the quiet solo opening the prompt asks for |
+| Aqua Alta | a | spread 6.2 against 9.7. A calm bed should not have a build |
+| Semina | a | longest, lowest spread, and a −28.7 dB fade |
+| Ferrum et Ignis | b | 50 s longer with a wider spread, which is a build |
+| **Turris** | **a** | ⚠️ take b is 22 s longer and its **tail is 0.0 dB** |
+| Corona | a | both takes poor; the better of two |
+
+⚠️ **Turris is 39.3 happening again.** The longer, more attractive take ends at
+full volume and cuts dead into silence, which sounds like the application
+crashed. The tail decided it then and the tail decided it now.
+
+Two files were corrected on the way in, which is only permissible because Pro
+means they are owned: Ferrum and Turris were **3 dB hotter** than the others and
+were pulled down, because a level step between shuffled tracks reads as a fault;
+and Corona's dead stop was given a four second fade.
+
+### 64.4 ⚠️ The find: the probe could never have worked in production
+
+With the audio deployed, every file still answered **500**. It was not the
+build, and it was not the deploy. It was three separate wrong assumptions about
+the host, and the first one alone is fatal:
+
+| assumption | reality on this host |
+| --- | --- |
+| HEAD tells you if a file is there | **500 for every path**, including `index.html` |
+| A missing file fails | **200 with `text/html`**, the single-page app |
+| `Range` limits the download | ignored; answers 200 with the whole body |
+
+`audio.ts` and `soundtrack.ts` both probed with **HEAD**. So the soundtrack has
+never been findable on the deployed host, and would not have been findable the
+moment the files were restored, no matter how correct everything upstream was.
+
+⚠️ **The smoke test agreed with the bug in writing.** Its comment explained the
+500 as "the file is absent, because `build:public` strips the audio" and
+exempted all of `/audio/*` from failing the run. The exemption was hiding the
+evidence, and the explanation was a plausible story that happened to be wrong.
+
+⚠️ **And the lesson was already written down, one file away.** `coach.ts` says:
+*"A GET rather than a HEAD ... Some static hosts answer HEAD for every path."*
+The same team, the same host, the same week, and the knowledge simply never
+crossed from the API client to the audio loader.
+
+The fix is a single shared `audioExists()`: a ranged GET, judged on **content
+type** rather than status, aborted as soon as the headers arrive.
+
+### 64.5 The test was mocking a host that does not exist
+
+The soundtrack tests replied `{ ok: false }` for a missing file. No deployment
+this game has ever run on does that. The mock now answers the way the real host
+does, **200 with `text/html`**, which makes the content-type check the thing
+under test rather than an unexercised branch.
+
+### 64.6 Decisions
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D460 | ⚠️ **A human-verification challenge is never answered by automation** | It is a false assertion of personhood and the defeat of a control the site is entitled to run. One missing track is a much smaller cost than a licence that cannot be defended, which was the entire objective |
+| D461 | Prompts are stored in the repository, not just described | The palette was nearly lost to a paraphrase. "The 1600 orchestral palette" is a description; `viola da gamba, recorder, sackbut` is a prompt |
+| D462 | ⚠️ **Probe with a ranged GET judged on content type, never HEAD** | HEAD is 500 on every path here and an unknown path is 200 with the app's own HTML, so both the method and the success test were wrong. Either mistake alone silently disables the feature |
+| D463 | The probe aborts as soon as the headers land | Measured: six probes now transfer **0 KB**. Without it, answering a yes/no question would pull about 20 MB |
+| D464 | ⚠️ **Mocks model the host that exists, not a tidy one** | A mock returning 404 for a missing file tested a world this app never runs in, and it passed for as long as the feature was broken |
+| D465 | The smoke exemption is one filename, not a folder | `/audio/*` was broad enough to swallow the audio failing to deploy at all, which is precisely what this test is for. Now only `terra-nostra.mp3` is excused |
+| D466 | Level and fade are corrected on the way in | A 3 dB step between shuffled tracks and a track that stops dead are both defects. Editing the files is only legitimate because Pro means they are owned, which is a concrete benefit of the licence change |
+| D467 | `MOODS` is a runtime tuple and `Mood` is derived from it | Adding `triumphal` compiled and broke a test holding its own copy of the literals. The list now exists once |
+
+### 64.7 Verified where it ships
+
+1031 tests. Then, in the **deployed** game, from the browser's own resource
+timings:
+
+```
+anthem / ferrum / aqua-alta / turris / semina / corona    0 KB each   (probed)
+terra-nostra.mp3                                         27 KB       (the SPA fallback, rejected)
+corona.mp3                                             1750 KB       (playing)
+```
+
+The ♪ button is present, which by D304 only happens when a track was actually
+found, and it offers to turn the sound *off*. The score is running on the
+public URL for the first time.
 
 ---
 

@@ -51,6 +51,43 @@ export interface Anthem {
   readonly available: boolean;
 }
 
+/**
+ * Is there really an audio file at this URL?
+ *
+ * ⚠️ **Not a HEAD request.** The Fabric static host answers **500 to every
+ * HEAD**, including `index.html`, so a HEAD probe reports "missing" for files
+ * that are plainly being served. This shipped: the soundtrack was deployed
+ * correctly and the game could never find it, and the smoke test read the same
+ * 500 as "the file is absent" and agreed with the bug.
+ *
+ * ⚠️ **`response.ok` is not enough either.** The host serves `index.html` with
+ * a 200 for any unknown path, so a track that does not exist probes as present
+ * and then fails to decode. The content type is the only thing that separates
+ * "here is your mp3" from "here is the app". `coach.ts` learned this for JSON;
+ * the lesson simply never reached the audio.
+ *
+ * ⚠️ **The range header is a request, not a promise.** This host ignores it and
+ * answers 200 with the whole body, so the fetch is aborted the moment the
+ * headers have been read. Without that, probing six tracks would pull about
+ * 20 MB to answer a yes/no question.
+ */
+export async function audioExists(url: string): Promise<boolean> {
+  const controller = new AbortController();
+  try {
+    const response = await fetch(url, {
+      headers: { range: 'bytes=0-0' },
+      signal: controller.signal,
+    });
+    if (!response.ok) return false;
+    return (response.headers.get('content-type') ?? '').includes('audio');
+  } catch {
+    return false;
+  } finally {
+    // Cancels the body transfer whether or not the range was honoured.
+    controller.abort();
+  }
+}
+
 export function createAnthem(volume = 0.55): Anthem {
   let element: HTMLAudioElement | undefined;
   let ready = false;
@@ -59,11 +96,11 @@ export function createAnthem(volume = 0.55): Anthem {
   /*
    * Probing rather than trusting. An <audio> element pointed at a missing file
    * fails asynchronously and quietly, so `available` would lie until the first
-   * play. A HEAD request settles it before anything asks.
+   * play. The probe settles it before anything asks.
    */
-  void fetch(ANTHEM_URL, { method: 'HEAD' })
-    .then((response) => {
-      if (!response.ok) return;
+  void audioExists(ANTHEM_URL)
+    .then((exists) => {
+      if (!exists) return;
       const audio = new Audio(ANTHEM_URL);
       audio.preload = 'auto';
       audio.loop = false;

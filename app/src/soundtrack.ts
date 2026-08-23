@@ -10,9 +10,10 @@
  * read. The score that runs for the next two hours does not.
  *
  * ⚠️ **The files are deliberately not in the repository**, for the same
- * reason as the anthem (see `audio.ts` and NOTICE): they were generated with
- * Suno on a free plan, whose output carries a non-commercial licence that has
- * no business being attached to a public repo. So the contract is the same
+ * reason as the anthem (see `audio.ts` and NOTICE): they are megabytes of
+ * binary in a repo whose whole point is that it generates its own assets.
+ * They *are* in the deployed build, because every track was regenerated under
+ * a Suno Pro subscription and is owned outright. So the contract is the same
  * one: if the files are there the game has a score, and if they are not,
  * every call here is a no-op and the game is silent with nothing broken and
  * nothing logged. A clone gets the quiet version.
@@ -24,8 +25,19 @@
  * rather than a regeneration if the tags already exist.
  */
 
-/** What a track is for. Recorded at generation time; not yet acted on. */
-export type Mood = 'calm' | 'tense';
+import { audioExists } from './audio.js';
+
+/**
+ * What a track is for. Recorded at generation time; not yet acted on.
+ *
+ * ⚠️ The list lives here **once**, as a runtime tuple with the type derived
+ * from it. It used to be a bare union, and the test that checks every track
+ * names a valid mood held its own copy of the same literals. Adding
+ * `triumphal` compiled cleanly and failed that test, which is the duplication
+ * announcing itself. One list means that cannot happen again.
+ */
+export const MOODS = ['calm', 'tense', 'triumphal'] as const;
+export type Mood = (typeof MOODS)[number];
 
 export interface Track {
   /** Path relative to the site root. */
@@ -41,10 +53,19 @@ export interface Track {
  * Adding a track is one line here plus the file. Missing files are dropped at
  * load, so this list may name more than a given checkout actually has, and
  * that is the intended state of affairs rather than an oversight.
+ *
+ * Terra Nostra is the live example of that: its slot is real and its file is
+ * not, because the regeneration on the Pro plan was interrupted by a human
+ * verification challenge that automation must not answer. Generating it fills
+ * the gap with no code change at all.
  */
 export const SOUNDTRACK: readonly Track[] = [
   { file: 'audio/terra-nostra.mp3', title: 'Terra Nostra', mood: 'calm' },
   { file: 'audio/ferrum-et-ignis.mp3', title: 'Ferrum et Ignis', mood: 'tense' },
+  { file: 'audio/aqua-alta.mp3', title: 'Aqua Alta', mood: 'calm' },
+  { file: 'audio/turris.mp3', title: 'Turris', mood: 'tense' },
+  { file: 'audio/semina.mp3', title: 'Semina', mood: 'calm' },
+  { file: 'audio/corona.mp3', title: 'Corona', mood: 'triumphal' },
 ];
 
 /** Where the mute preference lives, so it survives a reload. */
@@ -187,16 +208,13 @@ export function createSoundtrack(
    * Probing rather than trusting, exactly as the anthem does. An <audio>
    * element pointed at a file that is not there fails asynchronously and
    * says nothing, so `available` would lie right up until the first play.
+   *
+   * ⚠️ `audioExists` is a ranged GET whose content type is checked, not a
+   * HEAD. See the note on it in audio.ts: HEAD is answered 500 by the host for
+   * every path, and an unknown path is answered 200 with the app's HTML.
    */
   void Promise.all(
-    tracks.map(async (track) => {
-      try {
-        const response = await fetch(track.file, { method: 'HEAD' });
-        return response.ok ? track : undefined;
-      } catch {
-        return undefined;
-      }
-    }),
+    tracks.map(async (track) => ((await audioExists(track.file)) ? track : undefined)),
   ).then((results) => {
     found = results.filter((track): track is Track => track !== undefined);
     if (found.length === 0) return;

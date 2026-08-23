@@ -1,5 +1,23 @@
 # Can I use Suno songs in a free learning app?
 
+> ✅ **RESOLVED, 23 August 2026.** The project now has a **Suno Pro**
+> subscription, and every track was regenerated under it. Pro grants commercial
+> rights, so the audio is owned outright and **ships in the deployed build**.
+>
+> ⚠️ The grant is **not retroactive**. Suno's wording is "commercial use rights
+> for new songs made", and the help centre ties ownership to songs made *while
+> subscribed*. The free-tier files therefore never became ours, and keeping them
+> under a new subscription would have been a licence claim resting on a
+> subscription that did not exist when they were generated. They were replaced
+> and deleted, not relabelled.
+>
+> Everything below is the original analysis that led to stripping the audio. It
+> is kept because it is still the correct reading for a free-tier account, and
+> because it is the reason the replacement was done properly rather than
+> cheaply.
+
+---
+
 **Short answer: not in the app you hand to other people. Yes, on your own
 machine.**
 
@@ -167,6 +185,9 @@ that it ships no assets, D is also the most consistent answer.
 
 ## 6. The statement, in one paragraph
 
+⚠️ Superseded by the Pro subscription; kept as the free-tier position. The
+current statement is section 7.
+
 > The background music and the anthem in this project were generated with Suno
 > on its free tier. Suno retains ownership of free-tier output and permits only
 > lawful, personal, non-commercial use of it. Because this project is published
@@ -176,6 +197,36 @@ that it ships no assets, D is also the most consistent answer.
 > for the files at startup and runs silently when they are absent, which is the
 > state of every copy other than the author's own. All in-game sound effects are
 > synthesised at runtime and carry no third-party rights.
+
+## 7. The current statement, in one paragraph
+
+> The anthem and the background score in this project were generated with Suno
+> under a **Pro subscription**, which grants the subscriber commercial rights to
+> songs made while subscribed. The words of the anthem are original to this
+> project, and no existing recording, melody or artist was named in any style
+> prompt, so nothing here is derived from a specific work. The audio is
+> therefore distributed with the application. Earlier free-tier versions of the
+> same pieces were **deleted rather than reused**, because Suno's grant covers
+> songs made while subscribed and is not retroactive. All in-game sound effects
+> are synthesised at runtime and carry no third-party rights.
+
+### How the regeneration was done, and one thing that was refused
+
+Every track was made through the Suno web application in a signed-in browser.
+
+⚠️ **No third-party "Suno API" was used.** Suno sells three consumer plans and
+publishes no developer API; the services advertising one work by driving a
+logged-in session on your behalf, which is the practice section 1 quotes the
+terms as prohibiting ("you agree not to ... grant access to ... any portion of
+the Service"). Obtaining a title through a route that breaches the terms
+conferring it would defeat the purpose of this entire document.
+
+⚠️ **A Cloudflare human verification challenge was not answered by automation.**
+One track, *Terra Nostra*, remains ungenerated for exactly this reason. Ticking
+a "confirm you are a human" box from a script is a false assertion and defeats a
+bot control, and no deadline makes that a reasonable trade. The soundtrack
+loader treats the missing file as an absent track, so the gap costs a slot and
+nothing else.
 
 ---
 
