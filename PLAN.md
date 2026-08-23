@@ -304,6 +304,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D484–D487 | The hardest session was the one that taught nothing | Recorded in full in section 68 |
 | D488–D492 | Eight panels, four corners, one phone | Recorded in full in section 69 |
 | D493–D497 | The unit table was a statement about DP-600 | Recorded in full in section 70 |
+| D498–D502 | Fullscreen, and a skier | Recorded in full in section 71 |
 
 ### 28. Cheat codes
 
@@ -5867,6 +5868,78 @@ It is deliberately not being rushed at the end of a long session.
 1056 tests, 4 new. A 24-topic tree now unlocks every unit by its last topic,
 unlocks none of the gated ones with no research, and keeps the Pipeline Runner
 ahead of the Direct Lake Titan. The 41-topic case is unchanged, unit by unit.
+
+---
+
+## 71. Fullscreen, and a skier
+
+A fullscreen toggle, in the resource bar beside the sound switch and the
+language pair, plus `v` for Vollbild.
+
+### 71.1 The parts that are decisions rather than API calls
+
+**The whole document, not the canvas.** Fullscreening the map alone would leave
+the player looking at a beautiful world with no way to end their turn. The HUD
+is part of the game.
+
+**Hidden unless the browser actually has it.** `requestFullscreen` does not
+exist on an iPhone at all. The button follows the sound switch's contract
+(D304): a control that visibly does nothing is worse than no control, because
+the player presses it, sees nothing happen, and starts distrusting everything
+else on the screen.
+
+**`v`, not `f`.** Free flight already spends `r` and `f` on spinning the
+camera. A key that means two different things depending on a mode the player
+may not know they are in is worse than an unmemorable one.
+
+**Repaint from the event, not from the click.** F11, Escape and the browser's
+own chrome all leave fullscreen without going through the button, so
+`fullscreenchange` is the only honest source of truth for what the label says.
+Verified by exiting through the API and watching the title reset itself.
+
+⚠️ **A refusal is not an error.** Chrome rejects the promise when the gesture
+is stale and Firefox when the page is unfocused. Both are caught, and the
+interface then describes the state the browser is in rather than the one it was
+asked for.
+
+### 71.2 ⚠️ The bug no test could have caught
+
+The first version swapped the glyph: `\u26F6` to open out, `\u26F7` to close
+in. It typechecked, it passed 1056 tests, and it put a **skier** in the
+resource bar. U+26F7 is SKIER.
+
+Nothing in the suite knows what a code point looks like, and nothing ever will.
+It was found by reading the rendered `textContent` back out of a real browser
+rather than trusting the source, which is the only way that class of mistake
+ever surfaces.
+
+The sound switch had already solved it properly: keep one recognisable glyph,
+mark the state with a CSS class, and let the translated title carry the
+sentence. Fullscreen now does the same, which also means one fewer character to
+get wrong.
+
+### 71.3 Decisions
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D498 | The document goes fullscreen, not the canvas | A map with no interface is a screensaver |
+| D499 | The button is hidden where the API is absent | Same rule as the sound switch. iOS has no Fullscreen API on a phone, and pretending otherwise teaches the player that controls here are decorative |
+| D500 | ⚠️ **`v`, because `f` already means something in free flight** | Mode-dependent keys are how an interface earns a reputation for randomness |
+| D501 | The label follows `fullscreenchange`, never the click | F11 and Escape bypass the button entirely, and a label describing a state the browser left is a lie the player can see |
+| D502 | ⚠️ **One glyph and a class, not two glyphs** | The two-glyph version shipped a skier. State belongs in CSS and meaning belongs in the translated title, where both are already solved |
+
+### 71.4 Verified where it ships
+
+1056 tests and the smoke test. Then in a real browser, because a gesture is
+required and rendering is the thing in question:
+
+```
+click        -> fullscreenElement = HTML, title "Vollbild verlassen", class "on"
+exitFullscreen() -> title back to "Vollbild", class cleared   (the F11 path)
+v            -> on
+v            -> off
+v in the seed field -> nothing, correctly
+```
 
 ---
 

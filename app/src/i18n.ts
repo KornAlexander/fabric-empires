@@ -48,6 +48,8 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
   'Face the Proctor': 'Der Prüfung stellen',
   'Turn the sound off': 'Ton ausschalten',
   'Turn the sound on': 'Ton einschalten',
+  Fullscreen: 'Vollbild',
+  'Leave fullscreen': 'Vollbild verlassen',
   'Nothing selected': 'Nichts ausgewählt',
   'Click one of your units.': 'Wähle eine deiner Einheiten.',
   'Hover a tile': 'Zeige auf ein Feld',

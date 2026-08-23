@@ -673,6 +673,7 @@ const el = {
   threatsList: document.querySelector<HTMLElement>('#threats-list')!,
   langToggle: document.querySelector<HTMLButtonElement>('#lang-toggle')!,
   musicToggle: document.querySelector<HTMLButtonElement>('#music-toggle')!,
+  fullscreenToggle: document.querySelector<HTMLButtonElement>('#fullscreen-toggle')!,
 };
 
 /*
@@ -726,6 +727,96 @@ el.musicToggle.addEventListener('click', () => {
 music.onChange(paintMusicToggle);
 cues.setMuted(music.muted);
 paintMusicToggle();
+
+/**
+ * Fullscreen.
+ *
+ * ⚠️ **Asked for, not assumed.** `requestFullscreen` is absent on an iPhone
+ * entirely, and present but refusable everywhere else, so the button is hidden
+ * unless the element actually has the method. Same contract as the sound
+ * switch: a control that visibly does nothing is worse than no control,
+ * because the player presses it, sees nothing, and starts distrusting the rest
+ * of the interface (D304).
+ *
+ * Whole document rather than the canvas: the HUD is part of the game, and
+ * fullscreening only the map would leave the player unable to end their turn.
+ */
+type FullscreenElement = HTMLElement & {
+  webkitRequestFullscreen?: () => Promise<void> | void;
+};
+type FullscreenDocument = Document & {
+  webkitExitFullscreen?: () => Promise<void> | void;
+  webkitFullscreenElement?: Element | null;
+};
+
+const fullscreenRoot = document.documentElement as FullscreenElement;
+const fullscreenDoc = document as FullscreenDocument;
+
+function fullscreenSupported(): boolean {
+  return (
+    typeof fullscreenRoot.requestFullscreen === 'function' ||
+    typeof fullscreenRoot.webkitRequestFullscreen === 'function'
+  );
+}
+
+function isFullscreen(): boolean {
+  return Boolean(document.fullscreenElement ?? fullscreenDoc.webkitFullscreenElement);
+}
+
+function paintFullscreenToggle(): void {
+  el.fullscreenToggle.hidden = !fullscreenSupported();
+  const on = isFullscreen();
+  /*
+   * ⚠️ One glyph and a class, not two glyphs.
+   *
+   * The first attempt swapped ⛶ for \u26F7 as a "shrink" symbol. U+26F7 is
+   * SKIER. It rendered as ⛷ in the resource bar and nothing failed, because
+   * no test can know what a code point looks like. The sound switch had
+   * already solved this the right way round: keep the recognisable glyph,
+   * mark the state with CSS, and let the translated title carry the sentence.
+   */
+  el.fullscreenToggle.classList.toggle('on', on);
+  el.fullscreenToggle.title = on ? t('Leave fullscreen') : t('Fullscreen');
+}
+
+async function toggleFullscreen(): Promise<void> {
+  try {
+    if (isFullscreen()) {
+      await (fullscreenDoc.exitFullscreen?.() ?? fullscreenDoc.webkitExitFullscreen?.());
+    } else {
+      await (fullscreenRoot.requestFullscreen?.() ?? fullscreenRoot.webkitRequestFullscreen?.());
+    }
+  } catch {
+    /*
+     * A refusal is a normal event, not an error. Chrome rejects the promise
+     * when the gesture is stale and Firefox when the page is not focused, and
+     * in both cases the right response is to leave the interface describing
+     * the state the browser is actually in rather than the one we asked for.
+     */
+  }
+  paintFullscreenToggle();
+}
+
+el.fullscreenToggle.addEventListener('click', () => void toggleFullscreen());
+
+/*
+ * ⚠️ The state can change without us: F11, Escape, and the browser's own
+ * chrome all leave fullscreen, and none of them go through the button. The
+ * event is the only honest source of truth for what the label should say.
+ *
+ * `fitCanvas` because the board is measured from its own element, and entering
+ * fullscreen changes what `vh` means. Chrome fires `resize` too and the fit is
+ * idempotent, so doing it twice costs nothing and missing it once shows a
+ * world drawn for the wrong screen.
+ */
+for (const event of ['fullscreenchange', 'webkitfullscreenchange']) {
+  document.addEventListener(event, () => {
+    paintFullscreenToggle();
+    fitCanvas();
+  });
+}
+
+paintFullscreenToggle();
 
 /*
  * The first click of a resumed game is the gesture the browser wants.
@@ -2876,6 +2967,23 @@ window.addEventListener('keydown', (e) => {
   }
   if (cheats.isOpen() && e.key === 'Escape') {
     cheats.hide();
+    return;
+  }
+
+  /*
+   * Fullscreen, on `v` for Vollbild.
+   *
+   * ⚠️ Not `f`: free flight already spends `r` and `f` on spinning the camera,
+   * and a key that means two things depending on a mode the player may not
+   * know they are in is worse than an unmemorable one.
+   *
+   * Handled here, above the turn and library guards, because it is a property
+   * of the window rather than a move in the game. There is no state in which
+   * "make this bigger" should be refused.
+   */
+  if (e.key === 'v') {
+    e.preventDefault();
+    void toggleFullscreen();
     return;
   }
 

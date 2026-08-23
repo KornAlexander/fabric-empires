@@ -400,6 +400,8 @@
       */
       #music-toggle { font-size: 15px; line-height: 1; padding: 4px 9px; }
       #music-toggle.muted { color: var(--muted); text-decoration: line-through; }
+      #fullscreen-toggle { font-size: 15px; line-height: 1; padding: 4px 9px; }
+      #fullscreen-toggle.on { color: var(--accent); border-color: var(--accent); }
       #face-proctor {
         background: #6b4ea8; border-color: #8a6fd0; color: #f2ecff; font-weight: 600;
         animation: proctor 2.2s ease-in-out infinite;
@@ -560,6 +562,18 @@
         it is the only audio control there is.
       -->
       <button id="music-toggle" hidden title="Turn the sound off">&#9834;</button>
+      <!--
+        Fullscreen.
+
+        ⚠️ Hidden until the browser is asked whether it can do it, for the same
+        reason the sound switch is: iOS Safari has no Fullscreen API on an
+        iPhone at all, and a button that visibly does nothing teaches the
+        player that buttons here do nothing (D304).
+
+        A glyph again, next to the note and the language pair, with the
+        sentence in the translated title.
+      -->
+      <button id="fullscreen-toggle" hidden data-i18n-title="Fullscreen" title="Fullscreen">&#9974;</button>
     </div>
 
     <div class="panel" id="controls">
