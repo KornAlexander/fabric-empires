@@ -354,6 +354,8 @@ export function createScene3D(
   function endShot(): void {
     if (!shot) return;
     shot = undefined;
+    // Back to the playing grade. Walked, not cut: see `grade.ts`.
+    world.setCinematic(false);
     camera.position.copy(shotReturnPosition);
     controls.target.copy(shotReturnTarget);
     controls.enabled = true;
@@ -412,6 +414,11 @@ export function createScene3D(
         if (shot) return Promise.resolve();
         shot = next;
         shotStart = performance.now();
+        // Deeper vignette and a little more contrast for the length of the
+        // shot. The measured reason is in `grade.ts`: a photograph of a
+        // landscape carries less local contrast than this renderer does, and
+        // a film is the one place legibility is not the first priority.
+        world.setCinematic(true);
         shotReturnPosition.copy(camera.position);
         shotReturnTarget.copy(controls.target);
         // Hand the drone back first, so it cannot fight the shot for the camera.

@@ -12,7 +12,7 @@ import {
   ACESFilmicToneMapping,
   Color,
   DirectionalLight,
-  Fog,
+  FogExp2,
   HemisphereLight,
   MathUtils,
   PCFSoftShadowMap,
@@ -30,6 +30,37 @@ import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
+import { createGrade, type Grade } from './grade.js';
+
+/**
+ * How thick the air is.
+ *
+ * ⚠️ **Tuned against a measurement, not by eye.** The target is the ratio a
+ * photograph shows between the saturation of the ground at the horizon and
+ * the ground at your feet, which measured 0.68 across three frames of a
+ * photoreal aerial. The game measured 0.92, meaning no atmosphere at all.
+ * `FogExp2` reaches roughly half strength at `1 / density` units, so at this
+ * value the far side of an island about 78 units in radius is meaningfully
+ * hazed and the tiles under the cursor are not.
+ */
+const FOG_DENSITY = 0.006;
+
+/**
+ * How much haze sits between the camera and something `distance` away.
+ *
+ * `FogExp2`'s own falloff, exported so it can be tested. ⚠️ The bug this
+ * exists to prevent is not a wrong-looking number, it is a *plausible*
+ * number expressed in a unit the world never reaches: the previous setting
+ * was a linear fog from 150 to 900 units across a map about 78 units in
+ * radius, so it read as deliberate and delivered under one percent haze at
+ * the far shore.
+ */
+export function hazeAt(distance: number, density = FOG_DENSITY): number {
+  const d = distance * density;
+  return 1 - Math.exp(-d * d);
+}
+
+export { FOG_DENSITY };
 
 export interface WorldQuality {
   /** Off on weak hardware: ambient occlusion is the most expensive pass. */
@@ -68,6 +99,13 @@ export interface World {
   setSunAngle(elevationDeg: number, azimuthDeg: number): void;
   setSize(width: number, height: number): void;
   render(): void;
+  /**
+   * Lean the grade while a film is on screen.
+   *
+   * Walked over about half a second rather than cut, because a grade that
+   * snaps is a cut and the cinematics are meant to be one continuous move.
+   */
+  setCinematic(on: boolean): void;
   setQuality(quality: WorldQuality): void;
   dispose(): void;
 }
@@ -198,17 +236,33 @@ export function createWorld(canvas: HTMLCanvasElement, quality = HIGH_QUALITY): 
     scene.environmentIntensity = 0.03;
     previous?.dispose();
 
-    // Fog tinted towards the horizon colour gives aerial perspective, which
-    // is most of what makes a wide landscape read as large. It starts well
-    // beyond the playable area: fog that reaches the tiles the player is
-    // working with stops being atmosphere and becomes a white sheet.
+    /*
+     * Aerial perspective.
+     *
+     * ⚠️ **This was already here and was doing nothing, which is worse than
+     * not being here.** It was a linear fog from 150 to 900 units. The map is
+     * about 78 units in radius, so the entire playable world sits inside the
+     * fog's near plane and never received a single unit of haze: measured,
+     * the game kept 0.92 of its saturation from the foreground to the
+     * horizon, where a photograph of real country keeps 0.68. The setting
+     * existed, read as deliberate, and had been tuned in a unit the world
+     * does not reach.
+     *
+     * Exponential-squared rather than linear, because that is what air
+     * actually does, and because a linear ramp has a visible start.
+     *
+     * The colour is pale and weakly saturated on purpose. Haze is scattered
+     * skylight, so it is bright: the old colour was a mid blue at lightness
+     * 0.44, which darkened the distance instead of washing it out, and dark
+     * distance reads as a storm rather than as depth.
+     */
     const warmth = MathUtils.clamp(elevationDeg / 45, 0, 1);
     const fogColour = new Color().setHSL(
-      0.58 - 0.05 * (1 - warmth),
-      0.34,
-      0.44 - 0.12 * (1 - warmth),
+      0.58 - 0.04 * (1 - warmth),
+      0.16,
+      0.74 - 0.1 * (1 - warmth),
     );
-    scene.fog = new Fog(fogColour.getHex(), 150, 900);
+    scene.fog = new FogExp2(fogColour.getHex(), FOG_DENSITY);
   }
 
   /**
@@ -230,6 +284,8 @@ export function createWorld(canvas: HTMLCanvasElement, quality = HIGH_QUALITY): 
   // Post-processing ------------------------------------------------------
   let composer = new EffectComposer(renderer);
   let gtao: GTAOPass | undefined;
+  const grade: Grade = createGrade();
+  let lastRenderAt = performance.now();
 
   function buildComposer(q: WorldQuality): void {
     composer.dispose();
@@ -267,6 +323,18 @@ export function createWorld(canvas: HTMLCanvasElement, quality = HIGH_QUALITY): 
     }
 
     if (q.antialias) composer.addPass(new SMAAPass());
+
+    /*
+     * The grade goes last, after antialiasing.
+     *
+     * ⚠️ Order matters for exactly one of its jobs. Contrast and saturation
+     * would be happy anywhere after tone mapping, but grain put before SMAA
+     * is grain SMAA then smooths away, leaving the cost and none of the
+     * effect.
+     */
+    const size = renderer.getSize(new Vector2());
+    grade.setSize(size.x, size.y);
+    composer.addPass(grade.pass);
   }
 
   buildComposer(quality);
@@ -276,6 +344,7 @@ export function createWorld(canvas: HTMLCanvasElement, quality = HIGH_QUALITY): 
     camera.updateProjectionMatrix();
     renderer.setSize(width, height, false);
     composer.setSize(width, height);
+    grade.setSize(width, height);
   }
 
   return {
@@ -316,7 +385,16 @@ export function createWorld(canvas: HTMLCanvasElement, quality = HIGH_QUALITY): 
     setSize,
 
     render() {
+      // Real seconds, so the grain and the cinematic blend run at the same
+      // rate on a slow machine as on a fast one.
+      const at = performance.now();
+      grade.tick(Math.min(0.1, (at - lastRenderAt) / 1000));
+      lastRenderAt = at;
       composer.render();
+    },
+
+    setCinematic(on) {
+      grade.setCinematic(on);
     },
 
     setQuality(next) {

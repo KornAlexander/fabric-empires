@@ -274,6 +274,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D291–D298 | Two editions, and a coach that reads your progress | Recorded in full in section 38.5 |
 | D299–D310 | A score that runs under the game | Recorded in full in section 39.6 |
 | D311–D323 | The films had no sound | Recorded in full in section 40.6 |
+| D324–D334 | Photoreal, measured against a photograph | Recorded in full in section 41.9 |
 
 ### 28. Cheat codes
 
@@ -3399,6 +3400,205 @@ bug. They would be right.
 - The cues do not vary. `city-falls` sounds the same whether the city was won
   or lost, though the subtitle already knows which it was.
 - Still no volume control, only on and off.
+
+---
+
+### 41. Photoreal, measured against a photograph
+
+The ask was to make the game look more photoreal and more cinematic, using
+Sora 2 if it helped. It helped, but not in the way it was meant to: its value
+was as a **measuring stick**, not as a source of pictures.
+
+#### 41.1 The renderer was already good, which is why guessing would have failed
+
+It would have been easy to start adding effects. The renderer already has ACES
+tone mapping tuned against a measured histogram, a scattering sky, a PMREM
+environment, soft shadows, ground-truth ambient occlusion, bloom and SMAA. A
+list of impressive-sounding additions would have cost frame time and changed
+the picture without anybody being able to say whether it had improved.
+
+So nothing was changed until there was something to compare against.
+
+#### 41.2 ⚠️ Anchoring Sora on the game's own frame was the wrong idea
+
+The first attempt handed Sora 2 a frame from the game as an input reference,
+reasoning that a photoreal version of the *same composition* would make the
+comparison exact.
+
+It came back in **the game's own style**: the same low-poly hexes, the same
+palette, with more trees on them. Anchoring preserved the look rather than
+replacing it, which in hindsight is what an image reference is for.
+
+That made it useless as a target, and the useful lesson is that it was useless
+in a way that would have been easy to miss: the output was plainly *nicer*
+than the input, and grading towards it would have felt like progress while
+measuring the game against a slightly better copy of itself.
+
+The reference that worked was generated with no anchor at all: an aerial of
+real country of the same kind, and nothing of the game in the prompt.
+
+#### 41.3 What the measurement actually said
+
+Three frames of each, so a number that moves with the framing could be told
+from one that does not.
+
+| | game | photograph | ratio |
+| --- | --- | --- | --- |
+| mean saturation | 0.433 | 0.245 | 1.77× |
+| darkest 5 percent | 0.193 | 0.072 | 2.7× |
+| saturation kept at distance | 0.92 | 0.68 | no atmosphere |
+
+The first two say the game was nearly twice as colourful as a photograph and
+had **no true blacks in it at all**, only dark greys, which is the colour of
+fog on a lens.
+
+The third one is the interesting one, because it had a cause.
+
+#### 41.4 ⚠️ The atmosphere existed, was tuned, and did nothing
+
+`scene.fog = new Fog(colour, 150, 900)`. It reads as deliberate. Somebody
+chose those numbers, and there is a comment above it explaining that fog which
+reaches the player's tiles stops being atmosphere and becomes a white sheet,
+which is true and well argued.
+
+The map is about **78 units in radius**. The entire playable world sits inside
+that fog's near plane. It had never applied a single unit of haze to anything,
+and that is precisely why the game kept 0.92 of its saturation from the
+foreground to the horizon.
+
+This is the most dangerous shape a defect can take. It is not a wrong number,
+it is a **plausible number expressed in a unit the world never reaches**, sat
+under a correct comment, in code that looks tuned. Nothing is broken, nothing
+logs, and the feature it describes simply does not exist.
+
+It is now `FogExp2`, which is what air actually does and has no visible start,
+at a density that leaves the tiles under the cursor alone and hazes the far
+shore. The colour changed too: the old one was a mid blue at lightness 0.44,
+which *darkened* the distance rather than washing it out, and dark distance
+reads as an approaching storm rather than as depth. Haze is scattered
+skylight, so it is pale.
+
+#### 41.5 ⚠️ The measurement refuted my own eyes, and I dropped the change
+
+Looking at the frames, the obvious remaining problem was the trees: identical
+cones, stamped across flat green. The plan was to vary them.
+
+Measured local variance says otherwise. Ground detail came out at **0.0446**
+for the game against **0.0168** for the photoreal aerial. The game carries
+**2.7× more** local detail than a real photograph of countryside does, not
+less. Real landscape from above is far smoother and far more uniform than
+intuition says.
+
+Adding tree variation would have moved the picture *away* from photographic
+while feeling like an improvement the whole time. It was not done.
+
+The same thing happened twice more in miniature. Magenta patches at the
+horizon looked like a rendering bug; they are the **corruption mechanic**,
+deliberately sour green against hot magenta so corrupted ground cannot be
+mistaken for a shadow. And a checkerboard artefact on the water that I
+suspected I had caused by swapping the fog type turned out to be **identical
+in the before frame**, so it was pre-existing and not mine.
+
+Three visual reads, three wrong. That is the argument for the whole approach.
+
+#### 41.6 The grade
+
+Tone mapping is not a grade: ACES decides how a bright scene is squeezed into
+a screen, not what the picture should look like once it is there. A final
+shader pass answers the second question, driven by the numbers above:
+saturation down, contrast up about a pivot near the measured median, a black
+point, a modest vignette, and grain.
+
+⚠️ It runs **after SMAA**. Contrast and saturation would be happy anywhere
+after tone mapping, but grain placed before the antialiasing pass is grain the
+antialiasing pass then smooths away, leaving the cost and none of the effect.
+
+⚠️ The targets are approached, not matched. The photographic reference is a
+low sun over dark heath with a median luminance of 0.185, and a game graded to
+that is a game nobody can read. The numbers give direction and magnitude and
+stop the dials being set by whoever looked at the screen last.
+
+Cinematics get the same grade leaned further, not a different one: deeper
+vignette, a little more contrast, walked over about half a second rather than
+cut, because a grade that snaps is a cut and the films are meant to be one
+continuous move.
+
+#### 41.7 ⚠️ What it costs, measured properly
+
+The first frame-cost reading was **26.8 ms**, which looked like a disaster
+against a 4.10 ms baseline recorded earlier in the session.
+
+Both numbers were real and comparing them was meaningless. The 26.8 ms was a
+`requestAnimationFrame` delta, which includes vsync idle and compositing; the
+4.10 ms was the app's own sync-plus-render span at a smaller viewport. Two
+different quantities, on two different framings.
+
+The honest version is an A/B on the same machine, viewport and seed, taken
+minutes apart by stashing the change:
+
+| | median | p95 |
+| --- | --- | --- |
+| baseline | 5.90 ms | 8.80 ms |
+| with the grade and the new fog | 6.00 ms | 7.30 ms |
+
+**0.1 ms**, in a 16.7 ms frame. Had I not re-measured, this section would have
+claimed a 46 percent regression that never happened.
+
+#### 41.8 Results
+
+| | before | after | photograph |
+| --- | --- | --- | --- |
+| mean saturation | 0.433 | **0.306** | 0.245 |
+| darkest 5 percent | 0.193 | **0.156** | 0.072 |
+| saturation kept at distance | 0.92 | **0.73** | 0.68 |
+
+The atmosphere gap is **79 percent closed**, which is the one that carries the
+sense of scale. Saturation and blacks moved most of the way and were
+deliberately not taken to the photograph's values, for the legibility reason
+above.
+
+#### 41.9 Decisions
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D324 | ⚠️ **Sora 2 is a measuring stick, not a source of pictures** | Nothing it generated ships. Its job was to say how far from photographic the renderer was, in numbers, so the dials had a target instead of an opinion |
+| D325 | ⚠️ **Do not anchor the reference on a frame of the game** | It preserves the style and returns a prettier copy of what you already have. Grading towards that measures the game against itself and feels like progress |
+| D326 | Three frames of each, not one | Tells a difference that survives the framing from one that is an artefact of it. One metric was contaminated and this is how that was found |
+| D327 | ⚠️ **Haze is `FogExp2` and its reach is tested** | The old linear fog was tuned in units the map never reaches, so a correct-looking, well-commented line delivered nothing. The test asserts haze at the far shore, and would fail if the old setting returned |
+| D328 | Pale, weakly saturated haze | The old fog colour darkened the distance instead of washing it out. Dark distance reads as a storm, not as depth |
+| D329 | The grade runs after SMAA | Grain before antialiasing is grain that gets smoothed away: full cost, no effect |
+| D330 | Contrast pivots on the measured median, not on 0.5 | Pivoting on 0.5 darkens everything as a side effect of adding contrast |
+| D331 | ⚠️ **The photographic targets are approached, not matched** | The reference has a median luminance of 0.185. A game graded to that is unreadable, and this is a study aid before it is a picture |
+| D332 | ⚠️ **Tree variation was measured, then not done** | The game already carries 2.7× more local detail than a real aerial. The change would have moved it away from photographic while looking like an improvement |
+| D333 | Cinematics get the grade leaned, not replaced | A film that looks like a different game is a cut, not a shot |
+| D334 | The blend is walked and clamped | A slow machine delivers one huge frame delta; an unclamped blend sails past and leaves the game permanently graded like a film |
+
+#### 41.10 Verified
+
+- 879 tests, 13 new. They do not check that the picture looks better, because
+  a shader is not inspectable and beauty is not a unit test. They check the
+  thing that actually went wrong: that the haze **reaches the far side of the
+  world**, that it leaves the tiles under the cursor alone, and that the blend
+  cannot overshoot.
+- One test states the old bug as arithmetic rather than as a comment: the
+  previous linear fog delivers exactly `0` haze at the far shore.
+- Frame cost A/B by stashing the change: 5.90 ms → 6.00 ms median.
+- Captured during the opening, because that is the only moment the fog of war
+  is lifted and the terrain is actually visible rather than a grey lid.
+
+#### 41.11 Open
+
+- ⚠️ **The grade is global.** It cannot know that the corruption magenta is a
+  gameplay signal rather than a colour, so desaturating the picture
+  desaturates that too. It still reads clearly, but a mechanic that depends on
+  colour and a pass that removes colour are in tension and the tension is now
+  in the code.
+- No depth of field. It was scoped to cinematics only and then not built:
+  the atmosphere fix delivered most of the depth cue for none of the cost.
+- The water still shows a faint checkerboard at grazing angles. Pre-existing,
+  confirmed identical before the change, and untouched.
+- The reference is one generated aerial, not a corpus. Three frames of it are
+  enough to spot a 1.77× difference and not enough to trust a 5 percent one.
 
 ---
 
