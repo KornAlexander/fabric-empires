@@ -278,6 +278,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D335–D340 | A fortified unit could never get up again | Recorded in full in section 42.5 |
 | D341–D346 | The trailer, re-cut at the graded look | Recorded in full in section 43.5 |
 | D347–D352 | The empire studies something, whether or not you told it to | Recorded in full in section 44.5 |
+| D353–D359 | The opening was singing over itself | Recorded in full in section 45.5 |
 
 ### 28. Cheat codes
 
@@ -3935,6 +3936,125 @@ Three were real, and one of them improved:
 - A player who never opens the research panel now learns whatever the outline
   lists first, forever. That is better than learning nothing, and it is not the
   same as studying well.
+
+---
+
+### 45. The opening was singing over itself
+
+Reported as: the title sequence feels off against the music, like exactly one
+text passage out. That is precisely what it was, and the cause is in the lyric
+sheet.
+
+#### 45.1 ⚠️ The anthem does not start with the verse
+
+`media/familia-nostra.txt`:
+
+```
+[Intro - a single boy soprano, unaccompanied, very free]
+Fabrica... fabrica...
+Texamus una.
+
+[Verse 1 - low strings enter, choir hums beneath]
+Ex nihilo terra surgit,
+...
+```
+
+The film opened on **"Ex nihilo" at t = 0**, while the anthem was still on its
+unaccompanied introduction. By the time *Ex nihilo terra surgit* was actually
+sung, the sequence had already cut to the next card. Every passage was one
+early, all the way through, exactly as reported.
+
+The four cards were never mistimed. They were **started too early**.
+
+#### 45.2 The lines were measured, not guessed
+
+Singers breathe between lines, so a phrase boundary is a dip in the band the
+voices occupy while the accompaniment carries on underneath. Decoding the track
+and looking for those dips at 50 ms resolution gives:
+
+| t | passage |
+| --- | --- |
+| 0.00 s | *Fabrica... fabrica... Texamus una.* solo, unaccompanied |
+| 4.60 s | low strings enter, +17.6 dB below 250 Hz |
+| 5.35 s | *Ex nihilo terra surgit* |
+| 12.44 s | *Flumina viam inveniunt* |
+| 18.29 s | *Manus parvae, manus magnae* |
+| 24.79 s | *Simul aedificant* |
+| 30.54 s | the chorus, full choir |
+
+⚠️ **The tell that this was a start offset and not a timing problem**: the
+lines are 7.09, 5.85 and 6.50 seconds long, against existing shot durations of
+7.2, 6.4 and 6.0. They were already cut to the song.
+
+#### 45.3 A fifth beat, which shows less rather than more
+
+The fix is a new opening beat carrying the anthem's own introduction:
+**Fabrica**, *The workshop. Let us weave together*, 5.35 s, ending exactly
+where Verse 1 begins.
+
+⚠️ **It is the tightest shot in the film, and that is the constraint being
+honoured.** The opening lifts the fog of war while it runs, so a longer
+sequence could easily mean giving away more of a map the player is about to
+have hidden from them again. A slow turn a few metres above the player's own
+people, on ground they already occupy, adds five seconds and reveals nothing.
+There is a test for it.
+
+It also earns the cut that follows. The wide reveal now lands on *out of
+nothing, the land rises* instead of being spent under an introduction nobody is
+singing yet: one tile, then the whole world.
+
+#### 45.4 ⚠️ Then the music was 0.85 s ahead, twice over
+
+With the beats re-cut, measuring against the anthem's **own playback position**
+showed every card still landing 0.85 s early. Two causes, pulling in opposite
+directions and not cancelling:
+
+- `refreshFog()` sat between `anthem.start()` and the first cut, blocking the
+  main thread for most of a second while the music played on.
+- `play()` resolves well before audio reaches the speakers, so the anthem
+  started later than the film's own clock did.
+
+Both are fixed by doing the expensive thing first and then waiting, capped at
+900 ms, until the anthem is genuinely playing. Measured drift afterwards:
+**+0.01, +0.05, +0.11, +0.10 seconds.**
+
+⚠️ This was only visible because the check was anchored to the music. The first
+version timed the film against itself, which cannot detect the film and the
+music drifting apart, and reported a clean pass while the sequence was a second
+out.
+
+#### 45.5 Decisions
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D353 | ⚠️ **A beat for the anthem's introduction** | The film opened on the verse while the soloist was still alone, so every card sat one passage ahead of the line it named |
+| D354 | Line starts are measured from the recording | Breath gaps in the vocal band are an observable event. Cutting a film to a song by ear does not survive the song being re-rendered |
+| D355 | ⚠️ **The new beat is the tightest shot in the film** | The opening lifts the fog while it runs. A longer sequence must not reveal more of a map that is about to be hidden again |
+| D356 | The wide reveal moved to *Ex nihilo* | "Out of nothing, the land rises" is what the shot is of. It was previously spent under an introduction |
+| D357 | ⚠️ **Sync is measured against the anthem's clock** | Timing the film against itself passes cleanly while the film and the music are a second apart |
+| D358 | The fog is rebuilt before the music starts | It blocks the main thread for most of a second, and doing it after `start()` handed the anthem a head start |
+| D359 | The film waits for audio to actually begin, capped at 900 ms | `play()` resolves long before sound arrives. Capped, because a build with no anthem will never start one |
+
+#### 45.6 Verified
+
+- 927 tests. New ones pin each card to its measured line, and assert the
+  opening beat never sees further than the wide reveal does.
+- Driven in a real browser against the anthem's own playback position: every
+  card is on screen for its own line, drift under 0.11 s, and the title card is
+  still up when the full choir enters at 30.54 s.
+- The new beat measures 29 percent black against the wide reveal's 24 percent,
+  so it is a shot rather than a dark hole. That was worth checking: a low
+  camera on turn one was 63 percent black in section 43.
+- The sequence is 32.4 s, up from 27.2 s.
+
+#### 45.7 Open
+
+- The 900 ms cap is a guess at how long audio can take to start. On a very slow
+  machine the film could still begin fractionally before the music. It cannot
+  wait indefinitely, because a build with no anthem file must not stall.
+- The measured line starts are pinned to this recording. Regenerating the
+  anthem, which section 39 contemplates, would need them measured again. The
+  script that does it is not kept; the numbers are in the source.
 
 ---
 

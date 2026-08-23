@@ -20,8 +20,9 @@ const world: IntroWorld = {
 const shots = introShots(world);
 
 describe('the opening sequence', () => {
-  it('is four beats, in a fixed order', () => {
+  it('is five beats, in a fixed order', () => {
     expect(shots.map((s) => s.id)).toEqual([
+      'intro-forge',
       'intro-dawn',
       'intro-rivers',
       'intro-hands',
@@ -41,11 +42,74 @@ describe('the opening sequence', () => {
      * order, and if somebody rewrites a card without touching the lyrics the
      * two drift apart silently.
      */
-    expect(shots[0]!.title).toBe('Ex nihilo');
-    expect(shots[1]!.title).toBe('Flumina viam inveniunt');
-    expect(shots[2]!.title).toBe('Manus parvae, manus magnae');
+    expect(shots[0]!.title).toBe('Fabrica');
+    expect(shots[1]!.title).toBe('Ex nihilo');
+    expect(shots[2]!.title).toBe('Flumina viam inveniunt');
+    expect(shots[3]!.title).toBe('Manus parvae, manus magnae');
+  });
+});
+
+describe('⚠️ the cards land on the lines they name', () => {
+  /*
+   * The bug this exists to prevent: the sequence used to open on "Ex nihilo"
+   * at t=0, while the anthem was still on its unaccompanied introduction. By
+   * the time that line was sung the film had cut to the next card, so every
+   * passage was one early. Nothing was broken and nothing looked wrong in a
+   * screenshot; it just felt off.
+   *
+   * These are the line starts measured from the recording, by decoding it and
+   * finding the breath gaps in the band the voices occupy. A card must be on
+   * screen when its own line begins.
+   */
+  const SUNG_AT: Readonly<Record<string, number>> = {
+    'intro-forge': 0,
+    'intro-dawn': 5_350,
+    'intro-rivers': 12_440,
+    'intro-hands': 18_290,
+    'intro-title': 24_790,
+  };
+  /** The full choir enters here, and the title should still be up for it. */
+  const CHORUS_MS = 30_540;
+
+  /** When each beat starts and ends, in milliseconds from the first frame. */
+  function windows(): { id: string; start: number; end: number }[] {
+    let at = 0;
+    return shots.map((shot) => {
+      const start = at;
+      at += shot.durationMs;
+      return { id: shot.id, start, end: at };
+    });
+  }
+
+  it('shows each card while its own line is being sung', () => {
+    for (const { id, start, end } of windows()) {
+      const sung = SUNG_AT[id]!;
+      expect(start, `${id} starts after its line`).toBeLessThanOrEqual(sung + 400);
+      expect(end, `${id} leaves before its line`).toBeGreaterThan(sung + 1_500);
+    }
   });
 
+  it('⚠️ does not open on the verse while the soloist is still alone', () => {
+    // The exact defect, stated as itself. "Ex nihilo" must not be the card on
+    // screen at t=0; the unaccompanied introduction has its own.
+    expect(shots[0]!.id).toBe('intro-forge');
+    expect(shots[0]!.durationMs).toBeGreaterThanOrEqual(5_000);
+  });
+
+  it('holds the title card into the chorus', () => {
+    const title = windows().at(-1)!;
+    expect(title.start).toBeLessThan(CHORUS_MS);
+    expect(title.end).toBeGreaterThan(CHORUS_MS);
+  });
+
+  it('runs no longer than the anthem it is cut to', () => {
+    // The recording is 145 s, so there is room, but a film that outlasts its
+    // own music ends in silence.
+    expect(introDurationMs(shots)).toBeLessThan(145_000);
+  });
+});
+
+describe('the beats themselves', () => {
   it('gives every beat long enough to be read', () => {
     for (const shot of shots) {
       // A card that leaves before it has been read is a wasted card.
@@ -97,18 +161,48 @@ describe('⚠️ the camera stays above the ground', () => {
 });
 
 describe('the shape of the flight', () => {
-  it('starts far away and finishes close', () => {
+  it('opens close, pulls out to the whole world, and comes back close', () => {
     /*
-     * The narrative in one assertion: the first beat is too far away to play
-     * from, because saying how big the world is means showing more of it than
-     * the game will ever let you use, and the last beat is close enough to see
-     * the people.
+     * The narrative in one assertion.
+     *
+     * ⚠️ This used to say "starts far away and finishes close", and the first
+     * half stopped being true on purpose. The anthem opens with one
+     * unaccompanied voice, so the film now opens on one tile, and the wide
+     * reveal has moved to the second beat where it lands on *out of nothing,
+     * the land rises*.
+     *
+     * The wide beat is still the point of the sequence: saying how big the
+     * world is means showing more of it than the game will ever let you use.
+     * And the film still ends close enough to see the people.
      */
-    const first = shots[0]!.frame(0);
-    const last = shots.at(-1)!.frame(1);
-    const firstReach = first.position.distanceTo(first.target);
-    const lastReach = last.position.distanceTo(last.target);
-    expect(firstReach).toBeGreaterThan(lastReach * 4);
+    const reach = (f: { position: Vector3; target: Vector3 }): number =>
+      f.position.distanceTo(f.target);
+
+    const opening = reach(shots[0]!.frame(0));
+    const widest = reach(shots[1]!.frame(0));
+    const last = reach(shots.at(-1)!.frame(1));
+
+    // The opening beat is intimate, not an establishing shot.
+    expect(opening).toBeLessThan(widest / 4);
+    // The reveal is the widest thing in the film.
+    expect(widest).toBeGreaterThan(last * 4);
+    // And it comes back down to the people.
+    expect(last).toBeLessThan(widest / 4);
+  });
+
+  it('⚠️ the opening beat reveals no more map than the reveal does', () => {
+    /*
+     * The opening lifts the fog of war while it runs, so a longer film risks
+     * giving away more of a map the player is about to have hidden again. The
+     * added beat is a close orbit over ground the player already occupies, so
+     * every frame of it stays far inside what the wide beat shows anyway.
+     */
+    const widest = shots[1]!.frame(0);
+    const widestReach = widest.position.distanceTo(widest.target);
+    for (let i = 0; i <= 20; i++) {
+      const f = shots[0]!.frame(i / 20);
+      expect(f.position.distanceTo(f.target)).toBeLessThan(widestReach);
+    }
   });
 
   it('moves continuously inside each beat rather than jumping', () => {

@@ -2427,11 +2427,35 @@ async function playOpening(): Promise<void> {
     home,
   });
 
-  anthem.start();
   openingSkipped = false;
   openingRunning = true;
   revealingForOpening = true;
+  /*
+   * ⚠️ Lift the fog BEFORE the music, not between the music and the first cut.
+   *
+   * Rebuilding the fog for several thousand hexes blocks the main thread for
+   * the best part of a second. Doing it after `anthem.start()` handed the
+   * anthem a head start over a film that had not begun animating yet.
+   */
   refreshFog();
+
+  anthem.start();
+  /*
+   * ⚠️ And wait for the anthem to be genuinely playing before the first card.
+   *
+   * `play()` resolves long before audio actually reaches the speakers: the
+   * anthem was measured starting about 0.85 s after the film did, so every
+   * card sat that far ahead of the line it names. Small next to the passage
+   * the sequence used to be out by, and free to remove.
+   *
+   * Capped, because a build with no anthem file will never start one, and the
+   * film must not wait on something that is never coming.
+   */
+  const startedBy = performance.now() + 900;
+  while (anthem.available && anthem.at === 0 && performance.now() < startedBy) {
+    await new Promise((resolve) => window.setTimeout(resolve, 30));
+  }
+
   try {
     for (const shot of shots) {
       if (finished || openingSkipped) break;
@@ -2983,6 +3007,8 @@ declare global {
       look: (hex: Hex, distance?: number) => void;
       playOpening: () => Promise<void>;
       anthemReady: () => boolean;
+      /** Seconds into the anthem, or 0 when it is not playing. */
+      anthemTime: () => number;
       /**
        * What the background score is doing.
        *
@@ -3302,6 +3328,7 @@ window.__fabricEmpires = {
   /** Replay the opening. Exists so the trailer can be recorded from the game. */
   playOpening: () => playOpening(),
   anthemReady: () => anthem.available,
+  anthemTime: () => anthem.at,
   music: () => ({
     available: music.available,
     muted: music.muted,

@@ -36,6 +36,17 @@ export interface Anthem {
   start(): void;
   /** Fade out over a moment and stop. */
   fade(ms?: number): void;
+  /**
+   * How far into the anthem playback has reached, in seconds.
+   *
+   * ⚠️ The only honest clock for checking that the title cards land on the
+   * lines they name. Timing the film against itself cannot detect the case
+   * that matters, which is the film and the music drifting apart, and the main
+   * thread blocks for around a second while the fog is rebuilt at the start of
+   * the sequence, so a wall clock started from the outside is late by exactly
+   * the amount nobody wants to be wrong about. Zero when silent.
+   */
+  readonly at: number;
   /** True once the file has been found and decoded. */
   readonly available: boolean;
 }
@@ -73,6 +84,10 @@ export function createAnthem(volume = 0.55): Anthem {
   return {
     get available() {
       return ready;
+    },
+
+    get at() {
+      return element && !element.paused ? element.currentTime : 0;
     },
 
     start() {
