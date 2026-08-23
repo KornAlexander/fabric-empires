@@ -215,7 +215,21 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
     // a tier and keeps the interface out of Denglisch.
     'Walls level {level}': 'Mauern Stufe {level}',
     'Walls level {level} · {hp}/{full}': 'Mauern Stufe {level} · {hp}/{full}',
-    'Repair walls (level {level})': 'Mauern ausbessern (Stufe {level})',  'Those questions could not be prepared.':
+    'Repair walls (level {level})': 'Mauern ausbessern (Stufe {level})',
+    // Assault tactics. "Berennen" and "Ersteigen" are the period siege terms,
+    // and "Untergraben" is what a sapper literally does.
+    '{city}: how will you go in?': '{city}: Wie gehst du hinein?',
+    'Walls level {level} still stand, and they will not fall to enthusiasm.':
+      'Mauern der Stufe {level} stehen noch, und die fallen nicht durch Begeisterung.',
+    'Batter the walls': 'Die Mauern berennen',
+    'Everything at the wall. Slow, and it costs you nothing.':
+      'Alles gegen die Mauer. Langsam, und es kostet dich nichts.',
+    'Escalade': 'Ersteigen',
+    'Over the top. Most of the blow reaches the town itself, and the defenders make you pay for it.':
+      'Über die Brüstung. Der größte Teil des Schlags trifft die Stadt selbst, und die Verteidiger lassen dich dafür bezahlen.',
+    'Sap the walls': 'Die Mauern untergraben',
+    'Under it. The fastest way through masonry, and almost no use once the breach is open.':
+      'Darunter hindurch. Der schnellste Weg durch Mauerwerk, und fast nutzlos, sobald die Bresche offen ist.',  'Those questions could not be prepared.':
     'Diese Fragen konnten nicht vorbereitet werden.',
   'That file could not be read. Excel and CSV both work.':
     'Diese Datei konnte nicht gelesen werden. Excel und CSV funktionieren beide.',

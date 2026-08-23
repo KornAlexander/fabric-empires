@@ -292,6 +292,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D424–D428 | Antagonists fortify, and a bug that was not one | Recorded in full in section 56 |
 | D429–D433 | The wall you see is the wall you built | Recorded in full in section 57 |
 | D434–D437 | The walls were a locked door, and every test agreed they were fine | Recorded in full in section 58 |
+| D438–D441 | Tactics: going at a wall is a decision | Recorded in full in section 59 |
 
 ### 28. Cheat codes
 
@@ -4876,6 +4877,71 @@ with it because the fix was not committed either. The tests then failed for a
 reason that looked like the fix not working. **Never revert a scratch edit with
 `checkout` on a file that has uncommitted changes**; patch it back the same way
 it was patched out.
+
+---
+
+## 59. Tactics: going at a wall is a decision
+
+Section 19.3's assault set piece, reached by its smallest complete slice. Until
+now every blow against a city was the same blow, so a wall was only a number
+that made another number smaller. Three tactics, offered whenever the target has
+walls, and threaded from the choice through the preview to the resolution.
+
+| ID | Decision |
+|---|---|
+| D438 | **`wallShare` is the interesting number, not `strength`.** A tactic that was only "more damage" collapses into "pick the biggest one". `batter` lets the wall absorb everything it can, `escalade` lets it absorb a fifth, `sap` hits it hardest. What makes escalade worth choosing is that it does not care how tall the wall is; what makes sap worth choosing is that it does |
+| D439 | **`batter` is exactly the old behaviour** and is the default, so nothing silently rebalanced: all 1008 existing tests passed unchanged the moment tactics landed |
+| D440 | ⚠️ **A city does not counterattack, so escalade's cost had to be invented rather than discounted.** The original design multiplied the counter, which would have multiplied zero. That default is right for bombardment and wrong for men on ladders, so escalade is now the only way of attacking a city that costs the attacker anything at all |
+| D441 | ⚠️ **Escalade is offered to melee only.** A ranged attacker takes no counter by any route, and escalade's entire price *is* the counter, so a Notebook Cannon could otherwise ignore the wall for free. You cannot storm a parapet from a mile away |
+
+### Two bugs that only measurement found
+
+⚠️ **The preview and the resolution had silently split.** `resolveAttack`
+recomputes damage rather than reading it off the preview, so a factor added to
+one and not the other separates them without any test noticing. Measured:
+`sap` **previewed 33 damage and resolved for 17**, and `escalade` **showed the
+player a hundred points of counterattack and then charged nothing**. The comment
+on `previewAttack` promises "the odds shown are the odds fought", and that was
+true only because nothing had ever differed between them before. There is now a
+test per tactic comparing what was promised against what was taken, on both
+sides of the fight.
+
+⚠️ **Fractional hit points.** A twenty percent share of a whole number is not
+one, so cities were standing on 191.2 hit points behind 117.8 of wall. Rounded,
+and asserted.
+
+### The clamp, for the third time
+
+`MIN_DAMAGE` and `MAX_DAMAGE` hid two more effects. Against a level-three wall a
+Pipeline Runner is pinned at the floor, so **sap does nothing for it**, and the
+city's counter is pinned at the ceiling, so escalade costs the same whatever the
+wall is doing. Both tests failed against correct code until the attacker was
+changed to one that is not clamped.
+
+Recorded rather than worked around, because it is a real statement about play:
+**at the damage floor the choice is between batter and escalade**, which differ
+by *where* the blow lands rather than how big it is. Strength bonuses need a
+unit that is not already clamped.
+
+Measured, at a full level-three wall:
+
+| attacker | batter | escalade | sap |
+|---|---|---|---|
+| Pipeline Runner | wall 110 | wall 118, town 192, **100 back** | wall 110 |
+| Notebook Cannon | wall 109 | wall 118, town 192, 100 back | **wall 98** |
+| Direct Lake Titan | wall 102 | wall 117, town 189, 53 back | **wall 85** |
+
+### ⚠️ What was not verified
+
+22 new tests, **1022 total**, and the deployed bundle confirmed to contain the
+tactic prompt and all three profiles. **The dialog itself was not opened in a
+browser.** From the live save the nearest enemy city is thirteen hexes away and
+unwalled, and the player has a single Profiler, so reaching a walled city would
+have taken many turns and many answered questions.
+
+That is the same "tested but never seen" gap this plan has complained about
+twice, and it is open rather than closed. The cheapest way to close it is a
+harness call that plants a walled enemy city beside a player unit.
 
 ---
 

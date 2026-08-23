@@ -125,15 +125,26 @@ export function mendedBy(city: City, amount: number): number {
  * Walls absorb rather than deflect: while any are standing they soak the blow,
  * and only the remainder reaches the city. That is what makes the first
  * assaults of a siege feel different from the last one.
+ *
+ * `share` is how much of the blow the wall is allowed to absorb at all, which
+ * is what an assault tactic changes. At 1 the wall soaks everything it can,
+ * which is the behaviour every caller had before tactics existed.
  */
 export function absorbWithWalls(
   city: City,
   damage: number,
+  share = 1,
 ): { readonly wallHp: number; readonly toCity: number } {
   if (city.wallLevel <= 0 || city.wallHp <= 0) {
     return { wallHp: 0, toCity: damage };
   }
-  const absorbed = Math.min(city.wallHp, damage);
+  // ⚠️ Only this much of the blow ever meets the wall. The rest is over the
+  // top or through the gate and the wall never gets a say in it.
+  //
+  // Rounded, because a share of a whole number is not one: an unrounded 20%
+  // share left cities standing on 191.2 hit points behind 117.8 of wall.
+  const facing = Math.round(damage * Math.max(0, Math.min(1, share)));
+  const absorbed = Math.min(city.wallHp, facing);
   return { wallHp: city.wallHp - absorbed, toCity: damage - absorbed };
 }
 

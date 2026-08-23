@@ -13,6 +13,7 @@ import { createRng, type Rng } from '../rng/index.js';
 import { isCivilian, cityKind, unitType, type City, type Unit } from '../entities/index.js';
 import { cityAt, tileAt, unitAt, type GameState } from '../state/index.js';
 import { absorbWithWalls, wallDefenceBonus } from './walls.js';
+import { tacticProfile, type AssaultTactic } from './assault.js';
 import { grantFoothold, razeCityAt } from './sack.js';
 import type { ResourceId } from '../map/index.js';
 
@@ -261,6 +262,14 @@ export interface AttackOptions {
    * so every existing caller and save keeps its old behaviour.
    */
   readonly cityOutcome?: 'capture' | 'raze';
+  /**
+   * How the attacker goes at a walled city.
+   *
+   * Ignored against units and against an unwalled city, because there is no
+   * wall to go over, under or through. Defaults to `batter`, which is exactly
+   * what an attack did before tactics existed.
+   */
+  readonly tactic?: AssaultTactic;
 }
 
 /**
@@ -304,6 +313,9 @@ export function previewAttack(
 
   const siegeMultiplier =
     targetKind === 'city' && type.role === 'siege' ? 1 + SIEGE_CITY_BONUS : 1;
+  // Tactics only exist against a city. Against a unit there is no wall to go
+  // over, under or through, so the profile is never consulted.
+  const tactic = targetKind === 'city' ? tacticProfile(options.tactic) : tacticProfile('batter');
 
   return {
     attacker: attackerSide,
@@ -311,15 +323,20 @@ export function previewAttack(
     targetKind,
     ranged,
     expectedDamageToDefender: damageFrom(
-      attackerSide.effective * siegeMultiplier,
+      attackerSide.effective * siegeMultiplier * tactic.strength,
       defenderSide.effective,
     ),
     // A ranged attacker takes nothing back, which is the entire reason to
-    // build one. Cities do not counterattack a melee strike either.
+    // build one. A city does not counterattack a melee strike either, unless
+    // the tactic is the one that puts men on the parapet.
     expectedDamageToAttacker:
-      ranged || targetKind === 'city'
+      ranged
         ? 0
-        : damageFrom(defenderSide.effective, attackerSide.effective),
+        : targetKind === 'city'
+          ? Math.round(
+              damageFrom(defenderSide.effective, attackerSide.effective) * tactic.cityCounter,
+            )
+          : damageFrom(defenderSide.effective, attackerSide.effective),
   };
 }
 
@@ -361,15 +378,31 @@ export function resolveAttack(
   const type = unitType(attacker.typeId);
   const siegeMultiplier =
     preview.targetKind === 'city' && type.role === 'siege' ? 1 + SIEGE_CITY_BONUS : 1;
+  /*
+   * ⚠️ **The tactic has to be applied here as well as in the preview.**
+   *
+   * This function recomputes the damage rather than reading it off the
+   * preview, so a factor added to one and not the other silently splits them.
+   * Measured when tactics were first wired: `sap` previewed 33 damage and
+   * resolved for 17, and `escalade` showed the player a hundred points of
+   * counterattack and then charged nothing at all. The comment on
+   * `previewAttack` promises "the odds shown are the odds fought", and it was
+   * true only because nothing had ever differed between them before.
+   */
+  const tactic = tacticProfile(preview.targetKind === 'city' ? options.tactic : 'batter');
 
   const damageToDefender = damageFrom(
-    preview.attacker.effective * siegeMultiplier,
+    preview.attacker.effective * siegeMultiplier * tactic.strength,
     preview.defender.effective,
     attackRoll,
   );
-  const damageToAttacker =
-    preview.ranged || preview.targetKind === 'city'
-      ? 0
+  const damageToAttacker = preview.ranged
+    ? 0
+    : preview.targetKind === 'city'
+      ? Math.round(
+          damageFrom(preview.defender.effective, preview.attacker.effective, defenceRoll) *
+            tactic.cityCounter,
+        )
       : damageFrom(preview.defender.effective, preview.attacker.effective, defenceRoll);
 
   const units = new Map(state.units);
@@ -407,7 +440,11 @@ export function resolveAttack(
      * helps was unreachable code with passing tests behind it. A tested helper
      * nobody calls is not a feature.
      */
-    const { wallHp, toCity } = absorbWithWalls(city, damageToDefender);
+    const { wallHp, toCity } = absorbWithWalls(
+      city,
+      damageToDefender,
+      tacticProfile(options.tactic).wallShare,
+    );
     const cityHp = city.hp - toCity;
     if (cityHp <= 0 && !preview.ranged) {
       // Only a melee unit can walk in and take the city. Bombardment alone

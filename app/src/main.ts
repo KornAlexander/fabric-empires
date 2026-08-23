@@ -52,6 +52,9 @@ import {
   moveUnit,
   normaliseSeed,
   previewAttack,
+  ASSAULT_TACTICS,
+  DEFAULT_TACTIC,
+  type AssaultTactic,
   reachable,
   researchCost,
   researchProgress,
@@ -1009,7 +1012,52 @@ async function actOn(target: Hex): Promise<void> {
     // was open, but re-checking is cheap and a stale attack is a real bug.
     if (!canAttack(state, unit.id, target).ok) return;
 
-    const preview = previewAttack(state, unit.id, target, { challengeScore });
+    /*
+     * How you go at a wall, asked only when there is one.
+     *
+     * Section 19.3 wants an assault to be a decision. Until now every blow
+     * against a city was the same blow, so a wall was only a number that made
+     * another number smaller.
+     *
+     * ⚠️ **Escalade is offered to melee only.** A ranged attacker takes no
+     * counterattack at all, and escalade's entire cost *is* the counter, so a
+     * Notebook Cannon could otherwise ignore the wall for free. You cannot
+     * storm a parapet from a mile away.
+     */
+    const wallTarget = cityAt(state, target);
+    let tactic: AssaultTactic = DEFAULT_TACTIC;
+    if (wallTarget && wallTarget.wallLevel > 0) {
+      const ranged = unitType(unit.typeId).range > 1;
+      const offered = ASSAULT_TACTICS.filter((id) => id !== 'escalade' || !ranged);
+      const labels: Record<AssaultTactic, { label: string; detail: string }> = {
+        batter: {
+          label: t('Batter the walls'),
+          detail: t('Everything at the wall. Slow, and it costs you nothing.'),
+        },
+        escalade: {
+          label: t('Escalade'),
+          detail: t('Over the top. Most of the blow reaches the town itself, and the defenders make you pay for it.'),
+        },
+        sap: {
+          label: t('Sap the walls'),
+          detail: t('Under it. The fastest way through masonry, and almost no use once the breach is open.'),
+        },
+      };
+      tactic = await choice.ask(
+        t('{city}: how will you go in?', { city: wallTarget.name }),
+        t('Walls level {level} still stand, and they will not fall to enthusiasm.', {
+          level: String(wallTarget.wallLevel),
+        }),
+        offered.map((id, i) => ({
+          id,
+          label: labels[id].label,
+          detail: labels[id].detail,
+          primary: i === 0,
+        })),
+      );
+    }
+
+    const preview = previewAttack(state, unit.id, target, { challengeScore, tactic });
     const targetCity = cityAt(state, target);
     const dramatic = !hadFirstBattle || targetCity !== undefined;
 
@@ -1073,7 +1121,7 @@ async function actOn(target: Hex): Promise<void> {
     }
     hadFirstBattle = true;
 
-    await playAttack(unit.id, target, challengeScore, preview, dramatic, cityOutcome);
+    await playAttack(unit.id, target, challengeScore, preview, dramatic, cityOutcome, tactic);
     return;
   }
 
@@ -1107,6 +1155,7 @@ async function playAttack(
   preview: ReturnType<typeof previewAttack>,
   dramatic: boolean,
   cityOutcome: 'capture' | 'raze' = 'capture',
+  tactic: AssaultTactic = DEFAULT_TACTIC,
 ): Promise<void> {
   const attacker = state.units.get(unitId);
   if (!attacker) return;
@@ -1130,6 +1179,9 @@ async function playAttack(
   const outcome = resolveAttack(state, unitId, target, {
     challengeScore,
     cityOutcome,
+    // ⚠️ Must match the tactic the preview was taken with, or the odds the
+    // player was shown are not the odds they fought.
+    tactic,
   });
   if (!outcome.ok) {
     log(outcome.reason, 'bad');
