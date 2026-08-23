@@ -295,6 +295,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D438–D441 | Tactics: going at a wall is a decision | Recorded in full in section 59 |
 | D442–D444 | Opening the door that had never been opened | Recorded in full in section 60 |
 | D445–D448 | The AI gets the same three choices, and sap stops lying | Recorded in full in section 61 |
+| D449–D451 | A floor on effort, not on technique | Recorded in full in section 62 |
 
 ### 28. Cheat codes
 
@@ -5028,6 +5029,9 @@ still settling. Options, cheapest first: soften `MIN_DAMAGE` against cities
 only; scale the floor with the attacker's strength; or say so in the prompt, so
 a player learns *why* their scout cannot exploit a breach.
 
+✅ **Decided in section 62**, and by none of those three: the floor now scales
+with the *tactic*, which leaves unit fights untouched.
+
 ### Verified
 
 1027 tests. In the live game: the dialog offers all three against a breached
@@ -5039,6 +5043,51 @@ clamped; it could not be shown in the browser with the unit available.
 ⚠️ `plantWalledCity` gained a `wallHp` override so an already-breached wall can
 be reached at all. Battering one down through the interface is a dozen turns of
 questions, and the rule only applies at zero.
+
+---
+
+## 62. A floor on effort, not on technique
+
+Section 61 left this open: `MIN_DAMAGE` flattened every weak blow to the same
+10, so the assault prompt asked the player a question whose answer could not
+matter until they fielded a much heavier unit. It had hidden a mechanic four
+separate times before it was believed.
+
+| ID | Decision |
+|---|---|
+| D449 | **The floor scales with the tactic.** `MIN_DAMAGE` guarantees a fight makes progress; that is a floor on **effort**, and a technique changes what effort achieves. So `damageFrom` takes a `floorScale`, and a city assault passes the tactic's own multiplier. ⚠️ None of the three options section 61 costed were taken: softening the floor for cities would have re-opened the locked door of section 58, since a Profiler doing two damage to a 320-point fortress is the same problem in a different costume |
+| D450 | **Unit fights are untouched.** `floorScale` defaults to 1, so every caller outside a city assault computes exactly what it did before, and there is a test that pins it |
+| D451 | ⚠️ **A test had to be inverted, and that was the signal.** "Sap is worth nothing to a unit already at the damage floor" was true, correct and documenting a defect. When the only failure after this change was that test, the change was doing precisely what it set out to |
+
+### Measured, before and after
+
+One blow at a full level-three wall, by the unit the player starts with:
+
+| | batter | escalade | sap |
+|---|---|---|---|
+| **Before** | wall −10 | wall −2, town −8 | wall −10 |
+| **After** | wall −10 | wall −2, town −7 | **wall −16** |
+
+And through an open breach the order correctly inverts, so sap is the worst way
+in: batter −10, escalade −9, **sap −7**.
+
+⚠️ **Conquest still completes**, which was the thing to check: at a level-three
+wall with the defender mending, a Profiler takes 40 turns, a Notebook Cannon 17,
+a Direct Lake Titan 10. No "never" anywhere, and siege units still pay for
+themselves several times over.
+
+### Verified where it ships
+
+1031 tests. Then two consecutive assaults in the deployed game with the same
+starting Profiler against the same level-three wall:
+
+```
+Die Mauern untergraben   120 -> 104   (16)
+Die Mauern berennen      104 ->  94   (10)
+```
+
+The choice now matters on the first siege a player ever fights, with the unit
+they are given. That is the whole point of asking.
 
 ---
 

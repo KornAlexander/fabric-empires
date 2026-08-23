@@ -188,15 +188,29 @@ export function cityCombatSide(
  * A power curve on the strength ratio, so a small advantage matters and a
  * large one is decisive without ever being an instant kill: clamped to
  * 10..100, every fight costs the winner something.
+ *
+ * ⚠️ **`floorScale` exists because the floor was erasing the tactic system.**
+ *
+ * `MIN_DAMAGE` guarantees a fight makes progress. Flattening every weak blow to
+ * the same 10 also flattened away *how* it was struck: a Profiler sapping a
+ * wall and a Profiler battering it both clamped to 10, so the assault prompt
+ * asked the player a question whose answer could not matter until they fielded
+ * a much heavier unit. Measured four separate times before it was believed.
+ *
+ * The floor is a floor on **effort**, and a technique changes what that effort
+ * achieves, so the technique scales the floor too. Passing 1 leaves every
+ * existing caller exactly where it was.
  */
 export function damageFrom(
   attackerEffective: number,
   defenderEffective: number,
   roll = 1,
+  floorScale = 1,
 ): number {
   const ratio = attackerEffective / defenderEffective;
   const raw = 30 * Math.pow(ratio, 1.5) * roll;
-  return Math.round(Math.min(MAX_DAMAGE, Math.max(MIN_DAMAGE, raw)));
+  const floor = MIN_DAMAGE * Math.max(0, floorScale);
+  return Math.round(Math.min(MAX_DAMAGE, Math.max(floor, raw)));
 }
 
 /** Whether the attacker may strike the given hex at all. */
@@ -329,6 +343,8 @@ export function previewAttack(
     expectedDamageToDefender: damageFrom(
       attackerSide.effective * siegeMultiplier * tacticStrengthNow,
       defenderSide.effective,
+      1,
+      tacticStrengthNow,
     ),
     // A ranged attacker takes nothing back, which is the entire reason to
     // build one. A city does not counterattack a melee strike either, unless
@@ -401,6 +417,7 @@ export function resolveAttack(
     preview.attacker.effective * siegeMultiplier * tacticStrength(tactic, wallStanding),
     preview.defender.effective,
     attackRoll,
+    tacticStrength(tactic, wallStanding),
   );
   const damageToAttacker = preview.ranged
     ? 0

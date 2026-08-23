@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   chooseTactic,
   createGameState,
+  damageFrom,
   maxWallHp,
   previewAttack,
   resolveAttack,
@@ -9,6 +10,7 @@ import {
   ASSAULT_TACTICS,
   DEFAULT_TACTIC,
   MAX_WALL_LEVEL,
+  MIN_DAMAGE,
   PLAYER_FACTION_ID,
   TACTICS,
   type City,
@@ -109,17 +111,25 @@ describe('each tactic is best at something', () => {
     expect(wallLeft('batter')).toBeLessThan(wallLeft('escalade'));
   });
 
-  it('⚠️ but sap is worth nothing to a unit already at the damage floor', () => {
-    // Not a bug, and worth stating: at the floor the choice is between batter
-    // and escalade, because those differ by where the blow lands rather than
-    // by how big it is. Strength bonuses need a unit that is not clamped.
+  it('⚠️ is worth something even to a unit at the damage floor', () => {
+    /*
+     * This test used to assert the opposite, and was right to: the floor
+     * flattened every weak blow to the same 10, so a Profiler sapping a wall
+     * and a Profiler battering it achieved exactly the same thing. The assault
+     * prompt was asking the player a question whose answer could not matter
+     * until they fielded a much heavier unit.
+     *
+     * The floor now scales with the tactic (see `damageFrom`), because a floor
+     * is a floor on *effort* and a technique changes what that effort achieves.
+     * A starting unit can now tell its choices apart on the first siege.
+     */
     const { state, attackerId } = field('pipelineRunner');
     const wallLeft = (tactic: 'batter' | 'sap'): number => {
       const out = resolveAttack(state, attackerId, { q: 0, r: 0 }, { tactic });
       if (!out.ok) throw new Error(out.reason);
       return out.result.state.cities.get('target')!.wallHp;
     };
-    expect(wallLeft('sap')).toBe(wallLeft('batter'));
+    expect(wallLeft('sap')).toBeLessThan(wallLeft('batter'));
   });
 
   it('escalade reaches the town while the wall still stands', () => {
@@ -274,6 +284,47 @@ describe('⚠️ the AI gets the same three choices', () => {
   it('leaves an unwalled city alone and just attacks it', () => {
     const { state, attackerId } = field('pipelineRunner', { wallLevel: 0, wallHp: 0 });
     expect(chooseTactic(state, attackerId, { q: 0, r: 0 })).toBe(DEFAULT_TACTIC);
+  });
+});
+
+describe('⚠️ the floor scales with the technique', () => {
+  /*
+   * `MIN_DAMAGE` guarantees a fight makes progress. Flattening every weak blow
+   * to the same number also flattened away *how* it was struck, which hid the
+   * entire tactic system from every unit the player can field early. It was
+   * measured four separate times before it was believed.
+   */
+  it('separates all three tactics for a starting unit', () => {
+    const { state, attackerId } = field('pipelineRunner');
+    const wall = (tactic: 'batter' | 'escalade' | 'sap'): number => {
+      const out = resolveAttack(state, attackerId, { q: 0, r: 0 }, { tactic });
+      if (!out.ok) throw new Error(out.reason);
+      return out.result.state.cities.get('target')!.wallHp;
+    };
+    // Sap bites deepest, escalade barely touches the masonry, batter between.
+    expect(wall('sap')).toBeLessThan(wall('batter'));
+    expect(wall('batter')).toBeLessThan(wall('escalade'));
+  });
+
+  it('still guarantees every blow does something', () => {
+    // The floor's original job. A tactic may scale it; nothing may erase it.
+    const { state, attackerId } = field('pipelineRunner');
+    for (const tactic of ASSAULT_TACTICS) {
+      const p = previewAttack(state, attackerId, { q: 0, r: 0 }, { tactic })!;
+      expect(p.expectedDamageToDefender).toBeGreaterThan(0);
+    }
+  });
+
+  it('leaves a plain unit fight exactly as it was', () => {
+    // floorScale defaults to 1, so nothing outside a city assault moved.
+    expect(damageFrom(1, 1000)).toBe(MIN_DAMAGE);
+    expect(damageFrom(1, 1000, 1, 1)).toBe(MIN_DAMAGE);
+  });
+
+  it('scales the floor by the tactic, not past the ceiling', () => {
+    expect(damageFrom(1, 1000, 1, 1.55)).toBe(Math.round(MIN_DAMAGE * 1.55));
+    expect(damageFrom(1, 1000, 1, 0.7)).toBe(Math.round(MIN_DAMAGE * 0.7));
+    expect(damageFrom(10_000, 1, 1, 1.55)).toBe(100);
   });
 });
 
