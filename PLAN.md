@@ -301,6 +301,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D468–D472 | Somebody finally played it to the end | Recorded in full in section 65 |
 | D473–D477 | Two words, and the assessment that looked in the wrong place | Recorded in full in section 66 |
 | D478–D483 | The film was cut to a recording that no longer exists | Recorded in full in section 67 |
+| D484–D487 | The hardest session was the one that taught nothing | Recorded in full in section 68 |
 
 ### 28. Cheat codes
 
@@ -5606,6 +5607,109 @@ FABRIC EMPIRES             up at the 49.76 s choir
 ⚠️ **Still open:** the intro video has to be re-recorded from this build. There
 is no committed recorder, so it was made by hand, and the existing file is both
 mistimed and carrying audio that cannot be distributed.
+
+---
+
+## 68. The hardest session was the one that taught nothing
+
+Reported: no explanation for right or wrong answers on the DP-600 questions.
+
+### 68.1 It was the exam, and it was never a regression
+
+Ordinary questions go through `presentQuestion`, whose tail is explicit about
+its job:
+
+> Teach on the way out, whatever happened. A learner who was wrong sees the
+> right answer and the reasoning.
+
+The Proctor's exam does not use it. `faceTheProctor` hand-writes the same
+ask, check, score and reveal loop, and it copied everything except the
+reasoning: **`explanation: undefined`**, hard-coded. `git log -S` puts that line
+in `ff21874`, the commit that introduced the exam, so it has been true for as
+long as the exam has existed.
+
+⚠️ Which makes it worse rather than better. The exam is 40 questions, it is
+where a learner is most likely to meet something they do not know, and it is the
+**only** session in the game that refuses to say why. STORY.md already made
+exactly this argument about scoring: the siege "is the hardest study session in
+the game and it would be perverse for it to be the only one that does not
+count". The same sentence applies to the explanation, and nobody noticed the
+second half.
+
+It was not even buying speed. The exam already stops on every question to show
+the correct answer and wait for Continue. It was displaying the verdict and
+withholding the sentence underneath it.
+
+### 68.2 ⚠️ A third copy of the same shape
+
+This is the third time in one day that a fact lived in two places and the
+second copy went stale:
+
+| section | duplicated | what it cost |
+| --- | --- | --- |
+| 64 | `MOODS`, as a type and as a literal in a test | adding a mood compiled and failed |
+| 67 | the anthem's timings, in `intro.ts` and in its test | the test agreed with the code while both disagreed with the music |
+| **68** | the ask/reveal loop, in `presenter.ts` and in `main.ts` | the copy silently dropped the teaching |
+
+"Multiple mode" turned out to mean plain multiple choice: every one of the 123
+questions in the bank is type `mcq`, and there are no multi-select items at all,
+so the multi-answer paths were never involved.
+
+### 68.3 ⚠️ The test proved the cipher, not the path
+
+`decrypts each explanation with its own answer` passes, and it would have gone
+on passing through any version of this bug, because it decrypts using the
+answer read straight from the source draft.
+
+The application has no draft. It recovers the answer by hashing every candidate
+option until one matches, and only then derives the key. So the existing test
+proved the ciphertext was well-formed while saying nothing about whether the
+game can open it. If `revealCorrectAnswer` ever returned undefined,
+`decryptExplanation` would be handed undefined, return undefined **by design**,
+and the learner would see nothing at all: no error, no log, green tests.
+
+There is now a second test that walks the route the app walks.
+
+### 68.4 ⚠️ The verification tool destroyed the evidence
+
+After deploying the fix, the live check still reported no explanation. It was
+tempting to conclude the fix had failed.
+
+`answerOpen` does not stop at Submit. It then hunts for **Continue and clicks
+it**, on purpose, because a test that stopped at Submit once left research
+frozen at 12/12 Compute forever. In the exam that immediately loads the next
+question, so the reveal it was meant to prove existed was gone within 50 ms of
+appearing. The earlier reading of an ordinary question only worked because
+nothing replaces the modal there.
+
+The observation was an artefact of the instrument. Answering by hand, and
+deliberately **not** pressing Continue, shows the explanation exactly as
+intended.
+
+### 68.5 Decisions
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D484 | ⚠️ **The exam explains itself, like every other question** | It is the session with the most wrong answers in it and it was the only one that withheld the reason. It already paused to show the verdict, so this costs nothing that was not already being spent |
+| D485 | The explanation is decrypted from the **recovered** answer, not assumed | It is encrypted under its own answer, so it can only be opened after the answer has been brute-forced back out. Ordering matters and is now the same in both paths |
+| D486 | ⚠️ **A test walks the app's route, not an equivalent one** | Decrypting with the source draft proves the cipher. Decrypting with what `revealCorrectAnswer` actually returns proves the feature. Only the second one would have failed if the reveal broke |
+| D487 | ⚠️ **A harness that auto-advances cannot be used to observe what it advances past** | `answerOpen` clicks Continue by design, which makes it correct for driving a playthrough and useless for inspecting a reveal. Reading its output as evidence would have reverted a working fix |
+
+### 68.6 Verified where it ships
+
+1052 tests, 1 new. Then the **deployed** exam, answering by hand and leaving the
+reveal on screen:
+
+```
+A connection carries its own permissions, separate from the workspace. Being
+able to see that a connection exists is not the same as being allowed to use
+it; the owner has to share it. Connections are not tied to a capacity, are
+shareable rather than private to their creator, and do not need duplicating
+per workspace.
+Read the documentation   B1  Create a data connection
+```
+
+That was a **wrong** answer, chosen blindly, which is the case that matters.
 
 ---
 

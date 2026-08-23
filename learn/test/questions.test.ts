@@ -18,6 +18,7 @@ import {
   normaliseAnswer,
   questionsForCluster,
   questionsForSkill,
+  revealCorrectAnswer,
   scoreFor,
   selectQuestion,
   validateBank,
@@ -255,6 +256,46 @@ describe('the built bank', () => {
         expect(
           await decryptExplanation(question.id, draft.answer, question.explanationCipher),
         ).toBe(draft.explanation);
+      }
+    },
+    60_000,
+  );
+
+  /*
+   * ⚠️ The same thing again, by the route the game actually takes.
+   *
+   * The test above decrypts using the answer read straight out of the source
+   * draft. The application has no draft: it recovers the answer by hashing
+   * every candidate option until one matches, and only then can it derive the
+   * key. So the test above proves the *cipher* is right while saying nothing
+   * about whether the app can ever open it.
+   *
+   * That distinction is not hypothetical. If `revealCorrectAnswer` returned
+   * undefined for a question, `decryptExplanation` would be handed undefined,
+   * return undefined by design, and the learner would simply see no
+   * explanation. No error, no log, and the test above still green.
+   *
+   * A sample rather than all 123, because this pays the 100,000-iteration
+   * PBKDF2 cost once per candidate option rather than once per question.
+   */
+  it(
+    '⚠️ recovers the answer and opens the explanation the way the app does',
+    async () => {
+      const step = Math.ceil(DP600_QUESTIONS.length / 12);
+      const sample = DP600_QUESTIONS.filter((_, i) => i % step === 0);
+      expect(sample.length).toBeGreaterThan(6);
+
+      for (const question of sample) {
+        const recovered = await revealCorrectAnswer(question);
+        expect(recovered, `${question.id}: no answer recoverable`).toBeDefined();
+
+        const explanation = await decryptExplanation(
+          question.id,
+          recovered!,
+          question.explanationCipher,
+        );
+        expect(explanation, `${question.id}: explanation did not open`).toBeDefined();
+        expect(explanation!.length, `${question.id}: explanation is empty`).toBeGreaterThan(0);
       }
     },
     60_000,

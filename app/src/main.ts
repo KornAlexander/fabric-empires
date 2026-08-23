@@ -94,6 +94,7 @@ import {
   checkAnswer,
   createMasteryTracker,
   createQuestionPresenter,
+  decryptExplanation,
   localStorageStore,
   proctorReady,
   revealCorrectAnswer,
@@ -2381,12 +2382,36 @@ async function faceTheProctor(): Promise<void> {
         given.abandoned,
       );
 
+      /*
+       * ⚠️ Teach on the way out, exactly as an ordinary question does.
+       *
+       * This block is a hand-written copy of the tail of `presentQuestion`,
+       * and it copied everything except the reasoning: it passed
+       * `explanation: undefined`, so the one session where a learner is most
+       * likely to meet something they got wrong was the only session that
+       * never told them why. The exam already stops to show the right answer,
+       * so withholding the sentence underneath it was not even buying speed.
+       *
+       * The explanation is encrypted under its own answer, so it can only be
+       * read once the answer has been recovered, which is why this waits for
+       * `revealCorrectAnswer` rather than decrypting up front.
+       */
+      const correctAnswer = await revealCorrectAnswer(entry.question);
+      const explanation =
+        correctAnswer === undefined
+          ? undefined
+          : await decryptExplanation(
+              entry.question.id,
+              correctAnswer,
+              entry.question.explanationCipher,
+            );
+
       await modal.reveal({
         question: entry.question,
         correct,
         given: answer,
-        correctAnswer: await revealCorrectAnswer(entry.question),
-        explanation: undefined,
+        correctAnswer,
+        explanation,
         score: correct ? 1 : -1,
         elapsedMs: given.elapsedMs,
       });
