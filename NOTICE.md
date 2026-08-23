@@ -30,6 +30,10 @@ the omission is about licensing rather than file size.
   plan. Commercial rights require a paid plan. That is a poor fit for a public
   repository under a permissive licence, so the file stays out of it.
 
+⚠️ A fuller reading of Suno's terms, including the ones taking effect on
+3 September 2026 and what they mean for a free study app, is in
+[MUSIC-LICENSING.md](MUSIC-LICENSING.md).
+
 The game handles this gracefully rather than depending on it. `app/src/audio.ts`
 probes for `app/public/audio/anthem.mp3` at load; if the file is absent, which
 is the state of every fresh clone, every call is a no-op and the opening plays
