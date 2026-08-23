@@ -283,6 +283,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D367–D375 | Questions for a topic nobody shipped | Recorded in full in section 47.5 |
 | D376–D381 | Say what kind of game this is, and check the claim | Recorded in full in section 48 |
 | D382–D384 | Build the shaders before the film, not during it | Recorded in full in section 49 |
+| D385–D389 | The fog was a hole in the world | Recorded in full in section 50 |
 
 ### 28. Cheat codes
 
@@ -4442,6 +4443,43 @@ a hex map is not an 870 m clipmap).
 - The pre-warm covers `traverseVisible` only, so anything parked under an
   invisible parent is still deferred. Pools that want warming must be in the
   scene and visible, as `combatFx` already does with `count = 0`.
+
+---
+
+## 50. The fog was a hole in the world
+
+Unexplored ground read as a black field crossed by a glowing hex lattice. The
+request was to make it "a bit more fog realistic", and the interesting part is
+that most of the problem was not the colour.
+
+| ID | Decision |
+|---|---|
+| D385 | ⚠️ **The bright lattice was a geometry bug, not a shading choice.** `hexLid` lays each lid flat at its own hex's `peakAt`, so two neighbours with different peaks meet in XZ and *not* in Y, leaving an open vertical slot along every shared edge. From a low camera you looked straight through it at sunlit terrain, on all six edges of every hex. The lid already carried a comment saying "fog tiles must meet, or the map is covered in bright seams" and an inset had been removed to fix exactly this; the inset was only ever half the problem |
+| D386 | **The lid gets a skirt.** Each edge drops a wall `SKIRT` below the lid so neighbours overlap vertically whichever is taller. Depth is free (six quads regardless of how far they hang) and anything below the neighbouring ground is buried by the depth test. `DoubleSide` on the material rather than re-deriving the winding that already cost a long hunt: the material is unlit, so it costs no shading and no extra draw call |
+| D387 | **Fog is scattered light, so it is not black.** `#05070a` is lightness 0.03, which is a hole cut in the world. This is the same error section 41 already corrected once for the atmosphere, in its own words: dark distance "reads as a storm rather than as depth" |
+| D388 | ⚠️ **The first correction overshot, and the failure was symmetrical.** At lightness 0.20 the sheet became the brightest thing on screen and the explored island vanished inside it. The unexplored region is most of the board, so painting it brighter than the land pulls the eye to the part of the map with nothing in it. Settled several times lighter than the void, still clearly darker than uncovered land, with the far field left to the scene's own `FogExp2` |
+| D389 | Brightness is mottled from `fbm2` on **world XZ**, so neighbouring lids agree wherever they share a corner and the pattern runs continuously across the sheet instead of stopping at every hex. The skirt darkens towards its base, which is the only depth cue an unlit material can carry |
+
+### Why the colour was the second problem, not the first
+
+A flat dark plate and a flat mist-coloured plate are both plates. What made the
+old picture read as a hole was the **lattice**, because a regular bright grid is
+the one pattern the eye cannot read as weather. Fixing the seams did more for
+"is this fog" than any colour change, and the colour change only became worth
+making once there was a continuous surface to colour.
+
+⚠️ **Verified by looking, at two zooms.** A luminance readback was written first
+and returned a mean of exactly 0 across 122,000 pixels, which was a WebGL canvas
+drawn into a 2D context without `preserveDrawingBuffer` and not evidence of
+anything. Playwright's own screenshot captures the drawing buffer correctly;
+the readback was discarded rather than believed.
+
+### Left open
+
+- The materials are built once, so the fog does not follow the sun the way
+  `scene.fog` does. At a low sun the mist keeps a mid-day tone.
+- Fog geometry is now three times the vertices it was, still one merged mesh
+  and one draw call per layer. Not measured against a weak GPU.
 
 ---
 

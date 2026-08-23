@@ -1026,7 +1026,12 @@ export function overlayMaterial(colour: string, opacity: number): MeshStandardMa
  * everything in between, so on a hill every sample read low and the lid still
  * sank into the ground. Only the mesh knows how tall the mesh is.
  */
-export function hexLid(h: Hex, terrain: Terrain, lift: number): BufferGeometry {
+export function hexLid(
+  h: Hex,
+  terrain: Terrain,
+  lift: number,
+  skirt = 0,
+): BufferGeometry {
   const { x, z } = hexToWorld(h);
   const y = terrain.peakAt(h) + lift;
 
@@ -1048,6 +1053,37 @@ export function hexLid(h: Hex, terrain: Terrain, lift: number): BufferGeometry {
      * No inset: fog tiles must meet, or the map is covered in bright seams.
      */
     verts.push(x, y, z, x + o2.x, y, z + o2.z, x + o1.x, y, z + o1.z);
+  }
+
+  /*
+   * ⚠️ **Meeting in XZ is not enough, and that is what produced the bright
+   * hex lattice over unexplored ground.**
+   *
+   * Every lid is flat at its own hex's peak, so two neighbours whose peaks
+   * differ leave an open vertical slot exactly along their shared edge. Seen
+   * from a low camera you look straight through that slot at the sunlit
+   * terrain below, and since it happens on all six edges of every hex the
+   * result is a glowing wireframe: the one pattern guaranteed to read as a
+   * hole in the world rather than as weather.
+   *
+   * The lid needed a wall, not a tighter fit. Dropping a skirt from each edge
+   * means neighbouring lids overlap vertically no matter which is taller, so
+   * there is nothing left to see through. Depth costs no extra vertices, only
+   * the six quads themselves, and a skirt that hangs below the neighbouring
+   * ground is simply buried by the depth test.
+   */
+  if (skirt > 0) {
+    const base = y - skirt;
+    for (let i = 0; i < 6; i++) {
+      const o1 = cornerOffset(i);
+      const o2 = cornerOffset((i + 1) % 6);
+      const ax = x + o1.x;
+      const az = z + o1.z;
+      const bx = x + o2.x;
+      const bz = z + o2.z;
+      verts.push(ax, y, az, bx, y, bz, bx, base, bz);
+      verts.push(ax, y, az, bx, base, bz, ax, base, az);
+    }
   }
 
   const geometry = new BufferGeometry();

@@ -18,12 +18,15 @@
  */
 
 import {
+  BufferAttribute,
   Color,
+  DoubleSide,
   Mesh,
   MeshBasicMaterial,
   type BufferGeometry,
 } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { fbm2 } from './noise.js';
 import { hexLid, type Terrain } from './terrain.js';
 import type { Hex } from '@fabric-empires/engine';
 
@@ -47,18 +50,100 @@ export function createFog(
    */
   const LIFT = 0.12;
 
+  /**
+   * How far each lid's wall hangs below it.
+   *
+   * ⚠️ This is what stops unexplored ground reading as a glowing wireframe.
+   * Lids meet in XZ but each sits at its own hex's peak, so every shared edge
+   * was an open vertical slot onto sunlit terrain. The skirt has to outlast
+   * the largest step between two neighbouring peaks; deeper costs nothing but
+   * six quads, and anything that hangs below the neighbouring ground is
+   * buried by the depth test rather than drawn.
+   */
+  const SKIRT = 4;
+
+  /**
+   * Fog is scattered light, so it is not black.
+   *
+   * The unseen layer was `#05070a`, lightness 0.03. That is not weather, it is
+   * a hole cut in the world, and it is the same mistake section 41 already
+   * corrected once for the atmosphere: "the old colour was a mid blue at
+   * lightness 0.44, which darkened the distance instead of washing it out, and
+   * dark distance reads as a storm rather than as depth".
+   *
+   * ⚠️ Not taken all the way to the sky's own pale haze, deliberately, and the
+   * first attempt at this proved the point. Real fog at this hour would be
+   * brighter than the ground, and the unexplored region is most of the board:
+   * at lightness 0.20 the sheet became the brightest thing on screen and the
+   * explored island was lost inside it, which is a different failure from the
+   * black one but no more readable. Distance is left to the scene's own
+   * `FogExp2`, which these unlit materials already respect, and which pulls
+   * the far field towards the sky on its own without help here.
+   *
+   * So: several times lighter than the void it replaces, still clearly darker
+   * than land the player has actually uncovered.
+   */
+  const UNSEEN = '#171f29';
+  const REMEMBERED = '#141d28';
+
+  /** Roughly one cloud feature per fifteen hexes. */
+  const MOTTLE_SCALE = 0.07;
+  /** Peak-to-peak brightness swing across the sheet. */
+  const MOTTLE_STRENGTH = 0.22;
+  /** How much darker the bottom of a skirt is than its lid. */
+  const SKIRT_SHADE = 0.5;
+
   const unseenMaterial = new MeshBasicMaterial({
-    color: new Color('#05070a'),
+    color: new Color(UNSEEN),
     transparent: false,
     depthWrite: true,
+    vertexColors: true,
+    // ⚠️ The skirt is a vertical wall seen from either side depending on which
+    // neighbour is taller. Rather than re-derive the winding that already cost
+    // a long hunt above, let both faces draw: this material is unlit, so
+    // double-siding costs no shading and changes no draw call.
+    side: DoubleSide,
   });
 
   const rememberedMaterial = new MeshBasicMaterial({
-    color: new Color('#0b1622'),
+    color: new Color(REMEMBERED),
     transparent: true,
-    opacity: 0.62,
+    opacity: 0.58,
     depthWrite: false,
+    vertexColors: true,
+    side: DoubleSide,
   });
+
+  /**
+   * Break the flat colour up so the sheet reads as a bank rather than a plate.
+   *
+   * Sampled on world XZ, so neighbouring lids agree wherever they share a
+   * corner and the mottling runs continuously across the whole layer instead
+   * of stopping at every hex. The vertical term darkens the skirt towards its
+   * base, which is the only depth cue an unlit material can carry.
+   */
+  function mottle(geometry: BufferGeometry): void {
+    const position = geometry.getAttribute('position');
+    let top = -Infinity;
+    for (let i = 0; i < position.count; i += 1) {
+      top = Math.max(top, position.getY(i));
+    }
+
+    const shades = new Float32Array(position.count * 3);
+    for (let i = 0; i < position.count; i += 1) {
+      const n = fbm2(
+        position.getX(i) * MOTTLE_SCALE,
+        position.getZ(i) * MOTTLE_SCALE,
+        { octaves: 3 },
+      );
+      const depth = SKIRT > 0 ? Math.min(1, (top - position.getY(i)) / SKIRT) : 0;
+      const shade = (1 + (n - 0.5) * MOTTLE_STRENGTH) * (1 - depth * SKIRT_SHADE);
+      shades[i * 3] = shade;
+      shades[i * 3 + 1] = shade;
+      shades[i * 3 + 2] = shade;
+    }
+    geometry.setAttribute('color', new BufferAttribute(shades, 3));
+  }
 
   let meshes: Mesh[] = [];
   let geometries: BufferGeometry[] = [];
@@ -75,7 +160,8 @@ export function createFog(
     | { mesh: Mesh; geometry: BufferGeometry }
     | undefined {
     if (hexes.length === 0) return undefined;
-    const patches = hexes.map((hex) => hexLid(hex, terrain, LIFT));
+    const patches = hexes.map((hex) => hexLid(hex, terrain, LIFT, SKIRT));
+    for (const patch of patches) mottle(patch);
     const merged = mergeGeometries(patches, false);
     for (const patch of patches) patch.dispose();
     if (!merged) return undefined;
