@@ -37,6 +37,15 @@ media/
 # make it impossible to tell them apart later.
 tools/coach/banks/
 
+# ⚠️ Carries a `publishableKey`, and the deployment's own identity.
+#
+# Section 13 also wants it kept LOCALLY rather than deleted: it is what holds
+# the hosting URL stable across deploys, and a changed host breaks sign-in with
+# AADSTS50011. So: never committed, never thrown away.
+rayfin/.deployments.json
+rayfin/.env
+rayfin/.env.local
+
 # ⚠️ The internal IP and terms assessment. Deliberately not published.
 #
 # A public repository should state its position, which the README does, not

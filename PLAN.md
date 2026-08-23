@@ -285,6 +285,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D382–D384 | Build the shaders before the film, not during it | Recorded in full in section 49 |
 | D385–D389 | The fog was a hole in the world | Recorded in full in section 50 |
 | D390–D397 | The gate that was only ever described | Recorded in full in section 51 |
+| D398–D403 | Deployed, and what the platform decided for us | Recorded in full in section 52 |
 
 ### 28. Cheat codes
 
@@ -4493,7 +4494,7 @@ further things that were described but not true.
 | ID | Decision |
 |---|---|
 | D390 | **The gate exists and runs in `npm run verify`.** Eleven shape-matching classes: bare GUID, Fabric SQL endpoint, `*.pbidedicated.windows.net`, `*.openai.azure.com`, `*.vault.azure.net`, `*.webapp.fabricapps.net`, local profile path, corporate UPN, key or token shapes, inline credential, and a third-party name class that **warns** (D47) and applies only to the marketing surface (D382). Scans `git ls-files`, never the working tree |
-| D391 | ⚠️ **The gate self-tests before it scans, because it passed on its first run.** A clean first result is indistinguishable from patterns that match nothing at all. Every rule now carries a sample it must catch, and the classes with a false-positive history carry samples they must not: `Civilian`, `amplitude`, "the old world", a hex colour, a version string. 11 caught, 7 correctly ignored. Proven end to end by injecting a GUID and a `C:\Users\...` path into a tracked file, watching it exit 1, and reverting |
+| D391 | ⚠️ **The gate self-tests before it scans, because it passed on its first run.** A clean first result is indistinguishable from patterns that match nothing at all. Every rule now carries a sample it must catch, and the classes with a false-positive history carry samples they must not: `Civilian`, `amplitude`, "the old world", a hex colour, a version string. 11 caught, 7 correctly ignored. Proven end to end by injecting a GUID and a local profile path into a tracked file, watching it exit 1, and reverting |
 | D392 | Printed output is ASCII and stdout is forced to UTF-8. The first end-to-end run died with `UnicodeEncodeError` the moment it was piped, because a Windows console hands Python a cp1252 stdout and the last line ended in an emoji. **A gate that dies when somebody pipes it fails inside `npm run verify` for a reason unrelated to what it checks.** Emoji stay in the comments |
 | D393 | ⚠️ **`npm run serve:standalone` was broken, and it is the command the README gives a player to start the game.** It passed `--root app`, which `vite preview` does not accept; root is positional. It exited instantly. The README claim check had verified the script *existed*: **presence is not function**, and every other check this session ran through Vite's dev pipeline, which is not what anybody downloads |
 | D394 | A committed smoke test, `tools/smoke/play-bundle.mjs`, run with `npm run smoke` against the production preview. It boots the bundle, starts a game, and asserts a seed, cities, explored tiles, geometries, shader programs and a turn that advances. `playwright-core` only, launched on an installed Edge or Chrome, so no browser download and it stays out of `verify` |
@@ -4534,6 +4535,55 @@ without `app/public/audio` for the public copy.
 - The hosting choice itself, and with it the submission URL.
 - `npm run smoke` is not in `verify`: it needs a built bundle and a running
   server, so it is a release step rather than a commit step.
+
+---
+
+## 52. Deployed, and what the platform decided for us
+
+Section 13 has described a deployment since the first week and D397 left it
+undone. It exists now, and getting there settled a question the project had
+only been guessing at.
+
+| ID | Decision |
+|---|---|
+| D398 | **Deployed to a dedicated workspace on `prdsweden`**, as D31 asked. ⚠️ Neither existed: there was no workspace by that name and no rayfin scaffold at all. Section 13 also has the capacity wrong, it is **F32**, not F8 |
+| D399 | ⚠️ **A Fabric App cannot be anonymous.** `auth.enabled: false` is the honest setting for this game, which has no account, no server state and no data call, and the deploy created the item and then failed: `400 Bad Request — Auth Settings need to be enabled`. **The platform decides this, not the design.** Auth is on |
+| D400 | ⚠️ **But the static content serves without a sign-in redirect.** Measured, not assumed: the hosting URL returns 200 and a signed-out browser loads the title, the canvas, the harness and a playable game. The auth requirement gates the *backend* services, not the static bundle. This deployment is therefore usable as a link, which is the opposite of what D397 predicted |
+| D401 | **`rayfin/.deployments.json` and `rayfin/.env` are gitignored before the first deploy, not after.** Section 12 warned that the first carries a `publishableKey`. Ignored ahead of time so the key never had a commit to be scrubbed out of |
+| D402 | ⚠️ **`rayfin up` rewrites `rayfin.yml` and deletes every comment in it.** The rationale written into that file was gone the moment it deployed. Config commentary has to live here instead, and the file is treated as generated |
+| D403 | ⚠️ **It also appends the tenant hosting URL to `allowedRedirectUris`.** Committed as-is that writes one tenant's app address into every clone, which is exactly what the `fabric-app-host` class in D390 exists to stop. The committed file keeps local origins only; rayfin re-adds the host at deploy time and it is stripped before commit |
+
+### The gate earned its place on day one
+
+D390's checker found two things in this change before they were committed, which
+is the only kind of evidence that a gate is worth having:
+
+- The workspace GUID and the hosting URL, had either been left in the config.
+- ⚠️ **A finding in the plan itself.** Section 51 quoted a literal `C:\Users\`
+  path while explaining the rule against them, and the `local-user-path` class
+  fired on the documentation of its own rule. Reworded. A gate that catches its
+  author writing about the gate is working correctly.
+
+### Verified on the deployed URL, not just locally
+
+Driven with Playwright against the hosted app: a game starts, and it reports the
+same numbers as the local production bundle. 83 geometries, 33 textures, 48
+shader programs, 7 cities, 61 explored tiles, ~4 ms frames, and a turn that
+advances 1 to 2. Identical counts are the evidence that the deployment is
+serving the bundle that was tested, rather than an older one.
+
+### Left open
+
+- ⚠️ **The bundle still ships 15.6 MB of static content**, most of it the three
+  generated audio files. `.gitignore` keeps them out of the repository on
+  licence grounds; the deployment is a distribution and is not covered by that.
+  Decide it against `MUSIC-LICENSING.md`, or build the public copy without
+  `app/public/audio`.
+- The capacity now hosts a live app, so it is effectively 24/7 for the contest
+  window. Section 13 predicted this; it is now real and it has a cost.
+- The submission URL is decided by whether the anonymous access in D400 is
+  intended platform behaviour or an accident of configuration. Worth confirming
+  from a browser with no Entra session at all before relying on it.
 
 ---
 
