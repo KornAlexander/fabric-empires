@@ -293,6 +293,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D429–D433 | The wall you see is the wall you built | Recorded in full in section 57 |
 | D434–D437 | The walls were a locked door, and every test agreed they were fine | Recorded in full in section 58 |
 | D438–D441 | Tactics: going at a wall is a decision | Recorded in full in section 59 |
+| D442–D444 | Opening the door that had never been opened | Recorded in full in section 60 |
 
 ### 28. Cheat codes
 
@@ -4942,6 +4943,51 @@ have taken many turns and many answered questions.
 That is the same "tested but never seen" gap this plan has complained about
 twice, and it is open rather than closed. The cheapest way to close it is a
 harness call that plants a walled enemy city beside a player unit.
+
+✅ **Closed in section 60**, by exactly that.
+
+---
+
+## 60. Opening the door that had never been opened
+
+Section 59 shipped assault tactics with the dialog never once opened in a
+browser, and said so. This closes that, using the fix that section named.
+
+| ID | Decision |
+|---|---|
+| D442 | **`plantWalledCity(unitId, level)` joins the harness**, beside `spawnEnemyAdjacent`, which exists for the same reason: the combat choreography could not be exercised without marching across the continent first. Tactics only appear against a walled city, and in a real game the nearest enemy town is a dozen hexes away and stays unwalled until the AI has finished its army. **A feature that cannot be reached cannot be checked** |
+| D443 | ⚠️ **The first proof was not proof.** Choosing `sap` gave wall 120 → 110, town untouched, attacker unharmed, and that matches the engine exactly. It also matches `batter` exactly, because at the damage floor those two are identical (59). It demonstrated that *a* tactic was applied, not that the *choice* mattered. Escalade is the one that visibly differs, so escalade is what had to be driven |
+| D444 | **The choice changes the outcome in the deployed game**, measured one turn apart with the same unit against the same wall: sap took 10 off the masonry and nothing else; escalade took 2 off the wall, **8 off the town**, and **killed the attacker outright**. A Profiler escalading a level-three wall is suicide, which is the trade the profile describes |
+
+### What the browser showed
+
+```
+Bastion: Wie gehst du hinein?
+Mauern der Stufe 3 stehen noch, und die fallen nicht durch Begeisterung.
+
+  Die Mauern berennen      Alles gegen die Mauer. Langsam, und es kostet dich nichts.
+  Ersteigen                Über die Brüstung. Der größte Teil des Schlags trifft die
+                           Stadt selbst, und die Verteidiger lassen dich dafür bezahlen.
+  Die Mauern untergraben   Darunter hindurch. Der schnellste Weg durch Mauerwerk, und
+                           fast nutzlos, sobald die Bresche offen ist.
+```
+
+| tactic | wall | town | attacker |
+|---|---|---|---|
+| Sap | 120 → 110 | untouched | unharmed |
+| Escalade | 110 → 108 | **200 → 192** | **died** |
+
+### The pattern this closes
+
+Four sections in a row found a rule that was correct in the engine and wrong,
+absent or invisible where it actually runs: `absorbWithWalls` called by nothing
+(55), walls drawn from the wrong field (57), a wall nothing could break (58),
+and a dialog nobody had opened (59). Each was proven by tests that were
+themselves correct.
+
+**The engine is not the game.** A rule needs reaching where it ships, and if
+reaching it is hard, that is a reason to build the affordance rather than a
+reason to skip the check.
 
 ---
 

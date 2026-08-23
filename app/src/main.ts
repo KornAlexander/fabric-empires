@@ -54,6 +54,7 @@ import {
   previewAttack,
   ASSAULT_TACTICS,
   DEFAULT_TACTIC,
+  MAX_WALL_LEVEL,
   type AssaultTactic,
   reachable,
   researchCost,
@@ -3213,6 +3214,7 @@ declare global {
       showcase: (typeIds: string[], centre: Hex) => string[];
       quality: (level: 'high' | 'low') => void;
       spawnEnemyAdjacent: (unitId: string) => Hex | undefined;
+      plantWalledCity: (unitId: string, wallLevel?: number) => Hex | undefined;
       clickHex: (hex: Hex) => void;
       endTurn: () => Promise<void>;
     };
@@ -3619,6 +3621,56 @@ window.__fabricEmpires = {
         fortified: false,
       });
       state = { ...state, units, nextEntityId: state.nextEntityId + 1 };
+      refreshSelection();
+      dirty = true;
+      return hex;
+    }
+    return undefined;
+  },
+  plantWalledCity: (unitId: string, wallLevel = MAX_WALL_LEVEL) => {
+    /*
+     * Test affordance: a walled enemy city, next door.
+     *
+     * ⚠️ Added because the assault tactics could not be exercised at all. They
+     * only appear against a city that has walls, and in a real game the nearest
+     * enemy town is a dozen hexes away and unwalled until the AI has finished
+     * its army. Section 59 shipped the whole feature with the dialog never once
+     * opened in a browser, which is the third time this plan has recorded a
+     * rule that was proven in the engine and never seen where it runs.
+     */
+    const unit = state.units.get(unitId);
+    if (!unit) return undefined;
+    for (let d = 0; d < 6; d++) {
+      const hex = hexNeighbour(unit.hex, d);
+      const tile = state.map.tiles.get(hexKey(hex));
+      if (!tile || tile.terrain === 'onelake' || tile.terrain === 'semanticPeaks') continue;
+      if (unitAt(state, hex) || cityAt(state, hex)) continue;
+
+      const level = Math.max(0, Math.min(MAX_WALL_LEVEL, Math.round(wallLevel)));
+      const id = `test-fort-${state.nextEntityId}`;
+      const cities = new Map(state.cities);
+      cities.set(id, {
+        id,
+        factionId: ANTAGONIST_FACTION_ID,
+        hex,
+        name: 'Bastion',
+        kind: 'workspace',
+        hp: 200,
+        wallLevel: level,
+        wallHp: maxWallHp(level),
+        population: 3,
+        rank: 'siedlung',
+        growthStore: 0,
+        boundSkills: [],
+        unrest: 0,
+        ignoredReviews: 0,
+        reviewBonusUntilTurn: 0,
+        lastReviewTurn: -1,
+        productionProgress: 0,
+        lastRaidedTurn: -1,
+      });
+      state = { ...state, cities, nextEntityId: state.nextEntityId + 1 };
+      refreshCities();
       refreshSelection();
       dirty = true;
       return hex;
