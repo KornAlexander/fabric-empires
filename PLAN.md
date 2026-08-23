@@ -298,6 +298,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D449–D451 | A floor on effort, not on technique | Recorded in full in section 62 |
 | D452–D459 | A Pro subscription, and the backlog it unblocked | Recorded in full in section 63 |
 | D460–D467 | The soundtrack shipped, and the game could not hear it | Recorded in full in section 64 |
+| D468–D472 | Somebody finally played it to the end | Recorded in full in section 65 |
 
 ### 28. Cheat codes
 
@@ -5309,6 +5310,117 @@ corona.mp3                                             1750 KB       (playing)
 The ♪ button is present, which by D304 only happens when a track was actually
 found, and it offers to turn the sound *off*. The score is running on the
 public URL for the first time.
+
+---
+
+## 65. Somebody finally played it to the end
+
+Every rule in this game has been tested. Until today **nobody had ever
+finished a game**, which section 63.4 listed as the cheapest possible answer to
+a question nobody had asked out loud: can this thing actually be completed?
+
+It can. The Proctor sets 40 questions, scores them, and the Exam victory fires
+and renders. That is the headline and it is genuinely good news.
+
+The rest of this section is what the playthrough showed on the way past.
+
+### 65.1 The victory was hollow, and said so in numbers
+
+The first completed game in this project's history ended like this:
+
+```
+VICTORY   The Proctor is satisfied
+39 of 40 correct, 98 percent.
+1 TURNS        0/41 SKILLS        0 CITIES
+```
+
+⚠️ **Turn one. No cities. None of the forty-one skills researched.** Readiness
+is computed purely from question mastery, and the Proctor's only gate is
+readiness, so the entire empire, the map, the economy and the tech tree are
+optional. The premise of the game is that the tech tree *is* the exam, and the
+exam does not check whether you touched it.
+
+That is a design question rather than a defect, and it is left open
+deliberately. What is not left open is the next part.
+
+### 65.2 ⚠️ The debug harness is a cheat console that ships, and it was silent
+
+`studyAll` grants perfect mastery of all 41 topics. It is how any automated
+check reaches the endgame at all, and it is the reason that first run finished
+on turn one.
+
+The typed cheat console has always been honest about itself. `runCheat` writes
+every code into `state.cheatsUsed`, the end screen reads it, and the comment
+above it says a player is *"entirely welcome to use these, and equally entitled
+to be reminded that they did"*. The console's own help text goes further:
+
+> None of them can make you ready. Only answering does that.
+
+⚠️ **`studyAll` makes you ready, and recorded nothing.** So the harness offered
+a capability the cheat console deliberately refuses to offer, by a route that
+left no trace. And `window.__fabricEmpires` **ships on the public URL** — this
+whole playthrough was driven against the deployed game from devtools. Anyone
+could open the console, call `studyAll(6)`, sit the exam, and be handed a
+victory screen certifying that no help was used.
+
+Every harness call that grants something play cannot earn now records itself:
+`studyAll`, `grantCompute`, `expireReviews`, `setRank`, `spawnEnemyAdjacent`,
+`plantWalledCity`, `showcase`. Calls that merely automate ordinary play
+(`clickHex`, `endTurn`, `answerOpen`) are not grants and are deliberately left
+alone, and neither are the read-only ones.
+
+### 65.3 ⚠️ Then the disclosure lied, which was worse
+
+Wiring that up produced this, live:
+
+> This empire had help: harness:studyAll. **Your readiness figure did not, and
+> never does.**
+
+The second sentence is false. It was a constant, and it could safely be a
+constant for as long as the only things disclosed here were typed codes, none
+of which can touch readiness. The moment the harness started disclosing itself,
+the reassurance became a falsehood printed directly underneath a victory won by
+granting exactly the thing it denies.
+
+⚠️ **A disclosure that lies is worse than no disclosure at all**, because it is
+precisely the line a sceptical reader trusts at the moment they are checking.
+The sentence is now conditional on whether any entry actually reached readiness.
+
+### 65.4 The end screen had no tests at all
+
+There were none. The screen that announces how a game ended, including the one
+line on it that is a promise to the player, was never asserted on. There are now
+six, and the decisive one would have failed against yesterday's code: with
+`studyAll` present, the text must **not** contain "never does".
+
+⚠️ Open, and deliberately not fixed here: **the end screen is entirely in
+English inside a German interface.** The screenshot of the first victory reads
+`VICTORY / TURNS / SKILLS / CITIES / New empire` with German on every side of
+it. `endScreen.ts` imports no translator, and `i18n.ts` carries a stale key,
+`'Your readiness did not have help, and never does.'`, which no longer matches
+any string in the code. That is a real gap and a bigger change than this item.
+
+### 65.5 Decisions
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D468 | ⚠️ **The harness discloses its grants exactly as the cheat console does** | One rule for both doors. The console promises it cannot make you ready; the harness could, silently, on a public URL. The asymmetry was invisible because nothing ever finished a game to look at the end screen |
+| D469 | Automating ordinary play is not a cheat | `clickHex`, `endTurn` and `answerOpen` do what a player's hands do. Recording those would make the disclosure noise, and a disclosure that cries wolf is ignored |
+| D470 | ⚠️ **The reassurance is conditional, because it stopped being universally true** | It was correct for every typed code and became false for one harness call. Constants that encode a claim about behaviour have to be revisited when the behaviour widens, and nothing forces that but noticing |
+| D471 | The end screen gets tests, starting with the sentence that is a promise | Layout can be wrong and merely look bad. This line can be wrong and be believed |
+| D472 | The hollow victory is recorded, not patched | Winning on turn one with no empire is a real question about what readiness should require, and answering it by quietly adding a gate would be a design decision smuggled in as a bug fix |
+
+### 65.6 Verified where it ships
+
+1037 tests, 6 new, in 50 files. Then twice through the whole exam in the
+**deployed** game, 40 questions each:
+
+```
+run 1   39 of 40, 98 percent    disclosed: nothing        <- the bug
+run 2   40 of 40, 100 percent   disclosed: harness:studyAll,
+                                "That includes the readiness figure,
+                                 which was granted rather than earned."
+```
 
 ---
 

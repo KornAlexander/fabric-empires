@@ -92,6 +92,23 @@ const TITLES: Record<EndOutcome['kind'], string> = {
   exam: 'The Proctor is satisfied',
 };
 
+/**
+ * The kinds of help that reached the readiness figure itself.
+ *
+ * ⚠️ This screen used to promise, unconditionally, that "your readiness figure
+ * did not [have help], and never does". That was true for every typed cheat
+ * code, which is exactly why it could be a constant: the console refuses to
+ * touch readiness and says so in its own help text.
+ *
+ * It stopped being true when the debug harness started disclosing itself here.
+ * `studyAll` records perfect mastery of all 41 topics, and readiness is
+ * computed from mastery, so for that one entry the reassuring half of the
+ * sentence was a falsehood printed underneath a victory. A disclosure that
+ * lies is worse than no disclosure, because it is the thing a reader trusts
+ * precisely when they are checking.
+ */
+const READINESS_HELP = new Set<string>(['harness:studyAll', 'harness:expireReviews']);
+
 export function createEndScreen(onNewGame: () => void): EndScreen {
   const style = document.createElement('style');
   style.textContent = STYLE;
@@ -154,9 +171,12 @@ export function createEndScreen(onNewGame: () => void): EndScreen {
         cheats.hidden = used.length === 0;
         if (used.length > 0) {
           const unique = [...new Set(used)];
+          const touchedReadiness = unique.some((code) => READINESS_HELP.has(code));
           cheats.textContent =
             `This empire had help: ${unique.join(', ')}. ` +
-            'Your readiness figure did not, and never does.';
+            (touchedReadiness
+              ? 'That includes the readiness figure, which was granted rather than earned.'
+              : 'Your readiness figure did not, and never does.');
         }
       }
       root.dataset.open = 'true';

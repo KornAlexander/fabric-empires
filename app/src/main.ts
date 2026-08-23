@@ -374,6 +374,31 @@ function runCheat(raw: string): void {
 const cheats = createCheatConsole({ submit: runCheat });
 
 /**
+ * Disclose a harness call that granted something ordinary play cannot.
+ *
+ * ⚠️ The cheat console already promises, in its own help text, that "none of
+ * them can make you ready. Only answering does that." `studyAll` makes you
+ * ready. It grants full mastery of all 41 topics, and mastery is the only gate
+ * on the Proctor, so it is a straighter route to the Exam victory than any
+ * typed code offers.
+ *
+ * ⚠️ And the harness **ships on the public URL**. Anyone can open devtools,
+ * call `__fabricEmpires.studyAll(6)`, sit the exam and be handed a victory
+ * screen that says no cheats were used. This was found by doing exactly that:
+ * the first full playthrough this game has ever had finished on turn one with
+ * **0 of 41 skills and 0 cities**, and the end screen disclosed nothing.
+ *
+ * Recording it here keeps one rule for both doors. Harness calls that only
+ * automate ordinary play (`clickHex`, `endTurn`, `answerOpen`) are not grants
+ * and are deliberately not recorded, nor is anything read-only.
+ */
+function recordHarnessGrant(name: string): void {
+  const tag = `harness:${name}`;
+  if (state.cheatsUsed.includes(tag)) return;
+  state = recordCheat(state, tag);
+}
+
+/**
  * The Great Library.
  *
  * Reads fresh on every open rather than being kept in sync, because it is a
@@ -3307,6 +3332,7 @@ window.__fabricEmpires = {
    * reach the endgame at all.
    */
   studyAll: (times: number) => {
+    recordHarnessGrant('studyAll');
     for (let i = 0; i < times; i++) {
       for (const node of state.topics.nodes) mastery.record(node.id, 1, false);
     }
@@ -3352,6 +3378,7 @@ window.__fabricEmpires = {
   grantCompute: (amount: number) => {
     // Test affordance: skip the twenty turns of economy it would otherwise
     // take to fund a topic.
+    recordHarnessGrant('grantCompute');
     const factions = new Map(state.factions);
     const player = factions.get(PLAYER_FACTION_ID)!;
     factions.set(PLAYER_FACTION_ID, {
@@ -3412,6 +3439,7 @@ window.__fabricEmpires = {
    * would stop the test proving that the real wiring works.
    */
   expireReviews: () => {
+    recordHarnessGrant('expireReviews');
     const longAgo = Date.now() - 400 * DAY_MS;
     let touched = 0;
     for (const city of state.cities.values()) {
@@ -3553,6 +3581,7 @@ window.__fabricEmpires = {
    * in it would be a picture of a state the rules cannot produce.
    */
   setRank: (rank: string, population: number) => {
+    recordHarnessGrant('setRank');
     const city = [...state.cities.values()].find((c) => c.factionId === PLAYER_FACTION_ID);
     if (!city) return undefined;
     const cities = new Map(state.cities);
@@ -3573,6 +3602,7 @@ window.__fabricEmpires = {
    * things" is a question about a single frame.
    */
   showcase: (typeIds: string[], centre: Hex) => {
+    recordHarnessGrant('showcase');
     const units = new Map(state.units);
     for (const [id, u] of units) if (u.factionId === PLAYER_FACTION_ID) units.delete(id);
 
@@ -3602,6 +3632,7 @@ window.__fabricEmpires = {
   spawnEnemyAdjacent: (unitId: string) => {
     // Test affordance: put a hostile next door so the combat choreography
     // can be exercised without marching across the continent first.
+    recordHarnessGrant('spawnEnemyAdjacent');
     const unit = state.units.get(unitId);
     if (!unit) return undefined;
     for (let d = 0; d < 6; d++) {
@@ -3638,6 +3669,7 @@ window.__fabricEmpires = {
      * opened in a browser, which is the third time this plan has recorded a
      * rule that was proven in the engine and never seen where it runs.
      */
+    recordHarnessGrant('plantWalledCity');
     const unit = state.units.get(unitId);
     if (!unit) return undefined;
     for (let d = 0; d < 6; d++) {
