@@ -17,6 +17,7 @@ import {
   type Campaign,
 } from '@fabric-empires/learn';
 import { downloadSample, readGrid } from '../spreadsheet.js';
+import { bankAvailable, generateQuestions, saveBank } from '../questionShop.js';
 import { t } from '../i18n.js';
 
 export interface CoursePanel {
@@ -69,9 +70,94 @@ export function createCoursePanel(): CoursePanel {
   report.className = 'fe-course-report';
   root.append(report);
 
+  /*
+   * Writing questions for a topic nobody shipped.
+   *
+   * ⚠️ **Hidden until the host says it can.** The route only exists on the
+   * capacity edition, so on a static build this whole block is absent rather
+   * than present and broken, which is the same contract the coach chat and the
+   * anthem both keep.
+   */
+  const forge = document.createElement('div');
+  forge.className = 'fe-course-forge';
+  forge.hidden = true;
+
+  const forgeHeading = document.createElement('h4');
+  forgeHeading.textContent = t('Or write questions for a new topic');
+  const forgeBlurb = document.createElement('p');
+  forgeBlurb.className = 'fe-setup-detail';
+  forgeBlurb.textContent = t(
+    'A model drafts them and you read them before anything is kept. Check the answers: it can be confidently wrong.',
+  );
+
+  const topicInput = document.createElement('input');
+  topicInput.type = 'text';
+  topicInput.placeholder = t('A topic, for example: Delta Lake table maintenance');
+  topicInput.setAttribute('aria-label', t('Topic'));
+
+  const countInput = document.createElement('input');
+  countInput.type = 'number';
+  countInput.min = '1';
+  countInput.max = '20';
+  countInput.value = '8';
+  countInput.setAttribute('aria-label', t('How many questions'));
+
+  const write = document.createElement('button');
+  write.type = 'button';
+  write.textContent = t('Draft questions');
+  write.addEventListener('click', () => {
+    const topic = topicInput.value.trim();
+    if (!topic) {
+      say(t('Name a topic first.'), 'bad');
+      return;
+    }
+    write.disabled = true;
+    say(t('Writing questions about {topic}…', { topic }));
+    void generateQuestions(topic, Number(countInput.value) || 8)
+      .then((result) => {
+        write.disabled = false;
+        if (!result.ok) {
+          pending = undefined;
+          pendingGrid = undefined;
+          say(result.error ?? t('No questions could be written.'), 'bad');
+          return;
+        }
+        pendingGrid = result.grid;
+        pendingName = topic;
+        // ⚠️ The same preview an uploaded file gets. Generated rows are not
+        // trusted further than a spreadsheet is, and there is no second path
+        // into the bank that could be wrong in its own way.
+        pending = previewBank(result.grid);
+        showPreview(pending, topic);
+      })
+      .catch(() => {
+        write.disabled = false;
+        say(t('No questions could be written.'), 'bad');
+      });
+  });
+
+  const forgeRow = document.createElement('div');
+  forgeRow.className = 'fe-course-buttons';
+  forgeRow.append(topicInput, countInput, write);
+  forge.append(forgeHeading, forgeBlurb, forgeRow);
+  root.append(forge);
+
+  // Asked once, in the background. Nothing waits for it.
+  void bankAvailable().then((available) => {
+    forge.hidden = !available;
+  });
+
   const handlers = new Set<(campaign: Campaign) => void>();
   let pending: BankPreview | undefined;
   let pendingName = '';
+  /**
+   * The grid behind the current preview, when it came from the model.
+   *
+   * Kept so it can be saved to the host after it has been looked at. Undefined
+   * for an uploaded file, which already exists somewhere and does not need
+   * this host to keep a copy.
+   */
+  let pendingGrid: string[][] | undefined;
 
   function say(message: string, tone: 'good' | 'bad' | 'plain' = 'plain'): void {
     report.replaceChildren();
@@ -155,6 +241,36 @@ export function createCoursePanel(): CoursePanel {
       void apply(name);
     });
     report.append(use);
+
+    /*
+     * Keeping them.
+     *
+     * ⚠️ Offered only after the preview, and only for generated rows. This is
+     * the second half of "look, then decide": using them is this browser's
+     * business, saving them puts them in front of everybody else who opens
+     * the game on this host, and those are different decisions.
+     */
+    if (pendingGrid && pendingGrid.length > 1) {
+      const keep = document.createElement('button');
+      keep.type = 'button';
+      keep.className = 'fe-course-use';
+      keep.textContent = t('Save to the bank');
+      keep.addEventListener('click', () => {
+        const grid = pendingGrid;
+        if (!grid) return;
+        keep.disabled = true;
+        void saveBank(name, grid).then((result) => {
+          const line = document.createElement('div');
+          line.className = `fe-course-note ${result.ok ? 'good' : 'bad'}`;
+          line.textContent = result.ok
+            ? t('Saved {n} questions to this host.', { n: result.saved })
+            : (result.error ?? t('The bank could not be saved.'));
+          report.append(line);
+          keep.disabled = !result.ok ? false : true;
+        });
+      });
+      report.append(keep);
+    }
   }
 
   async function apply(name: string): Promise<void> {
@@ -178,6 +294,7 @@ export function createCoursePanel(): CoursePanel {
     const file = input.files?.[0];
     if (!file) return;
     pendingName = file.name;
+    pendingGrid = undefined;
     say(t('Reading {file}…', { file: file.name }));
     void readGrid(file)
       .then((grid) => {

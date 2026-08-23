@@ -31,6 +31,7 @@ function literalsPassedToT(): string[] {
     'ui/duoModal.ts',
     'ui/coursePanel.ts',
     'ui/coachPanel.ts',
+    'questionShop.ts',
     'intro.ts',
   ];
   const found = new Set<string>();

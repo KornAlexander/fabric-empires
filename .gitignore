@@ -27,3 +27,12 @@ media/
 # The answer obfuscation protects the shipped bundle, which is what a player
 # would inspect. It cannot protect a public repo, and pretending otherwise
 # would cost the ability to maintain the bank for no real gain.
+
+# Generated question banks written by the capacity host.
+#
+# Not committed, deliberately. These are drafted by a model and reviewed by
+# whoever happened to be sitting there, so they are somebody's working notes
+# rather than content this project stands behind. The shipped DP-600 bank is
+# checked by tests; this is not, and mixing the two in one repository would
+# make it impossible to tell them apart later.
+tools/coach/banks/

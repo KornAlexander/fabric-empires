@@ -79,8 +79,25 @@ committed here.
 Everything in the trailer other than the music is the game rendering itself
 live: no shot was staged, composited or drawn by hand.
 
-## Third-party software
+## Generated questions
 
+The capacity edition can ask a model to draft questions for a topic nobody
+shipped, and save them on the host that is running the game.
+
+- **Nothing generated is in this repository.** Saved banks live in
+  `tools/coach/banks/`, which is ignored by git. The DP-600 bank that does ship
+  was written by hand and is checked by tests; a drafted one is not, and the
+  two must not become hard to tell apart.
+- **Drafts are reviewed before they count.** Generated rows go through exactly
+  the same preview as an uploaded spreadsheet, and nothing enters a course
+  until somebody presses the button.
+- ⚠️ **A generated question can be confidently wrong.** This is a certification
+  study aid, and a wrong answer that looks authoritative is worse than no
+  question at all, because it is revised and carried into the exam. Every file
+  written records `"source": "generated"` and the model that wrote it, so that
+  is still knowable a month later. Check the answers.
+
+## Third-party software
 Dependencies and their licences are declared in `package.json` and the lockfile.
 The notable one is [three.js](https://threejs.org) (MIT), which does all of the
 rendering.

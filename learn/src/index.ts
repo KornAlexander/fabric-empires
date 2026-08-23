@@ -10,6 +10,7 @@ export * from './exam.js';
 export * from './klasse1.js';
 export * from './campaign.js';
 export * from './importBank.js';
+export * from './generate.js';
 export * from './coach.js';
 export * from './Dp600ChallengeProvider.js';
 

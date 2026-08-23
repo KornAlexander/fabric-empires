@@ -280,6 +280,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D347–D352 | The empire studies something, whether or not you told it to | Recorded in full in section 44.5 |
 | D353–D359 | The opening was singing over itself | Recorded in full in section 45.5 |
 | D360–D366 | Somewhere to build | Recorded in full in section 46.6 |
+| D367–D375 | Questions for a topic nobody shipped | Recorded in full in section 47.5 |
 
 ### 28. Cheat codes
 
@@ -4189,6 +4190,130 @@ does not work" until you go and read what you are measuring.
   sitting exactly at subsistence stops chasing food. That is the existing rule
   and is left alone, but the advice now makes its consequences visible, which
   may be the first time anyone notices it.
+
+---
+
+### 47. Questions for a topic nobody shipped
+
+Asked for: let the Foundry integration write questions for a completely new
+topic, and save them back to a database.
+
+#### 47.1 ⚠️ The generated path has no validation of its own
+
+The output of the model is a **spreadsheet**, not a question bank. It comes
+back as a plain grid in exactly the shape `previewBank` already reads, so
+generated rows go through the same header check, the same per-row validation,
+the same preview screen and the same answer hashing as a file somebody
+uploaded.
+
+That is the whole design, and it is worth stating as a rule: **there is no
+second path into the question bank, so there is no second path that can be
+wrong.** The alternative, a bespoke validator for generated content, would have
+been a second set of edge cases nobody exercises.
+
+#### 47.2 ⚠️ A confidently wrong question is worse than no question
+
+This is a certification study aid. A wrong answer that looks authoritative gets
+revised, believed and carried into the exam room, which is a worse outcome than
+the topic being missing.
+
+So the whole feature is built as a **draft**:
+
+- The route returns rows and saves nothing.
+- They land in the same preview an upload gets, and nothing joins a course
+  until somebody presses the button.
+- Generated courses never mix into the shipped DP-600 bank; they are separate
+  campaigns.
+- Every saved file records `"source": "generated"` and the model that wrote it,
+  so it is still knowable a month later.
+- The panel says so in as many words: *it can be confidently wrong.*
+
+The system prompt is mostly about being wrong rather than being interesting,
+and one line matters more than the rest:
+
+> If you do not know the subject well enough to be sure an answer is correct,
+> return fewer questions. Returning three good ones is a better answer than ten
+> you are guessing at.
+
+There is a test asserting that line is still in the prompt.
+
+#### 47.3 The database is a directory of JSON files
+
+⚠️ **A decision, not a shortcut.** The thematically perfect answer for this
+project is a Fabric Lakehouse table, and it is the wrong one: it needs a
+workspace, a table and a second set of credentials, and it would make the
+reference host unrunnable for anybody without a capacity. A directory runs
+wherever Node runs, survives a restart, and is shared by every browser pointed
+at that host, which is the whole of what "saved to a database" has to mean
+here. `FE_BANK_DIR` overrides it, because the one thing a container needs is
+for this to sit on a mounted volume rather than inside the image.
+
+Four routes, and the split matters:
+
+| | |
+| --- | --- |
+| `POST /api/questions` | Draft. Needs Foundry. Saves nothing |
+| `GET /api/bank` | The shelf, and the probe |
+| `POST /api/bank` | Keep a reviewed grid |
+| `GET /api/bank/:slug` | Read one back, so a second browser can play what a first wrote |
+
+⚠️ Reading the shelf deliberately **does not require a model**. A host with
+storage and no deployment can still serve what was written earlier; only
+drafting needs Foundry.
+
+#### 47.4 ⚠️ The topic becomes a path on somebody's machine
+
+The one genuinely dangerous part. The topic is typed by whoever is playing and
+ends up as a file name on the host.
+
+`bankSlug` drops anything outside `a-z0-9-` rather than escaping it, because no
+legitimate topic needs a slash and "reject what is not obviously safe" is the
+only version of this that is easy to be sure about. The write path is then
+prefix-checked against the bank directory anyway, on the principle that the
+cost of being wrong here is writing wherever the caller likes.
+
+Driven end to end against a stub model: `POST` with a topic of
+`../../../../pwned` wrote `pwned.json` **inside** the bank directory, and
+`GET /api/bank/../../package` answered 404.
+
+#### 47.5 Decisions
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D367 | ⚠️ **Generated rows are a spreadsheet, not a bank** | They reuse the importer's header check, validation, preview and hashing. One path into the bank means one path that can be wrong |
+| D368 | ⚠️ **Nothing is saved without being looked at** | A wrong answer in a certification aid is revised and taken into the exam. The draft is shown before it counts |
+| D369 | The prompt tells the model to return fewer rather than guess | The single most important line in it, and it is asserted by a test |
+| D370 | ⚠️ **A directory of JSON files is the database** | A Lakehouse table would be thematically perfect and would make the reference host unrunnable without a capacity. This runs anywhere Node runs |
+| D371 | Reading the bank does not need a model | Questions saved yesterday are still readable on a host with no deployment. Only writing new ones needs Foundry |
+| D372 | ⚠️ **The slug drops unsafe characters rather than escaping them** | The topic is user input that becomes a path. Rejecting everything not obviously safe is the only version that is easy to be sure about |
+| D373 | Saved files record their source and model | So that a file found later can still be told apart from the hand-written bank |
+| D374 | Generated banks are gitignored | They are somebody's working notes, drafted by a model. The shipped bank is checked by tests; mixing them would make the two impossible to distinguish |
+| D375 | The block is hidden when the route is absent | Same contract as the coach chat and the anthem: absent rather than present and broken |
+
+#### 47.6 Verified
+
+- 962 tests, 19 new. They cover the two things worth covering: reading rows out
+  of whatever the model actually said, including fenced JSON with an apology in
+  front of it, and turning a typed topic into a safe file name.
+- The real host driven against a stand-in for Foundry. What left the process
+  was checked, not assumed: the correct URL and api-version, credentials
+  present, JSON mode on, the safety line in the system prompt, the topic in the
+  user prompt. The file landed with `source: generated`, was listed, and was
+  read back.
+- ⚠️ The traversal attempt is part of that run rather than a separate exercise,
+  because a path check nobody executes is a comment.
+
+#### 47.7 Open
+
+- Nothing merges banks. Drafting the same topic twice overwrites the earlier
+  file, which is the least surprising behaviour but not the most useful one.
+- The saved shelf is not offered in the interface yet. The route to read one
+  back exists and is tested; nothing calls it, so a bank saved on a host is
+  currently reachable only by drafting again or by URL.
+- No model has actually written a question here. Everything above is against a
+  stub that speaks the same shape, exactly as section 38 left the coach.
+- ⚠️ Nothing rate-limits drafting. On a public host that is somebody else's
+  Foundry bill.
 
 ---
 

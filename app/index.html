@@ -347,6 +347,17 @@
       .fe-course-issues b { display: block; margin-bottom: 3px; color: var(--text); font-size: 11px; }
       .fe-course-use { font: inherit; font-size: 12px; margin-top: 8px; padding: 7px 13px; border-radius: 6px; border: 1px solid #3f7a4b; background: #24462c; color: #d8f0dc; cursor: pointer; }
       .fe-course-use:hover { background: #2c5636; }
+      .fe-course-use + .fe-course-use { margin-left: 8px; }
+      /*
+        Writing questions for a new topic. Separated by a rule rather than a
+        heading weight, because it is a different kind of thing from uploading
+        a file, not a smaller one.
+      */
+      .fe-course-forge { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+      .fe-course-forge h4 { margin: 0 0 4px; font-size: 13px; font-weight: 600; }
+      .fe-course-forge input[type="text"] { flex: 1 1 220px; min-width: 160px; }
+      .fe-course-forge input[type="number"] { width: 62px; }
+      .fe-course-forge input { font: inherit; font-size: 12px; padding: 6px 9px; border-radius: 6px; border: 1px solid var(--border); background: #101822; color: var(--text); }
 
       /* The study coach, inside the Great Library. */
       .fe-coach { margin: 12px 0 16px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; background: rgba(255,255,255,0.02); }
