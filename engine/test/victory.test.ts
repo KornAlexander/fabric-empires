@@ -34,7 +34,7 @@ const allTopicsKnown = (state: GameState): GameState => ({
  * Wipe a faction's settlements.
  *
  * ⚠ Needed because every antagonist now holds a village. Killing their units
- * no longer removes them from the map, which is the entire point: Domination
+ * no longer removes them from the map, which is the entire point: Conquest
  * used to be won by hunting fourteen wandering raiders, and is now won by
  * taking or burning seven places.
  */
@@ -91,7 +91,7 @@ describe('defeat', () => {
   });
 });
 
-describe('domination', () => {
+describe('conquest', () => {
   it('is driving every rival off the map', () => {
     // Every rival, not just the nearest one. There are seven.
     let state = createGameState('FABRIC');
@@ -100,7 +100,7 @@ describe('domination', () => {
         state = withoutCitiesOf(withoutUnitsOf(state, id), id);
       }
     }
-    expect(checkOutcome(state, PLAYER_FACTION_ID)?.kind).toBe('domination');
+    expect(checkOutcome(state, PLAYER_FACTION_ID)?.kind).toBe('conquest');
   });
 
   it('is not declared while a rival still holds a village', () => {
@@ -143,10 +143,10 @@ describe('domination', () => {
   });
 });
 
-describe('science', () => {
+describe('mastery', () => {
   it('is researching the whole tree', () => {
     const state = allTopicsKnown(createGameState('FABRIC'));
-    expect(checkOutcome(state, PLAYER_FACTION_ID)?.kind).toBe('science');
+    expect(checkOutcome(state, PLAYER_FACTION_ID)?.kind).toBe('mastery');
   });
 
   it('is not researching most of it', () => {

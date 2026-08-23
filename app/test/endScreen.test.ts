@@ -41,6 +41,40 @@ const disclosure = (cheats: readonly string[]): string | undefined => {
   return el.textContent ?? undefined;
 };
 
+/** The headline shown for one kind of ending. */
+const titleFor = (kind: 'defeat' | 'conquest' | 'mastery' | 'exam'): string => {
+  document.body.innerHTML = '';
+  const screen = createEndScreen(() => {});
+  screen.show({ kind, summary: 'x' }, STATS([]));
+  return document.querySelector<HTMLElement>('[data-f="title"]')?.textContent ?? '';
+};
+
+describe('the victory titles', () => {
+  it('gives every ending a headline', () => {
+    for (const kind of ['defeat', 'conquest', 'mastery', 'exam'] as const) {
+      expect(titleFor(kind)).not.toBe('');
+    }
+  });
+
+  /*
+   * ⚠️ This is an IP decision with a test attached, which is unusual and
+   * deliberate.
+   *
+   * The end screen used to title a conquest win with the bare genre noun. The
+   * IP assessment had recorded the overlap but filed it as "internal
+   * identifiers, not player-facing branding", which was simply not true: the
+   * word was the largest text on the screen at the moment somebody would take
+   * a screenshot. A rename that only touched the union would have left it
+   * there. Renames get reverted by autocomplete; this makes that visible.
+   */
+  it('⚠️ does not put the two genre nouns on the screen', () => {
+    for (const kind of ['defeat', 'conquest', 'mastery', 'exam'] as const) {
+      expect(titleFor(kind).toLowerCase()).not.toContain('domination');
+      expect(titleFor(kind).toLowerCase()).not.toContain('science');
+    }
+  });
+});
+
 describe('the cheat disclosure', () => {
   it('says nothing at all when the empire had no help', () => {
     expect(disclosure([])).toBeUndefined();

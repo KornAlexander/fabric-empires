@@ -205,7 +205,7 @@ describe('how many rivals, and which', () => {
   });
 
   it('never returns an empty roster', () => {
-    // A game with no rivals has no Domination ending and nobody to test you.
+    // A game with no rivals has no Conquest ending and nobody to test you.
     expect(rosterFor(ANTAGONISTS, 'everything', 0).length).toBeGreaterThan(0);
     expect(rosterFor(ANTAGONISTS, 'everything', -3).length).toBeGreaterThan(0);
   });

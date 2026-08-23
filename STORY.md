@@ -381,10 +381,10 @@ does not count.
 
 There are three ways the game can end:
 
-- **Domination** — every rival driven off the map. You beat all seven
+- **Conquest**: every rival driven off the map. You beat all seven
   misconceptions.
-- **Science** — the whole tree known. You learned everything.
-- **The Exam** — you sat the paper and passed. This is the only victory the
+- **Mastery**: the whole tree known. You learned everything.
+- **The Exam**: you sat the paper and passed. This is the only victory the
   engine cannot compute, because it requires knowing what DP-600 *is*, and the
   engine is deliberately forbidden from knowing that.
 

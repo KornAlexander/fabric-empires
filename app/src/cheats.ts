@@ -235,7 +235,7 @@ export const CHEATS: readonly Cheat[] = Object.freeze([
       return {
         ok: removed > 0,
         state: removed > 0 ? { ...state, units } : undefined,
-        // Villages are deliberately spared: Domination still has to be earned
+        // Villages are deliberately spared: Conquest still has to be earned
         // by walking in and taking them, which is where the questions are.
         message:
           removed > 0

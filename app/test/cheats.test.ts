@@ -139,7 +139,7 @@ describe('the war code', () => {
 
     expect(survivors).toHaveLength(0);
     expect(unitsOf(out.state!, PLAYER_FACTION_ID).length).toBeGreaterThan(0);
-    // Domination still has to be walked into, which is where the questions are.
+    // Conquest still has to be walked into, which is where the questions are.
     expect([...out.state!.cities.values()]).toHaveLength(villagesBefore);
   });
 });

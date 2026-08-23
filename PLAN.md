@@ -299,6 +299,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D452–D459 | A Pro subscription, and the backlog it unblocked | Recorded in full in section 63 |
 | D460–D467 | The soundtrack shipped, and the game could not hear it | Recorded in full in section 64 |
 | D468–D472 | Somebody finally played it to the end | Recorded in full in section 65 |
+| D473–D477 | Two words, and the assessment that looked in the wrong place | Recorded in full in section 66 |
 
 ### 28. Cheat codes
 
@@ -5420,6 +5421,70 @@ run 1   39 of 40, 98 percent    disclosed: nothing        <- the bug
 run 2   40 of 40, 100 percent   disclosed: harness:studyAll,
                                 "That includes the readiness figure,
                                  which was granted rather than earned."
+```
+
+---
+
+## 66. Two words, and the assessment that looked in the wrong place
+
+Phase C of the backlog: rename the victory kinds for IP distance. Half an
+hour's work, and it found that the document recommending it had checked the
+wrong surface.
+
+### 66.1 The rename
+
+`OutcomeKind` was `'defeat' | 'domination' | 'science'`. Both are ordinary
+descriptive English used across the whole genre, and both are also the two
+words a reader recognises fastest from one particular series. It is now
+`'defeat' | 'conquest' | 'mastery'`.
+
+⚠️ Nothing persists an outcome, so there was **no save migration**, which is
+what made this cheap enough to do without argument. `tsc -b` found every typed
+reference and the test suite found the two string assertions.
+
+### 66.2 ⚠️ "Player-facing text already avoids both words" was false
+
+IP-ASSESSMENT.md filed this as *"internal identifiers, not player-facing
+branding"*, and its action item ended with the reassurance above. Both
+statements were wrong, and in the same way:
+
+| where | what it said |
+| --- | --- |
+| `endScreen.ts` | `domination: 'Domination'` as the **victory title** |
+| `STORY.md` | "**Domination** and **Science**" as the names of two of the three endings |
+
+The word was the largest text on the screen at exactly the moment a player
+would take a screenshot, and it was in the document written to explain the game
+to other people. The assessment had checked the **README**, found it clean, and
+generalised from one file to "player-facing text".
+
+⚠️ **A rename of the union alone would have left every quotable instance in
+place** and closed the item with the problem untouched. The identifier was the
+smaller half.
+
+The title is now "The region is yours", which is the second sentence of the
+outcome's own summary and says the same thing without borrowing a noun.
+
+### 66.3 Decisions
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D473 | `'domination'` and `'science'` become `'conquest'` and `'mastery'` | Descriptive, unchanged in meaning, and no longer the two words most associated with one franchise. Free, because outcomes are never serialised |
+| D474 | ⚠️ **The displayed title changes too, and mattered more** | The union is read by developers; the title is read by everyone, and is what a screenshot carries. Renaming only the code would have been motion without effect |
+| D475 | Internal prose is renamed with the code | Seven comments still called the mechanic Domination. Half-renamed vocabulary costs the next reader more than it saved |
+| D476 | ⚠️ **An IP decision gets a test** | Renames are exactly what an autocomplete quietly undoes, and this one is invisible until somebody reaches an ending. The end screen now asserts that neither noun appears in any title |
+| D477 | The assessment is corrected in place, wrong claim and all | Deleting the mistaken sentence would lose the actual lesson, which is that checking one file and saying "player-facing text" is a generalisation, not a check |
+
+### 66.4 Verified where it ships
+
+1039 tests, 2 new. Then the **deployed** JavaScript bundle, 1,231,360
+characters, searched directly:
+
+```
+Domination             absent
+domination             absent
+The region is yours    PRESENT
+Every skill mastered   PRESENT
 ```
 
 ---

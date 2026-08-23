@@ -87,8 +87,9 @@ export interface EndScreen {
 
 const TITLES: Record<EndOutcome['kind'], string> = {
   defeat: 'Your empire has fallen',
-  domination: 'Domination',
-  science: 'Every skill mastered',
+  // ⚠️ Not the bare genre word. This is the line a screenshot quotes.
+  conquest: 'The region is yours',
+  mastery: 'Every skill mastered',
   exam: 'The Proctor is satisfied',
 };
 

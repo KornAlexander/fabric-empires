@@ -123,7 +123,7 @@ export interface AntagonistDefinition {
    * ⚠️ Every antagonist owns one. Before this they were two units standing on
    * open ground, which meant they could raid the player forever but the player
    * could never take anything from them: there was no object of the war. It
-   * also meant Domination was decided purely by killing units, and the capture
+   * also meant Conquest was decided purely by killing units, and the capture
    * path already written in `combat.ts` was unreachable code.
    */
   readonly seat: string;
@@ -368,7 +368,7 @@ export function chooseAntagonistCamps(
    *
    * That reasoning was wrong, because land units cannot cross water. A faction
    * on another island never raids you, you can never reach its village, and
-   * Domination becomes unwinnable while a rival still stands: the game quietly
+   * Conquest becomes unwinnable while a rival still stands: the game quietly
    * loses one of its three endings. Now that world shape is something a player
    * CHOOSES at the start, that failure would be one menu click away.
    *
@@ -499,7 +499,7 @@ export function createGameState(
      *
      * ⚠️ An EMPTY roster falls back rather than being obeyed. A campaign that
      * forgot to declare its factions would otherwise produce a silent sandbox
-     * with no opposition, no Domination ending and nothing to be tested by.
+     * with no opposition, no Conquest ending and nothing to be tested by.
      * Asking for solitude deliberately is what `spawnAntagonists: false` is.
      */
     const available =

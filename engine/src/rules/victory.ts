@@ -9,14 +9,20 @@ import type { GameState } from '../state/index.js';
  * every faction, and a rule the interface computes is a rule nothing tests.
  *
  * ⚠️ **Two of the plan's three victories are here; the third is not, and that
- * is deliberate.** Domination and Science are statements about units, cities
+ * is deliberate.** Conquest and Mastery are statements about units, cities
  * and topics, all of which the engine already owns. The Exam victory is a
  * statement about *exam readiness*, which is a weighted percentage of a real
  * certification outline, and the engine is not allowed to know that such a
  * thing exists (D35). It belongs to the learning layer and is scored there.
+ *
+ * ⚠️ The two kinds were called `domination` and `science` until they were
+ * renamed. Both are the standard vocabulary of the genre rather than anything
+ * borrowed, but they are also the two words a reader would recognise fastest
+ * from one particular series, and the cost of not using them is a find and
+ * replace. Nothing persists an outcome, so there is no migration.
  */
 
-export type OutcomeKind = 'defeat' | 'domination' | 'science';
+export type OutcomeKind = 'defeat' | 'conquest' | 'mastery';
 
 export interface Outcome {
   readonly kind: OutcomeKind;
@@ -53,7 +59,7 @@ export function checkOutcome(state: GameState, factionId: string): Outcome | und
   }
 
   /*
-   * Domination needs there to have been somebody to dominate.
+   * Conquest needs there to have been somebody to conquer.
    *
    * A sandbox started with `spawnAntagonists: false` has no rivals at all, and
    * without this check it would declare victory on turn one, which is both
@@ -62,7 +68,7 @@ export function checkOutcome(state: GameState, factionId: string): Outcome | und
   const rivals = [...state.factions.keys()].filter((id) => id !== factionId);
   if (rivals.length > 0 && rivals.every((id) => !stillStanding(state, id))) {
     return {
-      kind: 'domination',
+      kind: 'conquest',
       summary: 'Every rival has been driven from the map. The region is yours.',
     };
   }
@@ -70,7 +76,7 @@ export function checkOutcome(state: GameState, factionId: string): Outcome | und
   const total = state.topics.nodes.length;
   if (total > 0 && state.research.known.length >= total) {
     return {
-      kind: 'science',
+      kind: 'mastery',
       summary: `All ${total} skills researched. There is nothing left in the tree to learn.`,
     };
   }

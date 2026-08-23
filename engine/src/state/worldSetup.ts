@@ -271,7 +271,7 @@ export function paceScale(id: PaceId): number {
  * the only thing this needs to know about the outline.
  *
  * ⚠️ Always returns at least one, because a game with no rivals has no
- * Domination ending and nothing to be tested by.
+ * Conquest ending and nothing to be tested by.
  */
 export function rosterFor(
   antagonists: readonly { readonly id: string; readonly topicCluster: string }[],
