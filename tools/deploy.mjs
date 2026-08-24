@@ -23,7 +23,27 @@ import { dirname, join, resolve } from 'node:path';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const configPath = join(repo, 'rayfin', 'rayfin.yml');
-const workspace = process.argv[2] ?? 'Fabric Empires';
+/*
+ * ⚠️ **Rayfin Apps, not a workspace of our own.**
+ *
+ * This first deployed into a dedicated "Fabric Empires" workspace, which
+ * looked tidy and was wrong: every other Rayfin app lives in "Rayfin Apps",
+ * so a workspace of one meant its own membership list, and the item failed to
+ * open for an account that opens all the others perfectly well. The symptom
+ * reads as an identity problem ("you don't have access to the item") and is
+ * actually a workspace problem.
+ *
+ * ⚠️ It also cannot be corrected after the fact. Fabric folders live inside a
+ * workspace, so `POST /items/{id}/move` with a folder from another workspace
+ * returns `FolderNotFound`. There is no cross-workspace move for an app
+ * backend: the only route is to deploy again into the right workspace, which
+ * mints a NEW item and a NEW hosting URL. Getting this argument wrong is
+ * therefore not a tidy-up, it is a re-issued address.
+ *
+ * Which is why it is a default here rather than something to remember to pass,
+ * for the reason the rest of this file exists.
+ */
+const workspace = process.argv[2] ?? 'Rayfin Apps';
 
 const isWindows = process.platform === 'win32';
 
