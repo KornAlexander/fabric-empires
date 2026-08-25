@@ -139,6 +139,8 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
     'Ein Reich. Jeder Kampf fragt euch beide gleichzeitig, jeden aus seinem eigenen Kurs.',
   'Player 1 answers with 1 2 3 4': 'Spieler 1 antwortet mit 1 2 3 4',
   'Your course': 'Dein Kurs',
+  Enter: 'Start',
+  'Skip to setup': 'Direkt zu den Einstellungen',
   'Nothing to raid here.': 'Hier gibt es nichts zu plündern.',
   'The raid failed.': 'Der Überfall ist gescheitert.',
   'The village': 'Das Dorf',

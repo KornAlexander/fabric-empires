@@ -71,7 +71,16 @@ export interface Anthem {
  * headers have been read. Without that, probing six tracks would pull about
  * 20 MB to answer a yes/no question.
  */
-export async function audioExists(url: string): Promise<boolean> {
+/**
+ * Whether a media file is really there.
+ *
+ * ⚠️ **The content type is the test, not the status code.** The Fabric host
+ * answers an unknown path with `200` and `index.html` rather than a 404, so a
+ * missing track and a present one are indistinguishable by status. It also
+ * ignores `Range` entirely and returns the whole body, which is why the
+ * transfer is aborted as soon as the headers have been read.
+ */
+export async function mediaExists(url: string, kind: 'audio' | 'video'): Promise<boolean> {
   const controller = new AbortController();
   try {
     const response = await fetch(url, {
@@ -79,13 +88,17 @@ export async function audioExists(url: string): Promise<boolean> {
       signal: controller.signal,
     });
     if (!response.ok) return false;
-    return (response.headers.get('content-type') ?? '').includes('audio');
+    return (response.headers.get('content-type') ?? '').includes(kind);
   } catch {
     return false;
   } finally {
     // Cancels the body transfer whether or not the range was honoured.
     controller.abort();
   }
+}
+
+export async function audioExists(url: string): Promise<boolean> {
+  return mediaExists(url, 'audio');
 }
 
 export function createAnthem(volume = 0.55): Anthem {

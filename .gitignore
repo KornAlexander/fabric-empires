@@ -59,3 +59,8 @@ rayfin/.env.local
 # weakest is a map for anyone who wants to press on it, it carries no legal
 # privilege, and it goes stale the moment the code moves. It stays local.
 IP-ASSESSMENT.md
+
+# The teaser carries the Suno cue, so it is kept out on the same LICENCE
+# grounds as the soundtrack. The app probes for it and skips straight to the
+# setup screen when it is absent, which is the state of every fresh clone.
+app/public/teaser.mp4

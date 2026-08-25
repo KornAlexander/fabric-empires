@@ -71,6 +71,46 @@ describe('overlay focus', () => {
     ].join('\n')).toEqual([]);
   });
 
+  it('⚠️ never gives a video element controls, and never seeks one', () => {
+    /*
+      Two rules, one cause: the Fabric static host does not support HTTP Range.
+
+      Measured on the deployed build with a 21 MB faststart mp4:
+      `video.seekable` is `[[0, 0]]`, and `video.currentTime = 45` fires a
+      `seeked` event within 1 ms while leaving the position at 0. No error is
+      raised and `video.error` stays null.
+
+      So a native scrub bar is a control that silently restarts the film, and
+      a "skip to the end" implemented as a seek does the same. Skipping must
+      stop the element instead.
+
+      Progressive playback is fine and is not what this guards: `canplay`
+      arrived in 704 ms with 2.7 s of 54.6 s buffered.
+    */
+    const offenders: string[] = [];
+
+    for (const path of uiSourceFiles()) {
+      const lines = readFileSync(path, 'utf8').split(/\r?\n/);
+      const name = path.split(/[\\/]/).pop();
+      lines.forEach((line, i) => {
+        if (/^\s*(\/\/|\*|\/\*)/.test(line)) return;   // commentary may discuss it
+        if (/\.controls\s*=|['"]controls['"]/.test(line)) {
+          offenders.push(`${name}:${i + 1}  sets controls  ${line.trim()}`);
+        }
+        if (/\.currentTime\s*=/.test(line)) {
+          offenders.push(`${name}:${i + 1}  seeks  ${line.trim()}`);
+        }
+      });
+    }
+
+    expect(offenders, [
+      'This host ignores Range, so seeking silently resets playback to 0 and a',
+      'native scrub bar cannot work. Stop the element instead of seeking it.',
+      '',
+      ...offenders,
+    ].join('\n')).toEqual([]);
+  });
+
   it('⚠️ keeps every scrolling overlay anchored to the top, not centred', () => {
     /*
       The companion half of the same bug.

@@ -311,6 +311,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D520–D526 | The first screen opened halfway through itself | Recorded in full in section 75 |
 | D527–D534 | The film was made by hand, so it drifted | Recorded in full in section 76 |
 | D535–D543 | The course picker was a control that did nothing | Recorded in full in section 77 |
+| D544–D553 | A film before the film | Recorded in full in section 78 |
 
 ### 28. Cheat codes
 
@@ -6706,4 +6707,109 @@ every observable respect. 1068 tests, 53 files.
 
 ---
 
-*Last updated: 23 August 2026*
+## 78. A film before the film
+
+### 78.1 Two films, two jobs
+
+The game now opens with a **teaser** before the setup screen, and keeps the
+live **opening** that plays once a world exists. Those are different things and
+the distinction is worth stating, because D254 says the opening is deliberately
+not a video file so that it shows the player's own coastline.
+
+| | Teaser (new) | Opening (D254) |
+| --- | --- | --- |
+| nature | pre-rendered, identical every time | live, over your seed |
+| job | say what this is to someone who has never seen it | establish *your* world |
+| length | 69 s, skippable | 52.8 s |
+| music | *Fabrica* | *Familia Nostra* |
+
+They use different cues on purpose. Re-using the anthem would spend its
+entrance twice and the second one would be the weaker.
+
+### 78.2 ⚠️ The autoplay policy decides the shape, not taste
+
+A video that runs **before** the setup screen runs before any click, and a
+browser will not play sound until the user has interacted with the page. So the
+teaser would have been silent, which makes "with fitting music" impossible as
+stated.
+
+One card solves it. The Enter card's click is both "start the film" and the
+gesture that unlocks audio for the whole session, which is the same gesture the
+anthem has always taken from the Begin button. It is not decoration; without it
+there is no sound anywhere before the first click.
+
+### 78.3 The host cannot seek, and fails silently at it
+
+Measured on the deployed host before any of this was built, which is the only
+reason it was cheap:
+
+| property | result |
+| --- | --- |
+| `Accept-Ranges` | absent |
+| `GET` with `Range: bytes=0-1023` | **200**, whole file, never 206 |
+| progressive playback | ✅ `canplay` at **704 ms**, 2.7 s of 54.6 s buffered |
+| `video.seekable` | **`[[0, 0]]`** |
+
+Shipping a 33 MB film is therefore fine: it streams, and playback begins long
+before the download ends.
+
+⚠️ **But seeking does not merely fail, it lies.** `video.currentTime = 45`
+fires a `seeked` event within 1 ms and leaves the position at **0**, with no
+exception and `video.error` null. Two consequences, both now enforced by
+`app/test/overlays.test.ts`:
+
+- **no `controls` attribute**, because the native scrub bar is a control that
+  silently restarts the film;
+- **skip is never a seek**. It stops the element and tears down the source, so
+  a skipped film also stops downloading.
+
+### 78.4 Three things I got wrong, all found by measuring
+
+**The resolution.** The parameter validator accepts `1792x1024`; sora-2 then
+refuses it at generation with *"Supported resolutions are 720x1280,
+1280x720"*. I had already "corrected" a memory note on the strength of the
+enum alone. The enum is model-agnostic; only the generation error is the truth.
+
+**The upscale.** The first cut rendered 1280x720 source at 1600x900 to match
+the app canvas. Resampling then compressing can preserve detail and never adds
+any: **45.4 MB at 1600x900 against 32.6 MB at native**, for a picture that is
+sharper per pixel at native. The canvas argument was empty because the browser
+scales either way.
+
+**The label.** `{\an8\fs11}` in an `.srt` was silently dropped by ffmpeg's SRT
+decoder, so the AI disclosure rendered at full caption size, at the bottom,
+stacked directly above FABRIC EMPIRES. It looked deliberate. An `.ass` file has
+a per-line Style column, so alignment and size are properties of a style and
+cannot be discarded.
+
+### 78.5 What the film is
+
+Six Sora 2 clips at 12 s, the model's maximum, in a dawn-to-sunset arc: walled
+city, harbour, map room, library, tower under construction, banners over the
+fields. Early baroque, roughly 1620, chosen to match a soundtrack of viola da
+gamba and sackbut.
+
+It is photoreal and it does **not** depict the game, which is a stylised hex
+map. That is a decision rather than an oversight: the teaser sets a mood ahead
+of the setup screen, and the film carries an AI-generated label. The captions
+carry the meaning, and only four of the six scenes have one, because at 69 s a
+caption on every shot reads as a slideshow.
+
+### 78.6 Decisions
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D544 | A pre-rendered teaser, alongside the live opening, not instead of it | They answer different questions. D254 still holds for the opening |
+| D545 | ⚠️ **An Enter card, because sound is impossible without a gesture** | The film runs before any click. One button buys the teaser's audio and the anthem's |
+| D546 | ⚠️ **No `controls`, and skip is never a seek** | `seekable` is `[[0,0]]` and a seek silently resets to 0 while reporting success. A scrub bar would be a trap |
+| D547 | The film is gitignored and probed for | It carries the Suno cue, so the same rule as the soundtrack. A clone goes straight to setup |
+| D548 | ⚠️ **Native 1280x720, not upscaled to the canvas** | 32.6 MB against 45.4 MB, and sharper per pixel. Upscaling cannot add what the source never had |
+| D549 | ⚠️ **Captions and the label are an `.ass`, not an `.srt`** | The SRT decoder drops override tags without complaint, which put the disclosure full-size at the bottom |
+| D550 | Captions and timings live once, in the build script | The SRT/ASS is generated from them, so a caption cannot end up naming a shot that has gone |
+| D551 | The shared grade block lives once, in the prompt generator | Four hand-copied paragraphs is how three agree and one does not, visible only after the grade |
+| D552 | *Fabrica* is teaser-only | Re-using the anthem would spend its entrance twice |
+| D553 | The Sora tool stays in Campus-Scheduler | Its hard-won API knowledge belongs in one place; the clips are source material arriving in `media/`, like the Suno tracks |
+
+---
+
+*Last updated: 25 August 2026*

@@ -121,6 +121,7 @@ import { createSetupScreen, type SetupResult } from './ui/setupScreen.js';
 import { createCheatConsole } from './ui/cheatConsole.js';
 import { createRaidAlert } from './ui/raidAlert.js';
 import { createDuoModal } from './ui/duoModal.js';
+import { createAttract } from './ui/attract.js';
 import { CHEATS, findCheat } from './cheats.js';
 import { approachShot, descendShot, orbitShot } from './three/cinematic.js';
 import { introShots } from './intro.js';
@@ -3382,7 +3383,18 @@ function frame(now: number): void {
 }
 
 fitCanvas();
-boot();
+/*
+ * ⚠️ The attract sequence runs BEFORE boot, and boot is deferred behind it.
+ *
+ * That ordering is the feature: the Enter card's click is the user gesture the
+ * browser needs before any audio will play, so it unlocks the teaser's own
+ * sound AND the anthem that follows. Running boot first would put the setup
+ * screen underneath the film and start a game nobody has asked for yet.
+ *
+ * `run()` resolves whether the film played, was skipped, or was never there,
+ * so a clone without the gitignored file simply arrives at the setup screen.
+ */
+void createAttract().run().then(boot);
 
 /*
  * Save when the page goes away.
