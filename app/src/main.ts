@@ -852,21 +852,31 @@ for (const event of ['fullscreenchange', 'webkitfullscreenchange']) {
 
 paintFullscreenToggle();
 
-/*
- * The first click of a resumed game is the gesture the browser wants.
+/**
+ * The first click of a RESUMED game is the gesture the browser wants.
  *
- * ⚠️ A resumed empire never plays the opening (see `boot`), so without this
- * the score would only ever exist for players starting a new game. `start()`
- * is idempotent and refuses while the film is running, so the two paths do
- * not fight over the first track.
+ * ⚠️ **Armed only on the resumed path, and only once the attract has finished.**
+ *
+ * This used to be registered at module load, for every player, guarded by
+ * `if (!openingRunning)`. That was wrong twice.
+ *
+ * A player starting a NEW game never needed it: the opening's handover starts
+ * the score 2.4 s after the anthem fades, and arming it as well meant the
+ * first pointerdown, which is the Begin button, started the score a moment
+ * before the anthem began.
+ *
+ * And once a teaser was added in front of the setup screen, the first
+ * pointerdown in the whole app became the **Enter button**, so this fired
+ * underneath the film and the score played on top of the teaser's own cue.
+ * The guard could not help: `openingRunning` names the in-game cinematic and
+ * knows nothing about a second film. A condition that names one specific
+ * thing cannot answer "is anything playing".
+ *
+ * Arming it where it is actually needed removes the question entirely.
  */
-window.addEventListener(
-  'pointerdown',
-  () => {
-    if (!openingRunning) music.start();
-  },
-  { once: true },
-);
+function startMusicOnFirstGesture(): void {
+  window.addEventListener('pointerdown', () => music.start(), { once: true });
+}
 
 onLangChange(() => {
   applyStaticTranslations();
@@ -3021,6 +3031,9 @@ function boot(): void {
   const loaded = loadGame(slot, provider.topics());
   if (loaded.ok) {
     adopt(loaded.state, `Resumed on seed ${loaded.state.seed}, turn ${loaded.state.turn}.`);
+    // A resumed empire plays no opening, so nothing else would ever start the
+    // score. See the note on the function: this is the one path that needs it.
+    startMusicOnFirstGesture();
     return;
   }
   // No game to resume, so ask what kind of world this one should be.

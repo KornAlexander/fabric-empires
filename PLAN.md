@@ -6810,6 +6810,54 @@ caption on every shot reads as a slideshow.
 | D552 | *Fabrica* is teaser-only | Re-using the anthem would spend its entrance twice |
 | D553 | The Sora tool stays in Campus-Scheduler | Its hard-won API knowledge belongs in one place; the clips are source material arriving in `media/`, like the Suno tracks |
 
+### 78.7 ⚠️ The score played on top of the teaser
+
+Reported immediately: the setup screen's music overlapped the film.
+
+The cause was a `pointerdown` listener registered at module load, `{ once: true }`,
+that started the background score on the **first click anywhere in the app**,
+guarded by `if (!openingRunning)`.
+
+Adding a teaser changed what the first click *is*. It used to be something on
+the setup screen; it is now the **Enter button**, so the same gesture that
+started the film also started the score, and they played together. The guard
+could not help: `openingRunning` names the in-game cinematic and knows nothing
+about a second film. ⚠️ **A condition that names one specific thing cannot
+answer "is anything playing".**
+
+The fix was not a better condition, it was putting the listener where it
+belongs. Its own comment already said why it existed: *"A resumed empire never
+plays the opening"*. So it is armed **only on the resumed path inside `boot`**,
+which runs after the attract has finished. Everything else follows:
+
+- a **new** game never needed it, because the opening's handover starts the
+  score 2.4 s after the anthem fades;
+- ⚠️ and registering it globally had a second, older fault nobody had reported:
+  `pointerdown` fires before `click`, so on the Begin button it started the
+  score a moment *before* `playOpening` set `openingRunning`. The guard was
+  reading a flag that had not been set yet.
+
+Measured on the deployed build afterwards, all five paths:
+
+| path | sounding |
+| --- | --- |
+| teaser playing | **only** `teaser.mp4` |
+| setup screen | silence |
+| opening | anthem, score at volume **0** |
+| after the opening | score starts (*Aqua Alta*) |
+| resumed, first click | score starts (*Ferrum et Ignis*) |
+
+⚠️ Two instrument errors of my own, worth recording because both produced
+confident wrong readings: `document.querySelectorAll('audio,video')` cannot see
+the anthem, which is a detached `new Audio()`, so the opening looked silent;
+and `__fabricEmpires.music` is a **function** returning live values, so reading
+`music.volume` as a property returned `undefined` and looked like a frozen
+snapshot. I blamed the harness before checking its definition.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D554 | ⚠️ **The first-gesture music start is armed only on the resumed path** | It exists for resumed games alone. Registered globally it fired on the teaser's Enter button, and before that on Begin, ahead of the flag meant to stop it |
+
 ---
 
 *Last updated: 25 August 2026*
