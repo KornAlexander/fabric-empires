@@ -394,7 +394,7 @@ function runCheat(raw: string): void {
   else state = recordCheat(state, cheat.code);
 
   cheats.say(outcome.message, 'good');
-  log(`Cheat: ${outcome.message}`);
+  log(t('Cheat: {message}', { message: outcome.message }));
   saveGame(slot, state);
   refreshHud();
   refreshResearch();
@@ -942,6 +942,15 @@ function refreshSelection(): void {
     el.actFound.disabled = true;
     el.actRaid.disabled = true;
     el.actFortify.disabled = true;
+    /*
+     * ⚠️ The resting label is rewritten here, not only on the selected path.
+     *
+     * Deselecting a dug-in unit would otherwise leave "Wake" on the button
+     * with nothing to wake. The markup's `data-i18n` only covers the paint
+     * before a game exists; from then on this function owns the text, and
+     * `onLangChange` runs it after the static pass so it always wins.
+     */
+    el.actFortify.textContent = t('Fortify');
     el.actSkip.disabled = true;
     refreshCouncil();
     return;
@@ -1560,7 +1569,7 @@ function doFound(): void {
   }
   state = result.state;
   const city = [...state.cities.values()].at(-1);
-  log(`Founded ${city?.name ?? 'a city'}.`, 'good');
+  log(t('Founded {city}.', { city: city?.name ?? t('a city') }), 'good');
   if (city) {
     effects.pulse(city.hex, '#8fd694', 3);
     effects.floatingText(city.hex, city.name, '#cfe6ff', 1.2);
@@ -1676,9 +1685,16 @@ async function doCouncil(): Promise<void> {
   const node = topicById(state.topics, next.topicId);
   const label = node?.label ?? next.topicId;
   if (outcome.score >= 0) {
-    log(`${next.cityName} recalled ${label}. +${result.trustGained} Trust.`, 'good');
+    log(t('{city} recalled {topic}. +{trust} Trust.', {
+      city: next.cityName,
+      topic: label,
+      trust: result.trustGained,
+    }), 'good');
   } else {
-    log(`${next.cityName} could not recall ${label}. It will come round again.`, 'bad');
+    log(t('{city} could not recall {topic}. It will come round again.', {
+      city: next.cityName,
+      topic: label,
+    }), 'bad');
   }
 
   refreshSelection();
@@ -1754,7 +1770,7 @@ async function doEndTurn(): Promise<void> {
         ? t(unitType(defender.typeId).label)
         : t('your border');
 
-    log(`${who} is at your gates. Hold them.`, 'bad');
+    log(t('{who} is at your gates. Hold them.', { who }), 'bad');
     scene.focus(target);
     effects.flash(target, colour, 900);
     effects.pulse(target, colour, 1.6);
@@ -1876,7 +1892,7 @@ async function doEndTurn(): Promise<void> {
   if (report.bankrupt) log(t('Upkeep could not be paid in full.'), 'bad');
 
   if (report.researchSpent > 0) {
-    log(`${report.researchSpent} Compute into research.`);
+    log(t('{spent} Compute into research.', { spent: report.researchSpent }));
   }
   /*
    * Say so when the empire chose for itself.
@@ -1911,7 +1927,9 @@ async function doEndTurn(): Promise<void> {
   // them costs the bonus and, eventually, a little yield; nothing is lost and
   // nothing accrues while the player is away.
   for (const cityId of report.citiesUnsettled) {
-    log(`${state.cities.get(cityId)?.name ?? 'A city'} is restless without its council.`, 'bad');
+    log(t('{city} is restless without its council.', {
+      city: state.cities.get(cityId)?.name ?? t('A city'),
+    }), 'bad');
   }
   if (report.reviewsAvailable.length > 0) {
     const first = report.reviewsAvailable[0]!;
@@ -2079,7 +2097,7 @@ async function presentEnemyTurn(
      */
     if (!hordeAdvancing) {
       hordeAdvancing = true;
-      log(`${faction(events[0]!.factionId)} is on the move.`);
+      log(t('{who} is on the move.', { who: faction(events[0]!.factionId) }));
     }
   } else if (raids.length > 0) {
     // They have arrived, so the next quiet spell is a new advance.
@@ -2150,14 +2168,17 @@ async function presentEnemyTurn(
     }
 
     if (battle?.cityCaptured) {
-      log(`${who} has taken one of your cities.`, 'bad');
+      log(t('{who} has taken one of your cities.', { who }), 'bad');
       await playCityFallsShot(target);
     } else if (battle?.defenderDestroyed) {
-      log(`${who} destroyed one of your units.`, 'bad');
+      log(t('{who} destroyed one of your units.', { who }), 'bad');
     } else if (battle?.attackerDestroyed) {
       log(t('You held. A raider from {who} was destroyed.', { who }), 'good');
     } else {
-      log(`${who} raided you for ${battle?.damageToDefender ?? 0}.`, 'bad');
+      log(t('{who} raided you for {damage}.', {
+        who,
+        damage: battle?.damageToDefender ?? 0,
+      }), 'bad');
     }
 
     /*
@@ -2218,24 +2239,74 @@ function refreshResearch(): void {
     });
   }
 
+  /*
+   * ⚠️ **Every option stays put, and the current one is marked rather than
+   * removed.**
+   *
+   * This used to `continue` past the topic being researched, which meant
+   * picking a different one made two buttons trade places: the new choice
+   * vanished into the heading and the old one appeared in the list. The row
+   * you just clicked moved, so the next click landed on something else.
+   *
+   * A stable list with one active entry is the ordinary control for "one of
+   * these", and it costs nothing but not skipping.
+   */
   el.resOptions.replaceChildren();
+  const spent = state.research.progress;
   for (const option of researchable(state)) {
-    if (option.id === current) continue;
+    const isCurrent = option.id === current;
     const button = document.createElement('button');
+    button.className = isCurrent ? 'active' : '';
+    button.setAttribute('aria-pressed', String(isCurrent));
+
+    /*
+     * ⚠️ Switching resets `progress` to 0 in the engine, so a click here can
+     * quietly bin the Compute already spent. Saying so on the button is the
+     * cheapest honest answer: a confirmation dialog for every change would be
+     * friction on the common case, where nothing has been spent yet.
+     */
+    const note = isCurrent
+      ? t('studying now')
+      : spent > 0
+        ? t('discards {spent} Compute', { spent })
+        : '';
+    const suffix = note ? ` &middot; ${note}` : '';
     button.innerHTML =
-      `<span class="cluster">${option.cluster} &middot; ${researchCost(option)} Compute</span><br>${option.label}`;
-    button.addEventListener('click', () => {
-      const result = startResearch(state, option.id);
-      if (!result.ok) {
-        log(result.reason, 'bad');
-        return;
-      }
-      state = result.state;
-      log(`Researching: ${option.label}`);
-      refreshResearch();
-    });
+      `<span class="cluster">${option.cluster} &middot; ${researchCost(option)} Compute${suffix}</span>` +
+      `<br>${option.label}`;
+
+    // The engine rejects restarting the current topic ("Already researching
+    // this"), so an enabled button here would only ever log an error.
+    if (isCurrent) {
+      button.disabled = true;
+    } else {
+      button.addEventListener('click', () => {
+        const result = startResearch(state, option.id);
+        if (!result.ok) {
+          log(t(result.reason), 'bad');
+          return;
+        }
+        state = result.state;
+        log(t('Researching: {topic}', { topic: option.label }));
+        refreshResearch();
+      });
+    }
     el.resOptions.append(button);
   }
+
+  /*
+   * ⚠️ Keep the active entry on screen.
+   *
+   * Marking rather than removing means the list only grows: finishing one
+   * topic unlocks its children, and it was seven entries by the second turn
+   * against a `max-height: 30vh` scroller. An active marker nobody can see is
+   * no better than the swap it replaced.
+   *
+   * `block: 'nearest'` moves the options list by the minimum and leaves the
+   * page alone, which matters because this runs on every refresh.
+   */
+  const active = el.resOptions.querySelector('button.active');
+  active?.scrollIntoView({ block: 'nearest' });
 }
 
 /**
@@ -2258,9 +2329,11 @@ async function resolveResearch(topicId: string): Promise<void> {
   state = done.state;
 
   if (outcome.score >= 0) {
-    log(`Learned: ${node?.label ?? topicId}`, 'good');
+    log(t('Learned: {topic}', { topic: node?.label ?? topicId }), 'good');
   } else {
-    log(`${node?.label ?? topicId} not yet mastered. Try again next turn.`, 'bad');
+    log(t('{topic} not yet mastered. Try again next turn.', {
+      topic: node?.label ?? topicId,
+    }), 'bad');
   }
   refreshResearch();
   dirty = true;
@@ -2457,7 +2530,12 @@ function refreshCities(): void {
         return;
       }
       state = result.state;
-      log(chosen ? `${city.name} begins ${unitType(chosen as UnitTypeId).label}.` : `${city.name} downs tools.`);
+      log(chosen
+        ? t('{city} begins {unit}.', {
+            city: city.name,
+            unit: t(unitType(chosen as UnitTypeId).label),
+          })
+        : t('{city} downs tools.', { city: city.name }));
       refreshCities();
   refreshReadiness();
   refreshThreats();
@@ -3030,7 +3108,10 @@ function adopt(next: GameState, message: string): void {
 function boot(): void {
   const loaded = loadGame(slot, provider.topics());
   if (loaded.ok) {
-    adopt(loaded.state, `Resumed on seed ${loaded.state.seed}, turn ${loaded.state.turn}.`);
+    adopt(loaded.state, t('Resumed on seed {seed}, turn {turn}.', {
+      seed: loaded.state.seed,
+      turn: loaded.state.turn,
+    }));
     // A resumed empire plays no opening, so nothing else would ever start the
     // score. See the note on the function: this is the one path that needs it.
     startMusicOnFirstGesture();

@@ -312,6 +312,9 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D527–D534 | The film was made by hand, so it drifted | Recorded in full in section 76 |
 | D535–D543 | The course picker was a control that did nothing | Recorded in full in section 77 |
 | D544–D553 | A film before the film | Recorded in full in section 78 |
+| D554 | The score played on top of the teaser | Recorded in full in section 78.7 |
+| D555–D557 | The fog was a flight of steps | Recorded in full in section 78.8 |
+| D558–D566 | Three buttons, one of them lit | Recorded in full in section 79 |
 
 ### 28. Cheat codes
 
@@ -6921,6 +6924,98 @@ height of a point they share"*, and the `surfaceAt` rim fails with *"lid for
 | D555 | ⚠️ **Fog rims take the highest peak of the hexes sharing the point** | The only rule that satisfies both properties at once. Symmetric, so neighbours agree; peak-based, so nothing pokes through |
 | D556 | ⚠️ **The skirt is deleted, not shrunk** | With rims agreeing it closes nothing. It was two thirds of the layer's triangles, all of them buried |
 | D557 | Both properties become tests, each verified by reintroducing its bug | I fixed one and broke the other, twice. A property that lives only in my head is one the next change trades away |
+
+---
+
+## 79. Three buttons, one of them lit
+
+The research panel rebuilt its list every time you picked a topic, and left
+the current one out of it. That is defensible in isolation: you cannot start
+researching what you are already researching, so the option would do nothing.
+
+The consequence is that **the list reorders under the cursor**. Pick the
+second of three and you get a list of two, with what used to be third now
+sitting where you just clicked. Alexander's instruction was exact: *"those
+should not swap instead just mark which one is active. like for example three
+buttons and one being active."*
+
+So every researchable topic is now always rendered, and the current one is
+**marked** rather than removed: `class="active"`, `aria-pressed="true"`,
+`disabled`, and the suffix *"studying now"*. The panel is a set of radio
+buttons that happen to look like a list.
+
+⚠️ **`disabled` is not decoration, it is the engine's answer.** `startResearch`
+already rejects restarting the current topic. Rendering the button enabled
+would offer a click that produces an error line, so the marker and the
+disabled state are the same fact told twice on purpose.
+
+The other thing the old code hid by omission: switching topics **throws away
+the Compute already spent**, because `startResearch` sets `progress: 0`. When
+the list dropped the active topic there was nothing to compare against and no
+obvious loss. Now that both are on screen, every non-active option carries
+*"discards {spent} Compute"* whenever progress is above zero, so the cost of
+changing your mind is written on the control that charges it.
+
+`scrollIntoView({ block: 'nearest' })` keeps the marked button visible: a
+stable list only ever grows, and with seven topics in a `max-height: 30vh`
+scroller the active one can otherwise sit outside the panel.
+
+### The screenshot showed a second bug for free
+
+Alexander's screenshot of the panel had German UI and **English log lines**:
+*"Resumed on seed FABRIC, turn 2."*, *"… not yet mastered. Try again next
+turn."* Fifteen `log()` and `adopt()` calls were still bare template literals.
+
+§77 had already swept for this and fixed eight. It missed these because its
+regex looked for a quote followed by a capital letter, and every one of these
+begins with `${`.
+
+⚠️ **The i18n test suite had the same blind spot, written down.** The DOM-prose
+guard from §60 contains `if (text.includes('${')) continue;` — interpolated
+strings are deliberately exempt, on the reasonable grounds that an
+interpolation is usually an already-translated value being placed. The
+unreasonable consequence is that a whole sentence with a hole in it was exempt
+from the only test that would have caught it.
+
+`⚠️ never logs a bare template literal` closes it, and was verified by putting
+one line back: it names the file and line rather than reporting a count.
+
+### And a third, found by looking at the buttons
+
+While checking the log I read the action row: **Stadt gründen, Plündern,
+Fortify, Überspringen, Rat**. One English word in five.
+
+`Fortify: 'Befestigen'` existed and `refreshSelection` applied it correctly.
+The button simply carried no `data-i18n`, by an earlier deliberate decision:
+it doubles as **Wake** once a unit is dug in, and two owners writing one
+string is how one of them goes stale.
+
+The decision was right and the conclusion drawn from it was too broad.
+`refreshSelection` never runs on the setup screen, so the markup's English
+survived until you clicked a unit. And `onLangChange` calls
+`applyStaticTranslations` **first** and `refreshSelection` **after**, so the
+dynamic label always wins anyway. The tag was never the hazard it was
+avoided as.
+
+⚠️ The single-owner rule also had a hole of its own: the "nothing selected"
+branch never wrote the label, so deselecting a dug-in unit left **Wake** on a
+button with nothing to wake. Both halves are fixed.
+
+Neither the DOM-prose guard nor the coverage test could have found this: the
+key is translated and used, and "Fortify" is one word where the prose test
+requires two.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D558 | ⚠️ **The research list never reorders; the active topic is marked, not removed** | A list that reshuffles under the cursor moves the thing you were about to click next |
+| D559 | The active button is `disabled` with `aria-pressed`, not just styled | The engine already rejects the click. An enabled button would promise an action that only produces an error |
+| D560 | ⚠️ **Every other option shows what switching costs** | `startResearch` zeroes progress. The old list hid the loss by hiding the comparison |
+| D561 | `scrollIntoView({ block: 'nearest' })` after each rebuild | A stable list only grows; with seven topics the marked one can fall outside a `30vh` scroller |
+| D562 | 15 more log lines moved into `t()` with named parameters | A sentence with holes is still a sentence, and German puts the holes elsewhere |
+| D563 | ⚠️ **A guard for template-literal logs, verified by reintroducing one** | Two sweeps missed these, and so did the test written to catch untranslated prose. Found by reading a screenshot, which does not repeat |
+| D564 | `'Cheat: {message}'` is allowlisted as legitimately identical | German gamers use "Cheat" unchanged. A named exception beats a worse word |
+| D565 | Fortify carries `data-i18n` after all, as the resting label only | The static pass runs before the dynamic one on every language change, so it cannot go stale. Without it the setup screen shows one English button |
+| D566 | ⚠️ **`refreshSelection` writes the label on its empty path too** | Deselecting a dug-in unit otherwise leaves "Wake" on a button with nothing to wake |
 
 ---
 

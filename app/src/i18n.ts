@@ -139,6 +139,39 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
     'Ein Reich. Jeder Kampf fragt euch beide gleichzeitig, jeden aus seinem eigenen Kurs.',
   'Player 1 answers with 1 2 3 4': 'Spieler 1 antwortet mit 1 2 3 4',
   'Your course': 'Dein Kurs',
+  'studying now': 'wird gerade studiert',
+  'discards {spent} Compute': 'verwirft {spent} Compute',
+  'Researching: {topic}': 'Forschung: {topic}',
+  // Rejection reasons the engine writes in canonical English (D35), translated
+  // here on the way to the log.
+  'Already researching this': 'Wird bereits erforscht.',
+  'Already researched': 'Bereits erforscht.',
+  'Prerequisites not met': 'Voraussetzungen nicht erfüllt.',
+  'No such topic': 'Dieses Thema gibt es nicht.',
+  // Log lines. ⚠️ These were written as bare template literals, which is why
+  // an earlier sweep for untranslated prose missed every one of them: it
+  // looked for a quote followed by a capital letter, and these begin with an
+  // interpolation. Guarded now by app/test/i18n.test.ts.
+  'Cheat: {message}': 'Cheat: {message}',
+  'Founded {city}.': '{city} gegründet.',
+  'a city': 'eine Stadt',
+  '{city} recalled {topic}. +{trust} Trust.':
+    '{city} hat {topic} wiederholt. +{trust} Vertrauen.',
+  '{city} could not recall {topic}. It will come round again.':
+    '{city} konnte sich nicht an {topic} erinnern. Es kommt wieder.',
+  '{who} is at your gates. Hold them.': '{who} steht vor deinen Toren. Halte sie auf.',
+  '{spent} Compute into research.': '{spent} Compute in die Forschung.',
+  '{city} is restless without its council.': '{city} ist unruhig ohne seinen Rat.',
+  '{who} is on the move.': '{who} ist unterwegs.',
+  '{who} has taken one of your cities.': '{who} hat eine deiner Städte eingenommen.',
+  '{who} destroyed one of your units.': '{who} hat eine deiner Einheiten vernichtet.',
+  '{who} raided you for {damage}.': '{who} hat dich um {damage} geplündert.',
+  'Learned: {topic}': 'Gelernt: {topic}',
+  '{topic} not yet mastered. Try again next turn.':
+    '{topic} noch nicht gemeistert. Versuch es nächste Runde erneut.',
+  '{city} begins {unit}.': '{city} beginnt mit {unit}.',
+  '{city} downs tools.': '{city} legt die Arbeit nieder.',
+  'Resumed on seed {seed}, turn {turn}.': 'Fortgesetzt auf Seed {seed}, Runde {turn}.',
   Enter: 'Start',
   'Skip to setup': 'Direkt zu den Einstellungen',
   'Nothing to raid here.': 'Hier gibt es nichts zu plündern.',

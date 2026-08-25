@@ -118,8 +118,12 @@ describe('⚠️ coverage', () => {
      * adding a new one is a decision rather than an oversight. "Land",
      * "Standard" and "Pause" really are the same word in German; the rest are
      * product terms that must not be translated at all.
+     *
+     * "Cheat" is a loanword German gamers use unchanged, and the message it
+     * carries is the cheat console's own English output. Forcing a German
+     * word here would be a worse label, not a better one.
      */
-    const allowed = new Set(['Standard', 'Land', 'Pause', 'Data', 'DAX']);
+    const allowed = new Set(['Standard', 'Land', 'Pause', 'Data', 'DAX', 'Cheat: {message}']);
     setLang('de');
     const lazy = translatedKeys().filter((k) => !allowed.has(k) && t(k) === k);
     expect(lazy, 'these look untranslated').toEqual([]);
@@ -167,6 +171,44 @@ describe('⚠️ coverage', () => {
       }
     }
     expect(offenders, 'these reach the screen without being translated').toEqual([]);
+  });
+
+  it('⚠️ never logs a bare template literal', () => {
+    /*
+     * The gap the test above was blind to, in its turn.
+     *
+     * That one skips any string containing `${`, on the reasonable grounds
+     * that an interpolation is usually an already-translated value being
+     * placed. The unreasonable consequence is that a whole sentence written
+     * as a template literal is exempt, and `log()` does not touch the DOM
+     * directly so nothing else looked at it either.
+     *
+     * Fifteen log lines were sitting in English inside a German game because
+     * of it, including the one that reports a failed review and the one that
+     * greets a returning player. They were found by reading a screenshot,
+     * which is not a repeatable technique.
+     *
+     * A sentence with holes in it is still a sentence: it belongs in `t()`
+     * with named parameters, so the German can put the holes somewhere else.
+     */
+    const offenders: string[] = [];
+    for (const file of appSourceFiles()) {
+      source(file).split(/\r?\n/).forEach((line, i) => {
+        if (!/\b(log|adopt)\(/.test(line)) return;
+        if (!line.includes('`')) return;
+        // `t(` anywhere on the line means the sentence went through the
+        // translator; the backtick is then just how a value was built.
+        if (/\bt\(/.test(line)) return;
+        offenders.push(`${file}:${i + 1}  ${line.trim().slice(0, 72)}`);
+      });
+    }
+
+    expect(offenders, [
+      'A log line written as a template literal never reaches t(), so it stays',
+      'English in a German game. Use t() with named parameters instead.',
+      '',
+      ...offenders,
+    ].join('\n')).toEqual([]);
   });
 
   it('⚠️ leaves the exam vocabulary in English', () => {
