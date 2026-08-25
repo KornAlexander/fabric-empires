@@ -36,6 +36,7 @@ import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import {
   hexKey,
   hexNeighbour,
+  hexNeighbours,
   hexRound,
   type GameMap,
   type Hex,
@@ -1033,56 +1034,104 @@ export function hexLid(
   skirt = 0,
 ): BufferGeometry {
   const { x, z } = hexToWorld(h);
-  const y = terrain.peakAt(h) + lift;
+  const ownPeak = terrain.peakAt(h);
+  const centreY = ownPeak + lift;
 
-  const verts: number[] = [];
+  /*
+   * ⚠️ **The rim rides PEAKS, and it must be the peak of every hex that
+   * touches the point, not just this one.**
+   *
+   * Two conditions have to hold at once, and the obvious answers satisfy only
+   * one each:
+   *
+   *   - **Neighbours must agree**, or their lids step apart and the step is a
+   *     wall. Flat plates at each hex's own peak fail this: on steep ground
+   *     the fog read as a flight of dark slate bands, one per tile boundary.
+   *   - **The lid must never dip below the ground**, or terrain pokes through
+   *     as a bright sliver. Sampling `surfaceAt` along the rim fails this: it
+   *     sits ON the surface, so any bump or erosion ridge breaches it. That
+   *     was measured, not guessed, and it looked like pale zigzag scratches
+   *     scattered across the unexplored map.
+   *
+   * Taking the highest peak among the hexes meeting at a rim point satisfies
+   * both. It is symmetric, so two neighbours compute the identical number
+   * from their own side and the lids join exactly; and it is at or above
+   * every adjacent hex's highest ground, so nothing can surface through it.
+   *
+   * Which hexes touch a point is settled by distance rather than by trusting
+   * a corner index to line up with a direction index: the hexes sharing a rim
+   * point are exactly those whose centres are the same distance from it as
+   * this one's.
+   */
+  const neighbours = hexNeighbours(h);
+  const rimHeight = (px: number, pz: number): number => {
+    const own = Math.hypot(x - px, z - pz);
+    let highest = ownPeak;
+    for (const n of neighbours) {
+      const c = hexToWorld(n);
+      if (Math.hypot(c.x - px, c.z - pz) <= own + 0.05) {
+        highest = Math.max(highest, terrain.peakAt(n));
+      }
+    }
+    return highest;
+  };
+
+  const rim: { x: number; y: number; z: number }[] = [];
   for (let i = 0; i < 6; i++) {
     const o1 = cornerOffset(i);
     const o2 = cornerOffset((i + 1) % 6);
+    const cx = x + o1.x;
+    const cz = z + o1.z;
+    const mx = x + (o1.x + o2.x) / 2;
+    const mz = z + (o1.z + o2.z) / 2;
+    rim.push({ x: cx, y: rimHeight(cx, cz) + lift, z: cz });
+    rim.push({ x: mx, y: rimHeight(mx, mz) + lift, z: mz });
+  }
+
+  const verts: number[] = [];
+  for (let i = 0; i < rim.length; i++) {
+    const a = rim[i]!;
+    const b = rim[(i + 1) % rim.length]!;
     /*
-     * ⚠️ **Wound so the face points UP**, corner i+1 before corner i.
+     * ⚠️ **Wound so the face points UP**, the later rim point before the
+     * earlier one.
      *
-     * The obvious order (centre, corner i, corner i+1) walks the hexagon
-     * clockwise seen from above, which gives every triangle a normal of
-     * -0.866 on Y: the lid is a back face to any camera looking down, and
-     * `FrontSide` culls the entire layer. It cost a long hunt, because the
-     * layer was provably present, opaque, above the terrain and passing the
-     * depth test, and still drew nothing. `hexPatch` gets away with the same
-     * winding only because its overlay material is double-sided.
-     *
-     * No inset: fog tiles must meet, or the map is covered in bright seams.
+     * The obvious order (centre, a, b) walks the hexagon clockwise seen from
+     * above, which gives every triangle a normal of -0.866 on Y: the lid is a
+     * back face to any camera looking down, and `FrontSide` culls the entire
+     * layer. It cost a long hunt, because the layer was provably present,
+     * above the terrain and passing the depth test, and still drew nothing.
      */
-    verts.push(x, y, z, x + o2.x, y, z + o2.z, x + o1.x, y, z + o1.z);
+    verts.push(x, centreY, z, b.x, b.y, b.z, a.x, a.y, a.z);
   }
 
   /*
-   * ⚠️ **Meeting in XZ is not enough, and that is what produced the bright
-   * hex lattice over unexplored ground.**
+   * A short wall under the rim.
    *
-   * Every lid is flat at its own hex's peak, so two neighbours whose peaks
-   * differ leave an open vertical slot exactly along their shared edge. Seen
-   * from a low camera you look straight through that slot at the sunlit
-   * terrain below, and since it happens on all six edges of every hex the
-   * result is a glowing wireframe: the one pattern guaranteed to read as a
-   * hole in the world rather than as weather.
+   * ⚠️ **This used to be the load-bearing part, and no longer is.** Lids were
+   * flat plates at each hex's own peak, so two neighbours whose peaks differed
+   * left an open vertical slot along their shared edge, and from a low camera
+   * you looked straight through it at sunlit ground. The answer then was a
+   * deep skirt: hang four units from every edge so the lids overlap whatever
+   * the step.
    *
-   * The lid needed a wall, not a tighter fit. Dropping a skirt from each edge
-   * means neighbouring lids overlap vertically no matter which is taller, so
-   * there is nothing left to see through. Depth costs no extra vertices, only
-   * the six quads themselves, and a skirt that hangs below the neighbouring
-   * ground is simply buried by the depth test.
+   * That worked and had a cost nobody had looked at from above. A deep wall
+   * between two plates at different heights is not hidden, it is *the*
+   * visible thing: on steep ground the fog read as a flight of dark slate
+   * steps, one thick band per tile boundary, which is the opposite of weather.
+   *
+   * With the rim following the ground there is no slot to close, so this is
+   * now only insurance against sampling error at the boundary with visible
+   * terrain, and wants to be as shallow as will do the job.
    */
   if (skirt > 0) {
-    const base = y - skirt;
-    for (let i = 0; i < 6; i++) {
-      const o1 = cornerOffset(i);
-      const o2 = cornerOffset((i + 1) % 6);
-      const ax = x + o1.x;
-      const az = z + o1.z;
-      const bx = x + o2.x;
-      const bz = z + o2.z;
-      verts.push(ax, y, az, bx, y, bz, bx, base, bz);
-      verts.push(ax, y, az, bx, base, bz, ax, base, az);
+    for (let i = 0; i < rim.length; i++) {
+      const a = rim[i]!;
+      const b = rim[(i + 1) % rim.length]!;
+      const aBase = a.y - skirt;
+      const bBase = b.y - skirt;
+      verts.push(a.x, a.y, a.z, b.x, b.y, b.z, b.x, bBase, b.z);
+      verts.push(a.x, a.y, a.z, b.x, bBase, b.z, a.x, aBase, a.z);
     }
   }
 

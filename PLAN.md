@@ -6858,6 +6858,70 @@ snapshot. I blamed the harness before checking its definition.
 | --- | --- | --- |
 | D554 | ⚠️ **The first-gesture music start is armed only on the resumed path** | It exists for resumed games alone. Registered globally it fired on the teaser's Enter button, and before that on Begin, ahead of the flag meant to stop it |
 
+### 78.8 ⚠️ The fog was a flight of steps
+
+Reported from a screenshot: thick grey bands along the tile edges on a
+mountain.
+
+They were the fog. The largest mesh in the scene is a single merged
+`MeshBasicMaterial` in `#171f29`, and that dark slate is exactly the colour of
+the bands. Each unexplored hex got a **flat lid at its own peak** plus a
+four-unit skirt. Where two neighbouring peaks differed, the riser between the
+plates was visible, so on steep ground the fog read as a staircase with one
+thick band per tile boundary.
+
+⚠️ **The skirt was the previous fix for the previous bug, and it had become
+this one.** Its comment explains it was added because lids meeting only in XZ
+left an open vertical slot onto sunlit terrain, "a glowing wireframe". A deep
+wall did close the slot. Nobody then looked at what a deep wall between two
+plates at different heights looks like from above.
+
+**Two properties fight, and each obvious fix breaks the other:**
+
+| | fix | what it breaks |
+| --- | --- | --- |
+| flat plate at own peak | never dips below ground | neighbours disagree → walls |
+| rim sampled with `surfaceAt` | neighbours agree exactly → no walls | sits ON the ground → terrain pokes through |
+
+I shipped the second one and it looked right in an overview, then measured a
+close pass and found **bright zigzag slivers of terrain scattered across the
+fog**. Trading banding for holes is not progress.
+
+**Both hold if the rim takes the highest PEAK among the hexes meeting at that
+point.** It is symmetric, so two neighbours compute the identical number from
+their own sides and the lids join; and it is at or above every adjacent hex's
+highest ground, so nothing can surface through it. Which hexes touch a rim
+point is decided by distance rather than by trusting a corner index to line up
+with a direction index.
+
+⚠️ `peakAt`'s own documentation already said this: *"the only safe height for
+anything that must OCCLUDE the ground"*. The rule was written down, and I
+broke it anyway by sampling `surfaceAt` for the rim.
+
+Measured on the deployed build:
+
+| | before | after |
+| --- | --- | --- |
+| fog triangles | 110,700 | **73,800** |
+| near-vertical faces | walls on every boundary | **76 of 73,800** (0.1%, genuine slopes) |
+| max wall height | 4+ | **0** |
+
+⚠️ **The skirt is gone entirely, and that is a saving rather than a risk.** Once
+the rims agree there is no slot to close, so every skirt quad hung below the
+neighbouring lid's own surface: at 0.5 deep it still cost **147,600 of 221,400
+triangles**, two thirds of the layer, drawing nothing.
+
+`app/test/fogLid.test.ts` now pins both properties, and each was checked by
+putting its bug back: the flat plate fails with *"Two lids disagree about the
+height of a point they share"*, and the `surfaceAt` rim fails with *"lid for
+0,0 sank below its own peak"*.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D555 | ⚠️ **Fog rims take the highest peak of the hexes sharing the point** | The only rule that satisfies both properties at once. Symmetric, so neighbours agree; peak-based, so nothing pokes through |
+| D556 | ⚠️ **The skirt is deleted, not shrunk** | With rims agreeing it closes nothing. It was two thirds of the layer's triangles, all of them buried |
+| D557 | Both properties become tests, each verified by reintroducing its bug | I fixed one and broke the other, twice. A property that lives only in my head is one the next change trades away |
+
 ---
 
 *Last updated: 25 August 2026*

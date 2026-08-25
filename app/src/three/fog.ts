@@ -43,24 +43,37 @@ export function createFog(
   /*
    * Clear of the ground, not hugging it.
    *
-   * ⚠️ `hexLid` already lays the tile above the highest point it can find
-   * inside the hex, so this is only a margin for what the nineteen samples
-   * miss. Erosion can cut and heap by nearly a metre in world units, and a
-   * lid that dips below the surface at one point is a bright hole in the fog.
+   * ⚠️ `hexLid` follows the surface around its rim and rides the hex's own
+   * peak at the centre, so this is only a margin against sampling error, and
+   * it wants to stay small: every unit of lift is a lip standing above the
+   * visible ground wherever fog meets explored terrain.
    */
   const LIFT = 0.12;
 
   /**
-   * How far each lid's wall hangs below it.
+   * How far each lid's rim hangs below itself. Zero, now.
    *
-   * ⚠️ This is what stops unexplored ground reading as a glowing wireframe.
-   * Lids meet in XZ but each sits at its own hex's peak, so every shared edge
-   * was an open vertical slot onto sunlit terrain. The skirt has to outlast
-   * the largest step between two neighbouring peaks; deeper costs nothing but
-   * six quads, and anything that hangs below the neighbouring ground is
-   * buried by the depth test rather than drawn.
+   * ⚠️ **This was 4, and the cure had become the disease.**
+   *
+   * Lids used to be flat plates at each hex's own peak, so neighbours whose
+   * peaks differed left an open vertical slot along their shared edge, and a
+   * deep skirt was the way to close it. On steep ground that showed: a four
+   * unit wall between two plates at different heights is not hidden, it IS
+   * the picture, and unexplored mountains read as a flight of dark slate
+   * steps with one thick band per tile boundary.
+   *
+   * `hexLid` now samples its rim at the corner and edge-midpoint positions two
+   * neighbours share, so both compute the same heights and the lids simply
+   * join. There is no slot left to close.
+   *
+   * ⚠️ Which makes a skirt worse than useless. Measured at 0.5 it still cost
+   * **147,600 of the fog's 221,400 triangles**, every one of them hanging
+   * below the neighbouring lid's own surface and therefore buried by the
+   * depth test. Two thirds of the layer, drawing nothing. At zero the fog is
+   * 73,800 triangles: smoother than the banded version AND a third of the
+   * geometry it started with.
    */
-  const SKIRT = 4;
+  const SKIRT = 0;
 
   /**
    * Fog is scattered light, so it is not black.
