@@ -322,6 +322,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D601–D606 | Taking cover made the city easier to take | Recorded in full in section 84 |
 | D607–D613 | Digging in was worth forty percent and nothing else | Recorded in full in section 85 |
 | D614–D620 | A cheat that crosses the line the file drew | Recorded in full in section 86 |
+| D621–D623 | The rank in the sentence was not the rank on the row | Recorded in full in section 87 |
 
 ### 28. Cheat codes
 
@@ -7725,6 +7726,63 @@ nothing at all.
 | D618 | The chord is disclosed in `cheatsUsed` on first use | Disclosure is the only honesty left once the answer counts |
 | D619 | ⚠️ **Keyed on `event.code` and cleared on `blur`** | `key` is layout-dependent, and a key held through a focus change never sends keyup |
 | D620 | The chord and the harness share `answerCurrentQuestion` | Two copies of "pick the right options and submit" would drift, as the tactic maths already did |
+
+---
+
+## 87. The rank in the sentence was not the rank on the row
+
+Alexander, on the city panel: *"1 more topic at familiar is ambiguous"*.
+
+Two separate ambiguities in one short line, and the first one was worse than
+the wording.
+
+### It named a rank the city did not have
+
+The panel showed a city headed **Settlement · pop 4** and, directly underneath,
+**"Village needs 1 more topic at familiar"**. Both of those are ranks, they are
+one line apart, and the sentence gets the relationship between them backwards:
+the Village is the rank being climbed *to*, but `{rank} needs {what}` reads as a
+statement about the thing on screen.
+
+⚠️ **The fact was right and only the grammar was wrong**, which is the awkward
+kind: nothing is broken, no test can see it, and a player is simply left to
+work out that one of the two ranks in front of them is a destination.
+
+Now: `Next rank {rank}: {what}`.
+
+### "at familiar" was not obviously a level
+
+`familiar` is one of four mastery bands (unseen, learning, familiar, strong) and
+the Great Library teaches them by name. On its own, though, *"1 more topic at
+familiar"* reads as a bare adjective rather than as the name of a level.
+
+`rank.ts` had already written the better phrasing in its own docblock, where it
+describes wanting to say *"one more topic **held at** familiar"*. The interface
+now says what the code comment always said.
+
+### The German has a trap the English does not
+
+The obvious German is *"Bis zum Dorf: …"*, and it is wrong four times out of
+five. ⚠️ **The ranks differ in gender**: *das* Dorf, but *die* Siedlung, *die*
+Gemeinde, *die* Stadt, *die* Großstadt. Any phrasing with an article needs
+*zum* for one rank and *zur* for the rest, and a single template can carry only
+one of them.
+
+`Nächster Rang {rank}` takes no article at all, so it is correct for every rank
+without the string needing to know anything about the noun that follows it.
+
+Read off the deployed build:
+
+| | before | after |
+| --- | --- | --- |
+| EN | Village needs 1 more topic at familiar | Next rank Village: 1 more citizen and 1 more topic held at familiar |
+| DE | Dorf braucht 1 Thema mehr auf vertraut | Nächster Rang Dorf: 1 Einwohner mehr und 1 weiteres Thema auf Stufe vertraut |
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D621 | ⚠️ **The next rank is named as a destination, never as a subject** | Two ranks one line apart, and the sentence claimed the city was the one it is trying to become |
+| D622 | The band is named as a level: "held at familiar", "auf Stufe vertraut" | On its own the band name reads as an adjective. `rank.ts` had used the clearer phrasing in its docblock all along |
+| D623 | ⚠️ **"Nächster Rang" rather than "Bis zum/zur"** | German rank names differ in gender, so an article-bearing template is wrong for four of the five |
 
 ---
 

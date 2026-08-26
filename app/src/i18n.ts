@@ -224,12 +224,28 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
   // panel says around them lives here.
   'pop {n}': 'Einw. {n}',
   'unrest {n}': 'Unruhe {n}',
-  '{rank} needs {what}': '{rank} braucht {what}',
+  /*
+   * ⚠️ "{rank} needs {what}" read as though the city already WAS that rank.
+   *
+   * The rank named is the one being climbed TO, so a Settlement displayed
+   * "Village needs 1 more topic at familiar" and left the player to work out
+   * that the Village was a destination rather than the thing on screen.
+   *
+   * ⚠️ "Nächster Rang {rank}" rather than "Bis zum {rank}", because the ranks
+   * differ in gender: das Dorf but die Siedlung, die Gemeinde, die Stadt, die
+   * Großstadt. Any phrasing with an article needs zum for one and zur for the
+   * rest, and one template cannot carry both.
+   */
+  'Next rank {rank}: {what}': 'Nächster Rang {rank}: {what}',
   'Rising to {rank}': 'Wird bald {rank}',
   '{n} more citizen': '{n} Einwohner mehr',
   '{n} more citizens': '{n} Einwohner mehr',
-  '{n} more topic at {band}': '{n} Thema mehr auf {band}',
-  '{n} more topics at {band}': '{n} Themen mehr auf {band}',
+  /*
+   * ⚠️ "at familiar" read as a bare adjective rather than as the name of a
+   * level, which is what it is. Both languages now say so outright.
+   */
+  '{n} more topic held at {band}': '{n} weiteres Thema auf Stufe {band}',
+  '{n} more topics held at {band}': '{n} weitere Themen auf Stufe {band}',
   ' and ': ' und ',
   familiar: 'vertraut',
   strong: 'sicher',

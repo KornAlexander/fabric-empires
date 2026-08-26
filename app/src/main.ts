@@ -2737,14 +2737,24 @@ function refreshCities(): void {
       if (need.topicsShort > 0) {
         const band = t(need.rank.strengthRequired >= 0.95 ? 'strong' : 'familiar');
         parts.push(
-          plural(need.topicsShort, '{n} more topic at {band}', '{n} more topics at {band}', {
-            band,
-          }),
+          plural(
+            need.topicsShort,
+            '{n} more topic held at {band}',
+            '{n} more topics held at {band}',
+            { band },
+          ),
         );
       }
+      /*
+       * ⚠️ The rank named here is the one being climbed TO, never the one the
+       * city holds. Phrased as "{rank} needs {what}" it read as a statement
+       * about the city: a Settlement announced "Village needs 1 more topic at
+       * familiar", which names two things the player can see on the same row
+       * and gets the relationship between them backwards.
+       */
       wants.textContent =
         parts.length > 0
-          ? t('{rank} needs {what}', {
+          ? t('Next rank {rank}: {what}', {
               rank: rankName(need.rank.id),
               what: parts.join(t(' and ')),
             })
