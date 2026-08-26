@@ -80,6 +80,9 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
   // too many.
   '{n} hex away': '{n} Feld entfernt',
   '{n} hexes away': '{n} Felder entfernt',
+  // Taking cover in one of your own cities. "Deckung" is the ordinary German
+  // word a player would use for it, military or not.
+  'in cover: {city}': 'in Deckung: {city}',
   '{n} turn': '{n} Runde',
   '{n} turns': '{n} Runden',
   'reachable this turn': 'diese Runde erreichbar',

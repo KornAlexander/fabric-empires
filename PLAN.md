@@ -319,6 +319,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D575–D582 | The fog was a hole, not weather | Recorded in full in section 81 |
 | D583–D590 | The advice was correct, drawn, and invisible | Recorded in full in section 82 |
 | D591–D600 | The ground opened after the fact | Recorded in full in section 83 |
+| D601–D606 | Taking cover made the city easier to take | Recorded in full in section 84 |
 
 ### 28. Cheat codes
 
@@ -7465,6 +7466,89 @@ wrong thing to be measuring, so it has been given enough room to stop.
 | D598 | The corridor test marches as far as the unit can, and says so when it cannot | The old one moved a single hex, where destination and corridor are the same tile |
 | D599 | ⚠️ **`rememberAlong` collects before it copies** | Most moves reveal nothing, and cloning 6,211 keys on each of those was enough on its own to time the world tests out |
 | D600 | `worldSetup.test.ts` gets 45 s, and the reason is written down | Five seconds is not a property of anything the file asserts. Load-dependent flakiness had already been mistaken for a regression twice |
+
+---
+
+## 84. Taking cover made the city easier to take
+
+Alexander: *"why can the unit not search cover in the city. implement it"*.
+
+⚠️ **The premise was wrong and the request was right.** A unit could always walk
+into its own city: `isOccupied` blocks on units, not on cities, and driving the
+deployed build confirmed the city tile is offered as a destination like any
+other. Nothing was blocked. What was missing was any *reason* to go in, and
+that turned out to be much worse than a missing bonus.
+
+### The trap
+
+`previewAttack` picks the defender by asking whether a unit is standing on the
+tile. So a garrison **replaced** the city rather than reinforcing it: the walls,
+the settlement's own defence and its citizens all dropped out of the fight, and
+a scout with strength 8 stood in for a city with 20 plus 6 per citizen.
+
+Measured on a size-one city, before anything was changed:
+
+| | defence | damage taken per blow |
+| --- | --- | --- |
+| empty | 32.5 | 14 |
+| with a Profiler inside | 15.0 | **46** |
+| a siege engine, empty | | 47 |
+| a siege engine, garrisoned | | **100**, the cap |
+
+Putting a soldier in your own city **more than tripled** the damage it took and
+let a siege engine max out. The obvious instinct, get the scout indoors before
+the raid, was the worst move available, and nothing on screen said so.
+
+### What cover is now
+
+A unit defending in a city of its own faction gets `GARRISON_DEFENCE_BONUS`
+plus the city's wall bonus, scaled by the stance's `fortifyShare`, so a
+garrison that sallies out through the gate to meet the attacker in the open has
+given up the thing it was standing behind.
+
+⚠️ **And the city's own defence is a FLOOR.** The bonus alone does not fix the
+table above: 8 × 1.5 is still far below 32.5, so garrisoning would have
+remained a mistake, just a smaller one. The reading that makes the arithmetic
+right is also the one that makes sense: the garrison is fighting *from* the
+settlement, so it can never defend worse than the empty settlement would have.
+
+| | defence | damage per blow |
+| --- | --- | --- |
+| empty city | 32.5 | 14 |
+| garrisoned | **32.5** | **14** |
+| siege engine, empty | | 47 |
+| siege engine, garrisoned | | **47** |
+
+### The counter-play had the same bug in reverse
+
+`SIEGE_CITY_BONUS` was gated on the target being a city, which by the same
+`targetKind` logic meant a siege engine lost its entire purpose the moment
+anyone stepped inside the walls it was there to break. Both the preview and the
+resolution now ask `againstWalls`, which is a different question from
+`targetKind`: *is there masonry in this fight*, regardless of who is holding it.
+
+⚠️ **`againstWalls` is computed once, in the preview, and read back by
+`resolveAttack`.** The file already carried a warning that a factor applied in
+one and not the other silently splits the odds shown from the odds fought, and
+this change would have done exactly that: `resolveAttack` recomputed the siege
+multiplier from `targetKind === 'city'` on its own. There is a test that
+attacks a garrison and asserts the two agree.
+
+### Saying so
+
+Cover costs nothing, has no button, and is invisible: you simply walk in. The
+unit panel now reads `(in cover: Workspace)` while it applies, verified on the
+deployed build. The attack odds already show the defender's effective strength,
+which now includes the cover, so the preview needed no new text.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D601 | ⚠️ **A garrison never defends worse than the empty city would have** | The bonus alone left garrisoning a mistake. A floor is both the correct arithmetic and the honest reading: it is fighting from the settlement |
+| D602 | Cover is the city bonus plus its walls, scaled by `fortifyShare` | A garrison that comes out through the gate has given up what it was standing behind |
+| D603 | ⚠️ **Cover applies only in a city of the unit's OWN faction** | Standing on somebody else's tile is not shelter, and the same test would otherwise hand an attacker the defender's walls |
+| D604 | ⚠️ **Siege bonus keys on `againstWalls`, not on `targetKind`** | Gated on "the target is a city", a siege engine lost its entire purpose the moment anyone stepped inside |
+| D605 | `againstWalls` is decided in the preview and read back by the resolution | The file already warned that a factor in one and not the other splits the odds shown from the odds fought |
+| D606 | The unit panel states the cover | It costs nothing, has no button, and is otherwise invisible. A bonus nobody can see is a bonus nobody uses |
 
 ---
 

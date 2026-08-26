@@ -30,6 +30,27 @@ export const CHALLENGE_STRENGTH_SWING = 18;
 export const FORTIFY_DEFENCE_BONUS = 0.4;
 
 /**
+ * What a unit gains by standing inside a friendly city.
+ *
+ * ⚠️ **Taking cover in a city used to do nothing whatsoever.** A unit could
+ * always walk into its own city, and once there defended with exactly the
+ * terrain and dug-in bonuses it would have had standing in the open field
+ * beside it. There was no rule that noticed the walls it was standing behind.
+ *
+ * Worse than nothing, in fact. `previewAttack` picks the defender by asking
+ * whether a unit is on the tile, so garrisoning REPLACED the city as the
+ * defender: an attacker who would have faced a city defending at 20 plus six
+ * per citizen instead faced a Profiler at strength 8, with the walls taking no
+ * part at all. Putting a unit in a city made the city easier to take.
+ *
+ * Two numbers, because a city is two things. The base is the settlement
+ * itself: buildings, streets and people to fight from, which every city has
+ * from the day it is founded. On top of that the garrison inherits whatever
+ * the walls are worth, damage included, through `wallDefenceBonus`.
+ */
+export const GARRISON_DEFENCE_BONUS = 0.5;
+
+/**
  * Siege units are built to break cities and little else.
  *
  * Held at 0.75 rather than a full doubling: at 1.0 a Notebook Cannon was
@@ -49,6 +70,8 @@ export interface CombatSide {
   readonly hpFactor: number;
   readonly terrainBonus: number;
   readonly fortifyBonus: number;
+  /** The settlement and its walls, when this unit is defending inside one. */
+  readonly garrisonBonus: number;
   readonly techBonus: number;
   readonly challengeModifier: number;
   readonly effective: number;
@@ -58,6 +81,17 @@ export interface CombatPreview {
   readonly attacker: CombatSide;
   readonly defender: CombatSide;
   readonly targetKind: CombatTargetKind;
+  /**
+   * Whether this blow lands against a city's defences.
+   *
+   * ⚠️ **Not the same question as `targetKind`.** A unit garrisoning its own
+   * city is a `unit` target standing behind walls, and both the siege bonus
+   * and the assault tactics care about the walls rather than about who is on
+   * the tile. Published here so `resolveAttack` cannot answer it differently
+   * from the preview: that split has already happened once, and it showed the
+   * player 33 damage and then dealt 17.
+   */
+  readonly againstWalls: boolean;
   /** Damage before the random roll, so the UI can show honest odds. */
   readonly expectedDamageToDefender: number;
   readonly expectedDamageToAttacker: number;
@@ -137,25 +171,80 @@ export function unitCombatSide(
   // gives up the position you prepared; it does not flatten the hill.
   const fortifyBonus =
     defending && unit.fortified ? FORTIFY_DEFENCE_BONUS * stance.fortifyShare : 0;
+  /*
+   * Cover, when the unit is standing in a city of its own.
+   *
+   * ⚠️ **A city belonging to somebody else is not cover.** The check is on the
+   * faction, not merely on a city being present: a unit that has just fought
+   * its way onto an enemy tile is standing in a place whose walls are being
+   * held against it.
+   *
+   * ⚠️ Scaled by the stance like the dug-in bonus, and for the same reason. A
+   * garrison that sallies out to meet the attacker in the open has given up
+   * the walls; the walls did not fall down.
+   */
+  const city = defending ? cityAt(state, unit.hex) : undefined;
+  const ownCity = city && city.factionId === unit.factionId ? city : undefined;
+  const garrisonBonus = ownCity
+    ? (GARRISON_DEFENCE_BONUS + wallDefenceBonus(ownCity)) * stance.fortifyShare
+    : 0;
   const techBonus = options.techBonus ?? 0;
   const modifier = challengeModifier(options.challengeScore ?? 0);
 
   const factor = hpFactor(unit.hp, type.maxHp);
   const effective =
-    (type.strength * factor * (1 + terrainBonus) * (1 + fortifyBonus) * (1 + techBonus) +
+    (type.strength *
+      factor *
+      (1 + terrainBonus) *
+      (1 + fortifyBonus) *
+      (1 + garrisonBonus) *
+      (1 + techBonus) +
       modifier) *
     stance.strength;
+
+  /*
+   * ⚠️ **A garrison never defends worse than the empty city would have.**
+   *
+   * The bonus above is not enough on its own, and the measurement says so
+   * loudly. `previewAttack` picks the defender by asking whether a unit is on
+   * the tile, so a garrison REPLACES the city rather than reinforcing it. On a
+   * size-one city: empty it defended at 32.5 and took 14 damage a blow, and
+   * with a Profiler inside it defended at 15.0 and took 46. A siege engine
+   * went from 47 damage to the cap at 100.
+   *
+   * Putting a soldier in your own city more than tripled the damage it took.
+   * That is a trap the player cannot see and would never guess, and no bonus
+   * on a strength-8 scout closes a gap against 20 plus six per citizen.
+   *
+   * So the city's own defence is a FLOOR. The reading is that the garrison
+   * mans the walls rather than replacing the people on them: the attacker
+   * still has to chew through the unit first, and the unit is not a hole in
+   * the wall while they do it.
+   */
+  const manned = ownCity
+    ? Math.max(
+        effective,
+        cityCombatSide(state, ownCity, {
+          challengeScore: options.challengeScore ?? 0,
+          // ⚠️ Spread rather than `stance: options.stance`. Under
+          // `exactOptionalPropertyTypes` an explicit undefined is not the same
+          // as an absent key, and passing one would refuse the default.
+          ...(options.stance ? { stance: options.stance } : {}),
+        }).effective,
+      )
+    : effective;
 
   return {
     baseStrength: type.strength,
     hpFactor: factor,
     terrainBonus,
     fortifyBonus,
+    garrisonBonus,
     techBonus,
     challengeModifier: modifier,
     // A negative effective strength is meaningless and would invert the
     // damage curve, so the floor is 1 rather than 0.
-    effective: Math.max(1, effective),
+    effective: Math.max(1, manned),
   };
 }
 
@@ -190,6 +279,10 @@ export function cityCombatSide(
     hpFactor: factor,
     terrainBonus,
     fortifyBonus: wallBonus,
+    // A city IS the settlement; it does not additionally take cover in one.
+    // The number exists on both sides so callers never have to ask which kind
+    // of defender they are looking at before reading a field.
+    garrisonBonus: 0,
     techBonus: 0,
     challengeModifier: modifier,
     effective: Math.max(
@@ -351,20 +444,39 @@ export function previewAttack(
     });
   }
 
-  const siegeMultiplier =
-    targetKind === 'city' && type.role === 'siege' ? 1 + SIEGE_CITY_BONUS : 1;
-  // Tactics only exist against a city. Against a unit there is no wall to go
-  // over, under or through, so the profile is never consulted.
-  const tactic = targetKind === 'city' ? tacticProfile(options.tactic) : tacticProfile('batter');
+  /*
+   * ⚠️ **A siege engine answers walls, whoever is standing behind them.**
+   *
+   * This asked `targetKind === 'city'`, which is only true when the tile is
+   * EMPTY of units. Now that a garrison inherits the city's walls, that test
+   * would have made a single unit inside a city cancel the siege bonus
+   * outright: the cheapest possible counter to a Notebook Cannon would be to
+   * park one Profiler in the gateway.
+   *
+   * The question a siege bonus is really asking is "is there a wall in the
+   * way", so that is what it asks. The same reasoning gives the attacker the
+   * tactic choice, since over, under and through are all still available
+   * against a defended city.
+   */
+  const walledCity = cityAt(state, target);
+  const againstWalls =
+    walledCity !== undefined &&
+    (targetKind === 'city' || walledCity.factionId === defendingUnit?.factionId);
+
+  const siegeMultiplier = againstWalls && type.role === 'siege' ? 1 + SIEGE_CITY_BONUS : 1;
+  // Tactics only exist against a city. Against a unit in the open there is no
+  // wall to go over, under or through, so the profile is never consulted.
+  const tactic = againstWalls ? tacticProfile(options.tactic) : tacticProfile('batter');
   // Sap is a bonus against masonry, not against people. Once the breach is
   // open it is the worst way in, which is what its own description promises.
-  const wallStanding = targetKind === 'city' && (cityAt(state, target)?.wallHp ?? 0) > 0;
+  const wallStanding = againstWalls && (walledCity?.wallHp ?? 0) > 0;
   const tacticStrengthNow = tacticStrength(tactic, wallStanding);
 
   return {
     attacker: attackerSide,
     defender: defenderSide,
     targetKind,
+    againstWalls,
     ranged,
     expectedDamageToDefender: damageFrom(
       attackerSide.effective * siegeMultiplier * tacticStrengthNow,
@@ -447,7 +559,7 @@ export function resolveAttack(
   const defenceRoll = rng.float(0.9, 1.1);
   const type = unitType(attacker.typeId);
   const siegeMultiplier =
-    preview.targetKind === 'city' && type.role === 'siege' ? 1 + SIEGE_CITY_BONUS : 1;
+    preview.againstWalls && type.role === 'siege' ? 1 + SIEGE_CITY_BONUS : 1;
   /*
    * ⚠️ **The tactic has to be applied here as well as in the preview.**
    *
@@ -458,10 +570,13 @@ export function resolveAttack(
    * counterattack and then charged nothing at all. The comment on
    * `previewAttack` promises "the odds shown are the odds fought", and it was
    * true only because nothing had ever differed between them before.
+   *
+   * ⚠️ Which is why these read `againstWalls` off the preview rather than
+   * recomputing it. Garrisoning gave that condition a second clause, and a
+   * second clause is exactly the kind of thing that gets added in one place.
    */
-  const tactic = tacticProfile(preview.targetKind === 'city' ? options.tactic : 'batter');
-  const wallStanding =
-    preview.targetKind === 'city' && (cityAt(state, target)?.wallHp ?? 0) > 0;
+  const tactic = tacticProfile(preview.againstWalls ? options.tactic : 'batter');
+  const wallStanding = preview.againstWalls && (cityAt(state, target)?.wallHp ?? 0) > 0;
 
   const damageToDefender = damageFrom(
     preview.attacker.effective * siegeMultiplier * tacticStrength(tactic, wallStanding),

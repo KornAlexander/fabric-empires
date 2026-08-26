@@ -1053,11 +1053,21 @@ function refreshSelection(): void {
   // Titan are jokes built on Fabric terminology, and a German Fabric user says
   // them in English. The words around them are ordinary and are translated.
   el.selTitle.textContent = type.label;
+  /*
+   * ⚠️ Cover is stated, because a bonus nobody can see is a bonus nobody uses.
+   *
+   * Standing in your own city is now worth a great deal and costs nothing, and
+   * there is no button for it: you just walk in. The one place a player could
+   * possibly learn that is here, on the unit that is doing it.
+   */
+  const shelter = cityAt(state, unit.hex);
+  const inCover = shelter?.factionId === unit.factionId;
   el.selDetail.textContent =
     `${unit.hp}/${type.maxHp} ${t('HP')}  ` +
     `${unit.movesLeft}/${type.movement} ${t('moves')}  ` +
     `${t('strength')} ${type.strength}` +
-    (unit.fortified ? `  (${t('fortified')})` : '');
+    (unit.fortified ? `  (${t('fortified')})` : '') +
+    (inCover ? `  (${t('in cover: {city}', { city: shelter.name })})` : '');
 
   /*
    * The advice, in the words that matter: how fast will it grow.
