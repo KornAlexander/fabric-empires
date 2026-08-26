@@ -316,6 +316,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D555–D557 | The fog was a flight of steps | Recorded in full in section 78.8 |
 | D558–D566 | Three buttons, one of them lit | Recorded in full in section 79 |
 | D567–D574 | The film was singing along to the wrong words | Recorded in full in section 80 |
+| D575–D582 | The fog was a hole, not weather | Recorded in full in section 81 |
 
 ### 28. Cheat codes
 
@@ -7137,6 +7138,123 @@ by id now.
 | D572 | The minimum card is 3.5 s, not 5 s | The shortest sung line is 3.8 s. A 5 s floor would guarantee an overhang, which is the defect itself |
 | D573 | Cards must come down as the next line starts, as a test | "Lands on its line" was only half the property. One card spanning three lines satisfied the old half |
 | D574 | ⚠️ **Beats are addressed by id in tests, never by index** | Inserting a beat silently repointed `shots[1]` from the reveal to the build, and the test passed while meaning something else |
+
+---
+
+## 81. The fog was a hole, not weather
+
+Alexander: *"not a big fan of the fog. make it somehow more fog like real and
+not just black."*
+
+Read off the deployed build, near fog against the land beside it:
+
+| | mean rgb | luminance | variation (sd) |
+| --- | --- | --- | --- |
+| fog, near the camera | (9, 13, 19) | **13** | **2.4** |
+| land, sunlit | (126, 120, 100) | 120 | 35 |
+| fog, far away | (38, 43, 48) | 42 | 3.7 |
+
+Three separate facts in one table, and none of them is "somebody picked a dark
+colour".
+
+### It was authored in a space nobody sees it in
+
+The sheet was `#171f29`, which is rgb(23, 31, 41) and looks like a considered
+slate blue in an editor. It measured rgb(9, 13, 19) on screen. Nothing was
+broken: an unlit material emits its colour into a pipeline with ACES filmic
+tone mapping at exposure 0.78, and that curve crushes darks hard. Choosing a
+fog colour as a hex string was choosing it in the wrong space, and the file
+even carried a careful paragraph reasoning about the *lightness* of a value
+that the renderer was going to more than halve.
+
+⚠️ The colours are now stated as the linear values the shader emits, and tuned
+against measured screenshots. A test rejects any `new Color('#…')` in the file.
+
+### The billowing was real, and mathematically invisible
+
+The old sheet was mottled: fbm noise, per vertex, multiplying the colour by
+1 ± 0.11. Eleven percent of a value that lands near 13/255 is a swing of **one
+level**, under the quantisation of the framebuffer. It was computed for every
+vertex of 73,800 triangles, every rebuild, and could not be seen.
+
+A brightness *range* only exists where there is brightness to range over. That
+is why fixing the darkness had to come first, and why the guard on this is a
+ratio (`crest / trough > 5`) rather than a colour.
+
+### The distance haze was doing all the work
+
+The far fog measured 42 against the near fog's 13, from the same material. The
+scene's `FogExp2` was mixing the sheet towards the sky, so the only place the
+fog looked like fog was where you could not see it properly. The old file said
+so approvingly: *"Distance is left to the scene's own FogExp2 … which pulls the
+far field towards the sky on its own without help here."* True, and it was the
+whole effect.
+
+### What it is now
+
+A `ShaderMaterial` following the pattern `corruption.ts` already used:
+
+- **Billowing sampled on world XZ**, two drifts crossing at different speeds
+  and directions, which gives curl without simulating anything. World position
+  is the only safe input: neighbouring lids own separate copies of the vertices
+  along the edge they share, so anything per-hex draws a seam.
+- **A rolling top.** The same noise displaces the vertex upward, so the bank
+  has a silhouette instead of shrink-wrapping the terrain.
+  ⚠️ **Upward only, and that is correctness, not taste.** The lid sits at each
+  hex's own peak so nothing beneath it can be seen; a downward displacement
+  would sink it into the hillside and open a window onto unexplored ground.
+  `max(0.0, …)` is the entire guard, it reads like a formality, and it is the
+  obvious thing to delete while tidying a shader. It has a test.
+- **Drift.** Measured over 60 s of real time, the fog changes with a 95th
+  percentile of 10 levels against a static control at 4. Slow enough to read as
+  weather rather than as an animation.
+- **A third octave that only exists near the camera.** Everything else is sized
+  for looking at the map, so zoomed right in the low frequencies were nearly
+  constant and the sheet went back to being a flat pane. Adding a high
+  frequency everywhere is the wrong fix: at map zoom it falls under a pixel per
+  feature and crawls. It is weighted by distance to `cameraPosition`, so the
+  detail appears exactly where there is screen area to show it.
+
+Calibration, all from one frame with only the uniforms changed:
+
+| version | fog luminance | fog variation (sd) |
+| --- | --- | --- |
+| the flat plate | 12 | 2.1 |
+| first pass | 43 | 4.1 |
+| wider trough-to-crest | 48 | 7.1 |
+| **shipped** | **55** | **10.1** |
+
+Sunlit land measures 121 in all four, so the island keeps better than twice the
+fog's brightness and three times its local contrast. ⚠️ **That ratio is the
+constraint, not the fog's own number.** An earlier attempt recorded in this
+file took the sheet to lightness 0.20 and lost the island inside it, which is a
+different failure from the black one and no more readable.
+
+Cost: median frame 3.2 ms, p95 5.5 ms, on the same 73,800 triangles as before.
+
+⚠️ **Measured with fixed pixel boxes, which is only valid within one camera.**
+A later screenshot at a different zoom put the "land" sample box on top of fog
+and reported land at 145 and fog at 127, which would have looked like a
+regression and was an error in the ruler. Comparisons above are same-frame,
+uniform-only.
+
+### One trap worth writing down
+
+The shaders live in template literals. A backtick in a GLSL comment ends the
+string, and the failure surfaces as `TS1005: ',' expected` a hundred lines
+away, pointing at valid TypeScript. Writing *`cameraPosition`* in a comment
+cost a build.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D575 | ⚠️ **Fog colours are linear values, never hex strings** | ACES at exposure 0.78 turned a considered rgb(23,31,41) into rgb(9,13,19). A hex here is a colour chosen in a space nobody sees |
+| D576 | The guard on flatness is a crest-to-trough ratio, not a colour | The old mottling was ±11% of near-black, which is under one level in 255. Range needs something to range over |
+| D577 | ⚠️ **Vertex displacement is clamped upward** | The lid hides ground by sitting at the hex's peak. Down is a window onto unexplored terrain, and the clamp looks deletable |
+| D578 | Billowing is sampled on world XZ, never per hex | Neighbouring lids hold separate copies of shared-edge vertices; anything else draws a seam down every boundary |
+| D579 | A near-camera detail octave, weighted by distance | Map-scale noise is constant across a close-up; high-frequency noise everywhere crawls at map zoom. Distance picks the right one |
+| D580 | ⚠️ **The sheet keeps `fog: true` and the fog chunks explicitly** | A raw ShaderMaterial gets no distance haze. Without it this would be the one surface ignoring distance |
+| D581 | The bounding sphere grows by the billow height | The drawn surface is taller than its geometry, and three culls on the sphere |
+| D582 | Brightness is judged as a ratio to sunlit land, not absolutely | Both known failures are ratio failures: invisible against black, and the island lost inside a bright sheet |
 
 ---
 

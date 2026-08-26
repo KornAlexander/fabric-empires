@@ -820,6 +820,9 @@ export function createScene3D(
       water?.update(delta * 0.35);
       fx.update(delta);
       corruption.update(delta);
+      // Fog that does not move is a painted backdrop. The drift is slow enough
+      // that it reads as weather rather than as an animation.
+      fog.update(delta);
 
       // Keep the shadow frustum around the camera target rather than the
       // whole map: a frustum big enough for a radius-25 map wastes most of
