@@ -29,6 +29,19 @@ export interface ChallengeOutcome {
   readonly elapsedMs: number;
   /** True when the player closed the challenge without answering. */
   readonly abandoned: boolean;
+  /**
+   * The topic the question was actually about, when that differs from the one
+   * requested.
+   *
+   * ⚠️ **The engine still never interprets this**; it exists so the learning
+   * layer can schedule against the truth. A provider may substitute a question
+   * from a neighbouring topic when the requested one has nothing left to ask,
+   * and recording that answer against the topic that was *asked for* would
+   * credit the player with knowledge they never showed.
+   *
+   * Absent means "the one you asked for", which is the ordinary case.
+   */
+  readonly topicId?: string;
 }
 
 export interface TopicNode {

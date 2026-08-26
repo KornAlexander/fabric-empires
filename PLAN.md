@@ -8048,4 +8048,97 @@ nobody will meet. Worth a section of its own.
 
 ---
 
+## 92. A question you got right does not come back
+
+The complaint: the same question kept reappearing after it had been answered
+correctly.
+
+### Why it did
+
+Two things combined. `selectQuestion` had a set of ids already asked this
+session, but it was a **preference**: when the skill had nothing else left the
+set was ignored and a question repeated. And the bank holds **exactly three
+questions per skill** (measured: 123 across 41 skills, every skill at three),
+so "nothing else left" arrived after three asks on a topic.
+
+Meanwhile the compressed session clock brings a topic back after
+`SESSION_DAY_MS` = 75 seconds on its first successful review. Three asks is not
+far away.
+
+### The rule now
+
+A question comes back only if it was **wrong**, **abandoned**, or **nearly ran
+the clock out**. Anything else is retired for the session.
+
+⚠️ **"Nearly ran out" is not the fast/slow scoring line.** Scoring splits at
+half the thinking budget, and reusing that boundary would have sent a
+comfortable eight-second answer round again: at the default pace the budget is
+fourteen seconds, so half of it is barely a pause for thought. `LABOURED_SHARE`
+is 0.8, which is about whether the player was reconstructing rather than
+recalling. A correct answer past half still scores 0.6 rather than 1: being
+unhurried costs a little, it does not cost you the question twice.
+
+⚠️ **A question that must come back is also removed from the soft-avoid set.**
+Otherwise the two rules pull against each other: one says "ask this again", the
+other says "prefer anything else", and with three per skill the missed question
+would be the last of the three to reappear rather than a candidate at once.
+
+### Retirement is session-scoped, and that is the whole point
+
+⚠️ It is deliberately **not** persisted next to mastery. A question retired for
+good would mean a topic answered right once is never tested again, which is the
+opposite of what spaced repetition exists to do. The SM-2 schedule carries
+knowledge between sittings; this set only stops the repetition inside one.
+
+### ⚠️ Borrowing means the scheduler must be told the truth
+
+With three questions a skill, answering all three well leaves a topic with
+nothing to ask. Rather than run a battle with no question in it, and therefore
+no defence bonus, as a *reward* for knowing the material, `selectQuestion` will
+borrow from a neighbour: same cluster first, the wider exam only if that is
+spent too.
+
+That breaks the game's promise that the faction attacking you tells you what
+you are about to be tested on, which is the accepted cost.
+
+But it introduced a subtler risk that had to be closed in the same change: the
+provider recorded every answer against `request.topicId`. A borrowed question
+would therefore have credited the player with knowing a topic **they were never
+asked about**, and pushed its review further out. `ChallengeOutcome` now carries
+an optional `topicId` naming what was really asked, and the provider schedules
+against that. The engine still never interprets it.
+
+### A test that was passing for the wrong reason
+
+The first version of the harness answered with `options[0]`, because the bank
+ships answers only as a hash. That is correct about a quarter of the time by
+luck, so every "answered correctly" assertion was quietly testing something
+else, and the no-repeat test failed in a way that looked like a product bug.
+It now finds the right answer by checking candidates against `answerHash`,
+which is what the real presenter does.
+
+### What was and was not verified in the browser
+
+Verified: eight consecutive research questions, no repeats, loop healthy.
+
+⚠️ **Not verified live: the same topic recurring.** Research asks each topic
+once, and the two paths that re-ask a topic both needed something the save did
+not have (a unit for the council, an AI willing to besiege for battles, which
+is section 91's open question). `wipeSave` did not clear the save either, so a
+fresh game could not be staged. The rule itself is covered by twelve tests
+through the real presenter, real bank and real answer hashing; the **wiring**,
+which those tests cannot see because they build their own presenter, is pinned
+by `app/test/reaskWiring.test.ts`.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D645 | ⚠️ **A correct, prompt answer retires the question for the session** | Three questions a skill plus a soft avoid-set meant a known question came back within one sitting |
+| D646 | ⚠️ **The re-ask threshold is 0.8 of the budget, not the 0.5 scoring line** | Half the budget is fourteen seconds' worth of nothing; re-asking there punishes thinking rather than catching reconstruction |
+| D647 | A question due to be re-asked leaves the soft-avoid set too | Otherwise "ask it again" and "prefer anything else" contradict each other |
+| D648 | Retirement is session-scoped and never persisted | Permanent retirement is the opposite of spaced repetition |
+| D649 | A dry topic borrows from its cluster rather than asking nothing | A battle with no question is no defence bonus, awarded for knowing the material |
+| D650 | ⚠️ **`ChallengeOutcome.topicId` reports what was really asked** | Borrowing otherwise credits a topic the player never answered and delays its review |
+
+---
+
 *Last updated: 26 August 2026*

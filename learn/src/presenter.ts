@@ -16,7 +16,21 @@ import type {
 } from '@fabric-empires/engine';
 import { checkAnswer, decryptExplanation } from './crypto.js';
 import { selectQuestion, type SelectOptions } from './bank.js';
+import { topicIdFor } from './outline.js';
 import { candidateAnswers, type Question } from './questions.js';
+
+/**
+ * The campaign prefix of a topic id, so a borrowed question is reported under
+ * the same curriculum it was asked in.
+ *
+ * ⚠️ Topic ids are `<campaign>-<number>` and the campaign is no longer always
+ * `dp600`; hard-coding it here is exactly the bug `skillIdFromTopic` already
+ * carries a warning about, seen from the writing side.
+ */
+function campaignOf(topicId: string): string {
+  const match = /^(.*)-\d+$/.exec(topicId);
+  return match?.[1] ?? 'dp600';
+}
 
 /**
  * Recover the correct answer by testing every candidate against the stored
@@ -92,6 +106,39 @@ export const SCORE_CORRECT = 0.6;
 export const SCORE_TIMEOUT = -0.6;
 export const SCORE_WRONG = -1;
 
+/**
+ * The share of the thinking budget past which an answer counts as laboured.
+ *
+ * ⚠️ **Not the same line as the fast/slow scoring boundary, deliberately.**
+ * Scoring splits at half the budget, and reusing that here would send a
+ * comfortable eight-second answer back round again: at the default pace the
+ * budget is fourteen seconds, so half of it is barely a pause for thought.
+ * This is about whether the player nearly ran out of clock, which is evidence
+ * they were reconstructing the answer rather than recalling it, and that is
+ * the only kind of slowness worth re-testing.
+ *
+ * A correct answer inside this still scores 0.6 rather than 1. Being unhurried
+ * costs a little; it does not cost you the question twice.
+ */
+export const LABOURED_SHARE = 0.8;
+
+/**
+ * Whether this attempt earns the question a second showing.
+ *
+ * The rule the player asked for: a question comes back only if it was got
+ * wrong, abandoned, or nearly ran the clock out. Anything answered correctly
+ * and in reasonable time is done with for the session.
+ */
+export function shouldReask(
+  correct: boolean,
+  thinkingMs: number,
+  timeLimitMs: number,
+  abandoned: boolean,
+): boolean {
+  if (abandoned || !correct) return true;
+  return thinkingMs > timeLimitMs * LABOURED_SHARE;
+}
+
 export function scoreFor(
   correct: boolean,
   elapsedMs: number,
@@ -147,6 +194,16 @@ export interface PresenterOptions extends SelectOptions {
   /** Questions already asked, so a session repeats itself as little as possible. */
   readonly asked?: Set<string>;
   /**
+   * Questions answered correctly and promptly, which will not be asked again.
+   *
+   * ⚠️ Session-scoped on purpose, and NOT persisted alongside mastery. A
+   * question retired for good would mean a topic answered right once is never
+   * tested again, which is the opposite of what spaced repetition is for. The
+   * set dies with the page; the SM-2 schedule is what carries knowledge
+   * between sittings.
+   */
+  readonly retired?: Set<string>;
+  /**
    * The pool to draw from. Defaults to the whole bank.
    *
    * Exists so the empty-bank path stays testable now that every skill in the
@@ -168,6 +225,7 @@ export function createQuestionPresenter(
   options: PresenterOptions = {},
 ): (request: ChallengeRequest) => Promise<ChallengeOutcome> {
   const asked = options.asked ?? new Set<string>();
+  const retired = options.retired ?? new Set<string>();
   const { questions: pool, ...selectOptions } = options;
 
   return async function present(
@@ -175,7 +233,13 @@ export function createQuestionPresenter(
   ): Promise<ChallengeOutcome> {
     const question = selectQuestion(
       request.topicId,
-      { tier: request.tier, exclude: asked, ...selectOptions },
+      {
+        tier: request.tier,
+        exclude: asked,
+        retired,
+        borrowWhenExhausted: true,
+        ...selectOptions,
+      },
       pool,
     );
 
@@ -183,6 +247,18 @@ export function createQuestionPresenter(
       return { score: 0, elapsedMs: 0, abandoned: false };
     }
     asked.add(question.id);
+
+    /*
+     * ⚠️ **The topic the question is really about, which is not always the
+     * one that was requested.**
+     *
+     * When a skill's three questions are all retired, `selectQuestion` borrows
+     * from a neighbour so the fight still has a question in it. Reporting that
+     * result against `request.topicId` would credit the player with knowing a
+     * topic they were never asked about, and quietly push its review further
+     * out. The scheduler is only as good as the honesty of what it is told.
+     */
+    const askedTopicId = topicIdFor(question.skillId, campaignOf(request.topicId));
 
     /*
      * The clock the player sees is reading time plus thinking time, and only
@@ -208,6 +284,27 @@ export function createQuestionPresenter(
 
     const thinkingMs = Math.max(0, given.elapsedMs - reading);
     const score = scoreFor(correct, thinkingMs, request.timeLimitMs, given.abandoned);
+
+    /*
+     * Retire it, or leave it in play.
+     *
+     * ⚠️ Recorded AFTER the answer, unlike `asked`, which is added before the
+     * question is even shown. `asked` only has to stop the same question
+     * appearing twice in a row; this has to know how it went.
+     */
+    if (!shouldReask(correct, thinkingMs, request.timeLimitMs, given.abandoned)) {
+      retired.add(question.id);
+    } else {
+      /*
+       * A question that must come back is taken OUT of the soft-avoid set.
+       *
+       * Otherwise the two rules fight: this one says "ask it again", and
+       * `asked` says "prefer anything else", so with three questions per skill
+       * the wrong answer would be the last of the three to reappear rather
+       * than a candidate straight away.
+       */
+      asked.delete(question.id);
+    }
 
     // Teach on the way out, whatever happened. A learner who was wrong sees
     // the right answer and the reasoning; the spaced repetition system will
@@ -235,6 +332,11 @@ export function createQuestionPresenter(
       elapsedMs: given.elapsedMs,
     });
 
-    return { score, elapsedMs: given.elapsedMs, abandoned: given.abandoned };
+    return {
+      score,
+      elapsedMs: given.elapsedMs,
+      abandoned: given.abandoned,
+      topicId: askedTopicId,
+    };
   };
 }

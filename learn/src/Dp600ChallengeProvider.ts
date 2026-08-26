@@ -79,8 +79,17 @@ export class Dp600ChallengeProvider implements ChallengeProvider {
      * as reviews. A battle question about workspace roles is retrieval
      * practice on workspace roles whatever the game called it, and pretending
      * otherwise would throw away most of the evidence the scheduler has.
+     *
+     * ⚠️ **`outcome.topicId` wins over `request.topicId` when it is set.** The
+     * presenter may substitute a question from a neighbouring topic once the
+     * requested one is exhausted, and crediting the request would tell the
+     * scheduler the player knows something they were never asked.
      */
-    this.mastery?.record(request.topicId, outcome.score, outcome.abandoned);
+    this.mastery?.record(
+      outcome.topicId ?? request.topicId,
+      outcome.score,
+      outcome.abandoned,
+    );
     return outcome;
   }
 

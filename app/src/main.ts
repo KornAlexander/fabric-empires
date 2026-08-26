@@ -183,6 +183,15 @@ import { createBattleBanner, type BattleSide } from './ui/battleBanner.js';
  */
 const modal = createQuestionModal();
 const askedThisSession = new Set<string>();
+/**
+ * Questions answered correctly and promptly, which will not come back.
+ *
+ * ⚠️ **One set for both seats, like `askedThisSession`.** In a two-player game
+ * the pair share one empire and one bank, so a question seat one has already
+ * answered is spent for the table: handing seat two the same item is not a
+ * second test, it is the first player's answer read aloud.
+ */
+const retiredThisSession = new Set<string>();
 
 /**
  * Spaced repetition, persisted across sessions.
@@ -196,7 +205,10 @@ const mastery = createMasteryTracker({
   sessionStart: Date.now(),
 });
 
-const soloPresenter = createQuestionPresenter(modal, { asked: askedThisSession });
+const soloPresenter = createQuestionPresenter(modal, {
+  asked: askedThisSession,
+  retired: retiredThisSession,
+});
 
 /**
  * Player one's presenter, swapped when a second person joins.
@@ -244,12 +256,25 @@ function buildSecondSeat(): void {
   const own = courseById(lastSetup.courseP1);
   seatOnePresenter = createQuestionPresenter(
     duo.ui({ seat: 1, who: 'Player 1', course: own?.course ?? 'Fabric Empires' }),
-    { asked: askedThisSession },
+    { asked: askedThisSession, retired: retiredThisSession },
   );
 
+  /*
+   * ⚠️ Seat two keeps its OWN bookkeeping, because it reads its own bank.
+   *
+   * The second player may be on an entirely different curriculum, and nothing
+   * guarantees question ids are unique between two independently authored
+   * banks. Sharing the sets would let a Klasse 1 id retire a DP-600 question
+   * that happens to be numbered the same, which would look like a question
+   * silently going missing.
+   */
   secondSeat = createQuestionPresenter(
     duo.ui({ seat: 2, who: 'Player 2', course: campaign.course }),
-    { questions: campaign.questions },
+    {
+      questions: campaign.questions,
+      asked: new Set<string>(),
+      retired: new Set<string>(),
+    },
   );
   // The topics this seat can be asked about, which are its own, not the
   // world's. A Klasse 1 player is never asked about a lakehouse.
