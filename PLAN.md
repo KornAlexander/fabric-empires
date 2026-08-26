@@ -8867,6 +8867,73 @@ import path rather than written straight into `content/`.
 | Does DP-420 get a campaign too? | It is the published alternative to DP-800 for the same slot, so it is the other half of a real choice |
 | Is a fundamentals-level AI campaign worth it? | Cheap to add and the least useful to somebody already sitting the associate exams |
 
+## 100. A code that lifts the fog, and puts it back
+
+Section 96 added codes for reaching parts of the game that take turns to get to.
+`lineage` was one of them: it marks every tile explored, which lifts the black
+and deliberately stops there. You still have to walk past a town before you know
+it is there, so the memory stays an honest record of what was actually seen.
+
+`adminportal` is the other half. It shows the ground **and** the things standing
+on it, live, including the seven camps the opening works hard not to give away.
+
+### Why it is a view flag and not a saved state
+
+Every other world code writes state. This one does not, and the difference is
+the whole design:
+
+- `lineage` writes to the seat's memory. Permanent, saved, and **true**
+  afterwards: the player really does know that ground now.
+- `adminportal` flips a flag in `main.ts`. Nothing in the rules moves, which is
+  what lets it be turned off again and put the player back exactly where they
+  were, rather than leaving them holding a map they never scouted.
+
+⚠️ **The reversibility applies to the picture, never to the record.** The use
+still lands in `cheatsUsed`, still travels in the save, and still shows on the
+victory screen. The one thing this game must never do is tell somebody they are
+ready when they are not, and a code that could be used and then hidden by
+switching it off would do precisely that.
+
+### Two traps, both found by writing it
+
+⚠️ **The fog signature is an early return.** `refreshFog` skips its work when the
+signature is unchanged, which is the optimisation that stops it merging six
+thousand hex patches every frame. A toggle that flipped the flag without
+clearing the signature would find nothing to do and redraw nothing, which on
+screen is indistinguishable from the code being broken.
+
+⚠️ **It must not share the opening's flag.** `revealingForOpening` lifts LESS
+than this: it lights the land and still hides every army on it, because an
+establishing shot showing all seven camps would give away the scouting game
+before turn one. One flag for both would spoil the intro.
+
+The scene is told there is no fog by being handed `undefined` rather than the
+full tile set. Both look identical and one of them costs a six-thousand-entry
+lookup per unit, per town and per overlay, every frame.
+
+### Verified on the deployed build, because fog cannot be proved by a return value
+
+Fog is the one feature whose entire content is that something is **not** drawn,
+so there is nothing to assert on. Counting what the renderer actually drew:
+
+| | Visible meshes |
+| --- | --- |
+| Fog on | 69 |
+| `adminportal` | 720 |
+| `adminportal` again | 69 |
+
+Exactly back to 69, and `explored` stayed at 61 of 6,211 throughout, which is
+the state being genuinely untouched rather than merely claimed to be.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D715 | `adminportal` lifts ground and armies; `lineage` still lifts only ground | Two different things, and the honest one should stay available |
+| D716 | ⚠️ **A view flag, not state** | It can be turned off without leaving the player holding a map they never scouted |
+| D717 | The use is recorded even though the effect is reversible | The record has to be permanent or the victory screen can lie |
+| D718 | ⚠️ **The toggle clears the fog signature** | `refreshFog` returns early otherwise, and nothing on screen moves |
+| D719 | Kept separate from `revealingForOpening` | The opening lifts less on purpose; sharing a flag would show all seven camps in the intro |
+| D720 | The scene is handed `undefined`, not every hex | Identical on screen, and one of them is a per-entity lookup every frame |
+
 ---
 
 *Last updated: 27 August 2026*

@@ -428,6 +428,16 @@ function runCheat(raw: string): void {
     seat: mySeat,
     selectedUnitId,
     argument: match.argument,
+    liftFog: () => {
+      fogLifted = !fogLifted;
+      // ⚠️ The signature is what makes `refreshFog` do any work, so it has to
+      // be cleared: a toggle that left it alone would find it unchanged and
+      // return early, and nothing on screen would move.
+      fogSignature = '';
+      refreshFog();
+      dirty = true;
+      return fogLifted;
+    },
     faceProctor: () => {
       cheats.hide();
       void faceTheProctor();
@@ -4219,6 +4229,24 @@ let fogSignature = '';
 let revealingForOpening = false;
 
 /**
+ * The fog is off entirely, because somebody typed the code for it.
+ *
+ * ⚠️ **Separate from `revealingForOpening`, which lifts LESS than this.** The
+ * opening lights the land and still hides every army on it, because an
+ * establishing shot that showed all seven camps would give away the whole
+ * scouting game before the first turn. This lifts both halves: the ground and
+ * the things standing on it.
+ *
+ * ⚠️ **A view flag, not state.** Fog is the one feature whose entire content is
+ * that something is NOT drawn, and there is nothing in the rules to change: the
+ * engine's memory is untouched, so turning this off puts the player back
+ * exactly where they were rather than having permanently learnt the map. The
+ * code is still recorded in `cheatsUsed` and still lands on the victory screen,
+ * which is the part that has to be permanent.
+ */
+let fogLifted = false;
+
+/**
  * What the player has been shown so far, while a unit is walking.
  *
  * ⚠️ Undefined at every other moment, and that is deliberate: the fog agrees
@@ -4243,6 +4271,19 @@ function refreshFog(): void {
 
   if (revealingForOpening) {
     fogSignature = 'opening';
+    scene.setFog([], []);
+    dirty = true;
+    return;
+  }
+
+  /*
+   * ⚠️ Its own signature, not `revealingForOpening`'s. Sharing one would mean
+   * turning the code off left the signature reading 'opening', the next
+   * `refreshFog` would find it unchanged and return early, and the fog would
+   * stay off until something else happened to move a unit.
+   */
+  if (fogLifted) {
+    fogSignature = 'lifted';
     scene.setFog([], []);
     dirty = true;
     return;
@@ -4394,7 +4435,13 @@ function frame(now: number): void {
       hover,
       unitOffset: unitWorldOffset,
       unitOpacity: (id) => effects.opacityOf(id),
-      visibleHexes: currentSight,
+      /*
+       * ⚠️ `undefined` is how the scene is told there is no fog at all, which
+       * is what the map editor and every scene test pass. Handing it the full
+       * tile set instead would look identical and would cost a six thousand
+       * entry lookup per unit, per town and per overlay, every frame.
+       */
+      visibleHexes: fogLifted ? undefined : currentSight,
       // Whose ghosts to draw. Per seat, so taking a chair does not inherit the
       // towns the previous occupant of this browser had found.
       seenCities: memoryOf(state, mySeat).seenCities,
