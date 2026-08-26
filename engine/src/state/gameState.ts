@@ -29,6 +29,7 @@ import {
   type CityKind,
   type Faction,
   type Ruin,
+  type SeenCity,
   type Treasure,
   type Unit,
   type UnitTypeId,
@@ -60,6 +61,13 @@ export interface GameState {
   readonly ruins: ReadonlyMap<string, Ruin>;
   /** Buried caches, opened by answering. Removed once emptied. */
   readonly treasures: ReadonlyMap<string, Treasure>;
+  /**
+   * Towns the player has seen, as they looked when last seen. Keyed by hex.
+   *
+   * ⚠️ Snapshots, not references: see `SeenCity`. The map keeps showing what
+   * you found until you go back and look again, which is the point.
+   */
+  readonly seenCities: ReadonlyMap<string, SeenCity>;
   /**
    * The tech tree, supplied by the challenge provider.
    *
@@ -586,6 +594,7 @@ export function createGameState(
     cities,
     ruins: new Map(),
     treasures: treasureField.treasures,
+    seenCities: new Map(),
     topics: options.topics ?? GENERIC_TOPIC_GRAPH,
     research: EMPTY_RESEARCH,
     activeFactionId: PLAYER_FACTION_ID,

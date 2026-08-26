@@ -187,6 +187,6 @@ describe('chests in the save', () => {
 
     const loaded = deserialise(JSON.stringify(old));
     expect(loaded.treasures.size).toBe(0);
-    expect(SAVE_VERSION).toBe(9);
+    expect(SAVE_VERSION).toBe(10);
   });
 });

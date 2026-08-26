@@ -11,13 +11,14 @@
  */
 
 import { generateMap, type MapOptions } from '../map/index.js';
-import type { City, Faction, Ruin, Treasure, Unit } from '../entities/index.js';
+import { hexKey } from '../hex/index.js';
+import type { City, Faction, Ruin, SeenCity, Treasure, Unit } from '../entities/index.js';
 import { CITY_RANKS, FIRST_RANK, type CityRank } from '../entities/rank.js';
 import { GENERIC_TOPIC_GRAPH, type TopicGraph } from '../challenge/index.js';
 import { EMPTY_RESEARCH, type ResearchState } from '../rules/research.js';
 import type { Difficulty, GameState } from '../state/index.js';
 
-export const SAVE_VERSION = 9;
+export const SAVE_VERSION = 10;
 
 export interface SaveFile {
   readonly version: number;
@@ -56,6 +57,19 @@ export interface SaveFile {
    * which is the largest thing in the file by some way and still small.
    */
   readonly explored: readonly string[];
+  /**
+   * Towns the player has found, as they looked when last seen.
+   *
+   * ⚠️ **Cannot be rebuilt from anything else, unlike most of this file.**
+   * `explored` says which GROUND is remembered; it says nothing about what was
+   * standing on it, and the live `cities` list is the current truth rather
+   * than what the player was shown. A memory that is not saved is a memory
+   * the player loses every time they close the tab, which is the one thing
+   * this feature exists to prevent.
+   *
+   * Optional so a version-9 save still parses while its migration runs.
+   */
+  readonly seenCities?: readonly SeenCity[];
 }
 
 export function toSaveFile(state: GameState): SaveFile {
@@ -75,6 +89,7 @@ export function toSaveFile(state: GameState): SaveFile {
     nextEntityId: state.nextEntityId,
     cheatsUsed: state.cheatsUsed,
     explored: [...state.explored],
+    seenCities: [...state.seenCities.values()],
   };
 }
 
@@ -244,6 +259,22 @@ const MIGRATIONS: Readonly<Record<number, (save: SaveFile) => SaveFile>> =
       version: 9,
       treasures: [],
     }),
+
+    /**
+     * Town memory arrives empty.
+     *
+     * ⚠️ **Empty, not "everything you have explored".** The tempting migration
+     * is to walk `explored` and photograph every town standing on remembered
+     * ground, and it would be a lie in the player's favour: it would hand them
+     * a picture of towns as they are TODAY and label it as something they saw
+     * on turn four, including places that have changed hands since. A blank
+     * memory is simply true, and one walk past refills it.
+     */
+    9: (save) => ({
+      ...save,
+      version: 10,
+      seenCities: [],
+    }),
   });
 
 /** The best rank a population would justify if knowledge were not asked for. */
@@ -315,6 +346,10 @@ export function fromSaveFile(
      * were opened. An empty field is the only answer that is stable.
      */
     treasures: new Map((migrated.treasures ?? []).map((t) => [t.id, t])),
+    // ⚠️ `hexKey`, not an inline template. The format happens to be `q,r`
+    // today, and a second copy of it here is a silent way for a save to stop
+    // matching the map the moment that changes.
+    seenCities: new Map((migrated.seenCities ?? []).map((c) => [hexKey(c.hex), c])),
     topics,
     research: migrated.research ?? EMPTY_RESEARCH,
     activeFactionId: migrated.activeFactionId,

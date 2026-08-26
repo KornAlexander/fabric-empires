@@ -25,7 +25,8 @@
  */
 
 import { hexKey, hexSpiral, type Hex } from '../hex/index.js';
-import { unitType } from '../entities/index.js';
+import { unitType, type City, type SeenCity } from '../entities/index.js';
+import { isBreached } from './walls.js';
 import type { GameState } from '../state/gameState.js';
 
 /**
@@ -53,6 +54,7 @@ export function rememberAlong(
   state: GameState,
   steps: readonly Hex[],
   sight: number,
+  factionId?: string,
 ): GameState {
   if (steps.length === 0) return state;
 
@@ -66,20 +68,57 @@ export function rememberAlong(
    * shape for the same reason.
    */
   let fresh: string[] | undefined;
+  /*
+   * ⚠️ Towns passed EN ROUTE are photographed too, not just ones still in
+   * sight at the destination.
+   *
+   * A scout that marches six hexes past a village and keeps going would
+   * otherwise remember the ground and not the village, which is precisely the
+   * "I found it once and now I cannot find it again" case. Only collected
+   * when there is a town to collect, so the common march over empty country
+   * allocates nothing.
+   *
+   * ⚠️ The town hexes are indexed ONCE. This runs for every step of every
+   * move by every AI unit on the map, and a scan of the city list per hex per
+   * step is the kind of nested loop that only shows up as a slow turn.
+   */
+  const townHexes = new Set<string>();
+  for (const city of state.cities.values()) townHexes.add(hexKey(city.hex));
+
+  /*
+   * ⚠️ **Only the human's marches fill the human's memory.**
+   *
+   * `moveUnit` is the same function the antagonists use, so without this the
+   * player's map would fill in with every town the seven AI factions happened
+   * to walk past. That is not a small leak: they roam the whole map, so it
+   * would hand the player the entire town list within a few turns while the
+   * ground around it stayed dark, which looks less like a feature than like
+   * the fog being broken.
+   *
+   * Decided from `isPlayer` on the faction rather than by importing
+   * `PLAYER_FACTION_ID`: that constant lives in the module which imports this
+   * one, and taking the value rather than the type would close the cycle.
+   */
+  const mine = factionId === undefined || state.factions.get(factionId)?.isPlayer === true;
+
+  let passed: Set<string> | undefined;
   for (const step of steps) {
     for (const hex of hexSpiral(step, sight)) {
       const key = hexKey(hex);
       // Off-map hexes are not secrets, they are nothing.
       if (!state.map.tiles.has(key)) continue;
+      if (mine && townHexes.has(key)) (passed ??= new Set()).add(key);
       if (state.explored.has(key)) continue;
       (fresh ??= []).push(key);
     }
   }
-  if (!fresh) return state;
 
-  const explored = new Set(state.explored);
+  const remembered = passed ? rememberCities(state, passed) : state;
+  if (!fresh) return remembered;
+
+  const explored = new Set(remembered.explored);
   for (const key of fresh) explored.add(key);
-  return { ...state, explored };
+  return { ...remembered, explored };
 }
 
 /**
@@ -125,11 +164,94 @@ export function rememberVisible(state: GameState, factionId: string): GameState 
   for (const key of visible) {
     if (!state.explored.has(key)) added += 1;
   }
-  if (added === 0) return state;
 
-  const explored = new Set(state.explored);
+  /*
+   * ⚠️ Town memory is the HUMAN's, and this function runs for every faction.
+   * See the note in `rememberAlong`: without the guard the seven antagonists
+   * would fill the player's map in for them.
+   */
+  const withCities = state.factions.get(factionId)?.isPlayer
+    ? rememberCities(state, visible)
+    : state;
+  if (added === 0) return withCities;
+
+  const explored = new Set(withCities.explored);
   for (const key of visible) explored.add(key);
-  return { ...state, explored };
+  return { ...withCities, explored };
+}
+
+/**
+ * Update the town memory from whatever is in sight right now.
+ *
+ * Three cases, and the third is the one that makes this a memory rather than
+ * a growing pile of ghosts:
+ *
+ *   - a town in sight is photographed, replacing any older picture;
+ *   - a town out of sight is left exactly as it was, however stale;
+ *   - a remembered tile that is in sight and has NO town on it forgets.
+ *
+ * ⚠️ **That last case is what stops a razed town haunting the map for ever.**
+ * Without it, taking a village off the board would leave its ghost standing
+ * on empty ground, and the one place the player could check, by walking back,
+ * is exactly where the lie would persist.
+ *
+ * Returns the same state when nothing changed, because this runs every turn
+ * and most turns see no town at all.
+ */
+export function rememberCities(state: GameState, visible: ReadonlySet<string>): GameState {
+  let next: Map<string, SeenCity> | undefined;
+
+  const seenNow = new Map<string, City>();
+  for (const city of state.cities.values()) {
+    if (visible.has(hexKey(city.hex))) seenNow.set(hexKey(city.hex), city);
+  }
+
+  for (const [key, city] of seenNow) {
+    const before = state.seenCities.get(key);
+    const picture: SeenCity = {
+      hex: city.hex,
+      name: city.name,
+      factionId: city.factionId,
+      kind: city.kind,
+      rank: city.rank,
+      population: city.population,
+      wallLevel: city.wallLevel,
+      breached: isBreached(city),
+      turnSeen: state.turn,
+    };
+    if (before && samePicture(before, picture)) continue;
+    (next ??= new Map(state.seenCities)).set(key, picture);
+  }
+
+  // Forget anything that is visibly no longer there.
+  for (const key of state.seenCities.keys()) {
+    if (!visible.has(key) || seenNow.has(key)) continue;
+    (next ??= new Map(state.seenCities)).delete(key);
+  }
+
+  if (!next) return state;
+  return { ...state, seenCities: next };
+}
+
+/**
+ * Whether two pictures are the same one.
+ *
+ * ⚠️ `turnSeen` is excluded on purpose. Including it would make every turn a
+ * change, which would rebuild the memory map and every ghost model in the
+ * scene once a turn for a town that has not altered in any way. The staleness
+ * a player cares about is "has anything happened since", not "how many turns
+ * have I been staring at it".
+ */
+function samePicture(a: SeenCity, b: SeenCity): boolean {
+  return (
+    a.name === b.name &&
+    a.factionId === b.factionId &&
+    a.kind === b.kind &&
+    a.rank === b.rank &&
+    a.population === b.population &&
+    a.wallLevel === b.wallLevel &&
+    a.breached === b.breached
+  );
 }
 
 /** Whether the player has ever seen this hex. */

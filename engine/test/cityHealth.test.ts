@@ -109,7 +109,7 @@ describe('where it is shown', () => {
      * reason, and a panel reporting live HP for one would undo that.
      */
     const fn = main.slice(main.indexOf('function describeTile('));
-    const body = fn.slice(0, 3000);
+    const body = fn.slice(0, 5000);
     expect(body).toContain('maxCityHp(city)');
     expect(body).toContain('currentSight.has(hexKey(h))');
     expect(body).toContain('city.factionId === PLAYER_FACTION_ID');

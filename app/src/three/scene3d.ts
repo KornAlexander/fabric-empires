@@ -13,8 +13,10 @@
 
 import {
   CanvasTexture,
+  Color,
   Group,
   MOUSE,
+  Material,
   Mesh,
   Object3D,
   Raycaster,
@@ -602,6 +604,81 @@ export function createScene3D(
   const unitObjects = new Map<string, Group>();
   const cityObjects = new Map<string, Group>();
   const ruinObjects = new Map<string, Group>();
+  /**
+   * Ghosts of remembered towns, keyed by hex rather than by city id.
+   *
+   * The player remembers a *place*: a razed town and whatever is built on the
+   * same ground later are one memory, and a city id would make them two.
+   */
+  const ghostObjects = new Map<string, Group>();
+
+  /**
+   * Make a built town look like a memory rather than a sighting.
+   *
+   * ⚠️ **Every material is CLONED first, and that is not a style choice.**
+   * `entities.ts` caches its materials by name and shares one instance across
+   * every building in the game, so dimming them in place would fade every
+   * town on the map, including the one the player is standing in.
+   *
+   * Desaturated as well as faded: opacity alone still reads as a town seen
+   * through haze, whereas draining the colour reads as a recollection. The
+   * faction band keeps enough hue to say whose it was, which is half the
+   * question the player asked.
+   */
+  function ghostify(root: Object3D): void {
+    root.traverse((node) => {
+      const mesh = node as Mesh;
+      if (!mesh.isMesh) return;
+      const source = mesh.material;
+      mesh.material = Array.isArray(source) ? source.map(dimmed) : dimmed(source);
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+    });
+  }
+
+  function dimmed(source: Material): Material {
+    const copy = source.clone();
+    copy.transparent = true;
+    copy.opacity = 0.42;
+    /*
+     * ⚠️ `depthWrite: false` so the ghost's own faces do not occlude each
+     * other once transparent, which otherwise shows as holes in the roofs
+     * where the far side of a wall paints over the near side.
+     */
+    copy.depthWrite = false;
+    const tinted = copy as Material & { color?: Color };
+    if (tinted.color) {
+      const grey = tinted.color.clone();
+      // Pull most of the way to the luminance of the same colour.
+      const luma = grey.r * 0.2126 + grey.g * 0.7152 + grey.b * 0.0722;
+      grey.setRGB(
+        grey.r * 0.25 + luma * 0.75,
+        grey.g * 0.25 + luma * 0.75,
+        grey.b * 0.25 + luma * 0.75,
+      );
+      tinted.color = grey.multiplyScalar(0.75);
+    }
+    return copy;
+  }
+
+  /**
+   * Remove a ghost and free the materials cloned for it.
+   *
+   * ⚠️ Cloned materials are NOT shared, so nothing else will ever dispose
+   * them. Dropping the object without this leaks one material per mesh per
+   * rebuild, and a ghost is rebuilt every time the remembered town changes.
+   */
+  function disposeGhost(root: Group): void {
+    root.traverse((node) => {
+      const mesh = node as Mesh;
+      if (!mesh.isMesh) return;
+      const material = mesh.material;
+      if (Array.isArray(material)) material.forEach((m) => m.dispose());
+      else material.dispose();
+    });
+    entityGroup.remove(root);
+  }
+
   const overlayObjects: Object3D[] = [];
 
   // Camera flight -------------------------------------------------------
@@ -967,6 +1044,74 @@ export function createScene3D(
         if (liveCities.has(id)) continue;
         entityGroup.remove(object);
         cityObjects.delete(id);
+      }
+
+      /*
+       * Remembered towns -------------------------------------------------
+       *
+       * A town you have found stays on the map after the fog closes, drawn
+       * from the snapshot taken when you last saw it rather than from the
+       * live city.
+       *
+       * ⚠️ **This is not a reversal of the rule above it, it is the answer to
+       * the objection that rule was making.** Drawing the LIVE city here would
+       * hand the player a permanent readout of a place they walked past once,
+       * including whether it still stands after somebody else took it. Drawing
+       * the memory shows only what they were shown, and it goes stale: a town
+       * that changes hands while they are away keeps its old banner until they
+       * go back and look.
+       *
+       * ⚠️ Skipped entirely when the real town is in sight, or the ghost and
+       * the town would occupy the same ground and z-fight.
+       */
+      const liveGhosts = new Set<string>();
+      for (const [key, seen] of state.seenCities) {
+        if (canSee(seen.hex, seen.factionId)) continue;
+        liveGhosts.add(key);
+
+        const signature =
+          `${seen.factionId}:${seen.kind}:${seen.rank}` +
+          `:${seen.population}:${seen.wallLevel}:${seen.breached ? 'breached' : 'whole'}`;
+        const existing = ghostObjects.get(key);
+        if (existing && existing.userData.signature === signature) {
+          placeOnGround(existing, seen.hex);
+          continue;
+        }
+        if (existing) disposeGhost(existing);
+
+        const colour = state.factions.get(seen.factionId)?.colour ?? '#888888';
+        /*
+         * `buildCity` wants a City, and a memory is deliberately not one: it
+         * carries no hp and no wallHp, because those are live combat state.
+         * The model only reads kind, hex, rank, population and wallLevel, so
+         * the missing halves are filled with values that cannot be observed
+         * in the silhouette.
+         */
+        const object = buildCity(
+          {
+            id: `seen-${key}`,
+            factionId: seen.factionId,
+            hex: seen.hex,
+            name: seen.name,
+            kind: seen.kind,
+            rank: seen.rank,
+            population: seen.population,
+            wallLevel: seen.wallLevel,
+            wallHp: seen.breached ? 0 : 1,
+            hp: 1,
+          } as unknown as Parameters<typeof buildCity>[0],
+          colour,
+        );
+        ghostify(object);
+        object.userData.signature = signature;
+        entityGroup.add(object);
+        ghostObjects.set(key, object);
+        placeOnGround(object, seen.hex);
+      }
+      for (const [key, object] of ghostObjects) {
+        if (liveGhosts.has(key)) continue;
+        disposeGhost(object);
+        ghostObjects.delete(key);
       }
 
       // Ruins ------------------------------------------------------------

@@ -8222,4 +8222,89 @@ while damaged, **zero** at full health, one again at low health.
 
 ---
 
+## 94. Towns you have found stay found
+
+Fog used to erase a town completely the moment you looked away, so a village
+found on turn three was unfindable on turn four.
+
+### ⚠️ This does not reverse the old rule, it answers its objection
+
+The scene refused to draw a remembered town, and its reasoning was exact: the
+player would get *"a permanent live readout of a place they walked past once,
+including whether it still stands after somebody else took it"*.
+
+That objection is correct, and it is an argument against drawing the **live**
+city, not against drawing anything. What is kept instead is a **snapshot**:
+position, name, owner, size and walls **as they were when last seen**, plus the
+turn the picture was taken.
+
+So a town that changes hands, grows, fortifies or is razed while you are away
+keeps its old face on your map until you go back and look. Scouting stays worth
+doing, and the question that prompted this is answered: where was it, and whose
+was it when I found it.
+
+⚠️ **`SeenCity` carries no `hp` and no `wallHp`.** Those change every time
+somebody swings at the place, so reporting them would be the surveillance the
+fog rule exists to prevent wearing the word "remembered" as a disguise.
+`breached` is kept, because a broken wall is visible from outside and changes
+the silhouette; the number behind it is not.
+
+### Keyed by hex, because the player remembers a place
+
+A razed town and whatever is built on the same ground later are one memory. A
+city id would make them two, and the first would haunt the map for ever.
+
+### ⚠️ Forgetting is as important as remembering
+
+A remembered tile that is **in sight and has no town on it** is forgotten. With
+that missing, a razed village keeps its ghost standing on empty ground, and the
+one way the player could check, by walking back, is exactly where the lie would
+survive.
+
+### ⚠️ The memory is the human's, and the code that fills it runs for everyone
+
+`rememberVisible` and `moveUnit` are shared with the seven antagonists, who
+roam the whole map. Without a guard the player's map would fill in with every
+town the AI walked past, within a few turns, while the ground around them
+stayed dark: less a feature than a broken fog.
+
+Decided from `isPlayer` on the faction rather than by importing
+`PLAYER_FACTION_ID`, because that constant lives in the module which imports
+`vision.ts` and taking the value would close the cycle.
+
+### Ghosts clone their materials
+
+⚠️ `entities.ts` caches materials by name and shares one instance across every
+building in the game, so dimming in place would fade every town on the map
+including the one you are standing in. Each ghost clones, and `disposeGhost`
+frees the clones: nothing else ever will, and a ghost is rebuilt whenever the
+remembered picture changes.
+
+Measured on the deployed build: **29 ghost meshes** at opacity 0.42 with
+`depthWrite: false`, alongside **164 untouched opaque meshes** elsewhere.
+
+### What was verified, and what is a judgement call
+
+Verified live: a town planted beside a Profiler was recorded on the next move
+(`turnSeen: 1`), survived the units walking six hexes away (`inSight: false`,
+still remembered), and drew as a desaturated silhouette in the fog.
+
+⚠️ **The ghost is faint.** At 0.42 opacity against a bright fog lid it reads
+clearly at close zoom and is easy to miss at the zoom a player plans at. That
+is a deliberate starting point rather than a measured optimum, and the obvious
+dial if it turns out to be too subtle.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D658 | ⚠️ **A remembered town is a SNAPSHOT, never the live city** | Answers the original objection instead of overruling it: memory goes stale, surveillance does not |
+| D659 | The memory carries no hit points and no wall hit points | Live combat state is exactly what the fog rule was protecting |
+| D660 | Keyed by hex, not by city id | The player remembers a place; a razed town and its replacement are one memory |
+| D661 | ⚠️ **A visibly empty remembered tile is forgotten** | Otherwise a razed village haunts the map, and walking back is where the lie would survive |
+| D662 | ⚠️ **Only the human's sight fills the memory** | The same code runs for seven roaming antagonists, who would hand the player the whole town list |
+| D663 | Towns passed en route are photographed, not just ones in sight at the destination | A scout marching past a village is precisely the "found it once" case |
+| D664 | Ghost materials are cloned and disposed | Materials are shared by name; dimming in place fades every town in the game |
+| D665 | Save 10 migrates to an EMPTY memory | Photographing today's towns and labelling them "seen on turn four" is a lie in the player's favour |
+
+---
+
 *Last updated: 26 August 2026*

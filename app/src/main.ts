@@ -2941,13 +2941,27 @@ function describeTile(h: Hex | undefined): void {
   const occupant = unitAt(state, h);
   const city = cityAt(state, h);
   const ruin = ruinAt(state, h);
-  const who = city
+  /*
+   * A town you found once, seen through the fog that has closed over it.
+   *
+   * ⚠️ Only consulted when there is nothing live to report. The memory is a
+   * snapshot and the live city is the truth: preferring the snapshot while
+   * standing next to the place would be the one moment the map lies.
+   */
+  const inSight =
+    city !== undefined &&
+    (city.factionId === PLAYER_FACTION_ID || currentSight.has(hexKey(h)));
+  const remembered = inSight ? undefined : state.seenCities.get(hexKey(h));
+
+  const who = city && inSight
     ? ` | ${city.name} (${state.factions.get(city.factionId)?.label ?? '?'})`
-    : occupant
-      ? ` | ${unitType(occupant.typeId).label} (${state.factions.get(occupant.factionId)?.label ?? '?'})`
-      : ruin
-        ? ` | ruins of ${ruin.name}`
-        : '';
+    : remembered
+      ? ` | ${remembered.name} (${state.factions.get(remembered.factionId)?.label ?? '?'})`
+      : occupant
+        ? ` | ${unitType(occupant.typeId).label} (${state.factions.get(occupant.factionId)?.label ?? '?'})`
+        : ruin
+          ? ` | ruins of ${ruin.name}`
+          : '';
 
   el.tileName.textContent = info.label + (tile.river ? ' (river)' : '') + who;
   /*
@@ -2970,12 +2984,17 @@ function describeTile(h: Hex | undefined): void {
    * map should hide, not a detail of showing health.
    */
   const yields = parts.length > 0 ? parts.join('  ') : t('No yield');
-  const cityVisible =
-    city !== undefined &&
-    (city.factionId === PLAYER_FACTION_ID || currentSight.has(hexKey(h)));
-  el.tileDetail.textContent =
-    city && cityVisible
-      ? `${yields}  |  ${t('HP')} ${city.hp}/${maxCityHp(city)}`
+  const cityVisible = city !== undefined && inSight;
+  el.tileDetail.textContent = cityVisible
+    ? `${yields}  |  ${t('HP')} ${city.hp}/${maxCityHp(city)}`
+    : remembered
+      ? /*
+         * ⚠️ How stale, not how healthy. The whole contract of a remembered
+         * town is that it reports what was seen and when; printing live hit
+         * points here would be the surveillance the fog rule exists to
+         * prevent, wearing the word "remembered" as a disguise.
+         */
+        `${yields}  |  ${t('Last seen turn {turn}', { turn: String(remembered.turnSeen) })}`
       : yields;
 }
 
@@ -4333,6 +4352,21 @@ declare global {
         amount: number;
         explored: boolean;
       }[];
+      /**
+       * Towns the player remembers, and whether each is currently in sight.
+       *
+       * Exists because a memory is otherwise invisible from outside: the whole
+       * point is that it survives the fog, and "survives the fog" is precisely
+       * the state no screenshot can distinguish from "was never recorded".
+       */
+      seenCities: () => {
+        q: number;
+        r: number;
+        name: string;
+        factionId: string;
+        turnSeen: number;
+        inSight: boolean;
+      }[];
       drownedLand: () => { land: number; below: number; share: number };
       /**
        * The live three.js objects.
@@ -4559,6 +4593,15 @@ window.__fabricEmpires = {
       resource: chest.resource,
       amount: chest.amount,
       explored: state.explored.has(hexKey(chest.hex)),
+    })),
+  seenCities: () =>
+    [...state.seenCities.values()].map((seen) => ({
+      q: seen.hex.q,
+      r: seen.hex.r,
+      name: seen.name,
+      factionId: seen.factionId,
+      turnSeen: seen.turnSeen,
+      inSight: currentSight.has(hexKey(seen.hex)),
     })),
   /*
    * How much of the land is drawn under the sea.

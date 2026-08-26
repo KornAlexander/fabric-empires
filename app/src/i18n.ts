@@ -49,6 +49,9 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
   // HP, so the two read the same way.
   '{hp}/{full} HP': '{hp}/{full} TP',
   'No yield': 'Kein Ertrag',
+  // A town remembered through fog. "Zuletzt gesehen" rather than "Gesehen in",
+  // because the point is that the picture may be out of date.
+  'Last seen turn {turn}': 'Zuletzt gesehen in Runde {turn}',
   // The unit stepper. "Einheit" is the word the rest of the interface already
   // uses, and the key hint stays as the literal bracket in both languages.
   'Previous unit ([)': 'Vorherige Einheit ([)',

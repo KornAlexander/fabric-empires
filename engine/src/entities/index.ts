@@ -215,6 +215,43 @@ export interface Treasure {
   readonly amount: number;
 }
 
+/**
+ * A town the player has seen, as it looked the last time they looked.
+ *
+ * ⚠️ **A snapshot, emphatically not a reference to the live city.** Fog used
+ * to hide a remembered town completely, on the grounds that keeping it drawn
+ * would give "a permanent live readout of a place they walked past once,
+ * including whether it still stands after somebody else took it". That
+ * objection is right and this is the answer to it rather than a reversal of
+ * it: what is kept is a *memory*, and a memory goes stale.
+ *
+ * So if a town changes hands, grows, is fortified or is razed while you are
+ * away, your map keeps showing the old picture until you go back and look.
+ * Scouting stays worth doing, and the map still answers the question that
+ * prompted this: where was it, and whose was it when I found it.
+ *
+ * ⚠️ **Deliberately carries no `hp` and no `wallHp`.** Those are live combat
+ * state and change every time somebody swings at the place. `breached` is
+ * here because a broken wall is something you can *see* from outside and it
+ * changes the silhouette; the number behind it is not.
+ *
+ * Keyed by hex rather than by city id, because the player remembers a place.
+ * A razed town and its replacement on the same ground are the same memory.
+ */
+export interface SeenCity {
+  readonly hex: Hex;
+  readonly name: string;
+  /** Whose it was when last seen, which is not necessarily whose it is. */
+  readonly factionId: string;
+  readonly kind: CityKind;
+  readonly rank: CityRank;
+  readonly population: number;
+  readonly wallLevel: number;
+  readonly breached: boolean;
+  /** The turn this picture was taken, so the interface can say how stale it is. */
+  readonly turnSeen: number;
+}
+
 export function emptyResources(): Resources {
   return Object.freeze({ data: 0, compute: 0, cu: 0, trust: 0 });
 }

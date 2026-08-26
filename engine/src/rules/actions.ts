@@ -87,7 +87,7 @@ export function moveUnit(
    * the walk begins at index 1.
    */
   const walked = path.slice(1);
-  const carried = rememberAlong(state, walked, unitType(unit.typeId).sight);
+  const carried = rememberAlong(state, walked, unitType(unit.typeId).sight, unit.factionId);
 
   const moved = replaceUnit(carried, {
     ...unit,
