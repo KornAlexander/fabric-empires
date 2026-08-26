@@ -8473,6 +8473,120 @@ description. The width is derived from the codes now.
 | D676 | A full ring is success for `noisyneighbour` | The town being already invested is the outcome, not an error |
 | D677 | The help column width is derived from the codes | A hard-coded 14 was already one character short of the new longest code |
 
+## 97. Taking a walled town is a siege now, not a duel with extra numbers
+
+Storming a city ran the same animation as two machines meeting in a field: one
+lunge, one flash, and a number. Section 19.3 had already made the assault a
+*decision* by asking how you go in, but the three tactics all looked identical,
+so the dialog was asking a question the screen never answered. A wall was a
+number that made another number smaller.
+
+`app/src/three/siege.ts` stages the assault instead. A town gets a siege; a unit
+in the open still gets a duel, because a ram rolling up to a lone scout in a
+field would be sillier than the lunge it replaced. The choice is keyed on there
+being a **city on the tile**, not on `targetKind`: a garrison standing in its own
+town reports as a unit, and staging that as two machines meeting in the open
+would put the fight outside walls that are visibly right there.
+
+Each tactic is its own routine, and each one branches on what the **engine**
+reported, never on what the renderer guessed. `CombatLog` now carries `tactic`,
+`stance` and `wallBroken` for the same reason `ChallengeOutcome` carries
+`topicId`: the rules decided it, so the rules should be the ones saying it. An
+animation that picked its own tactic would make the assault dialog a lie.
+
+- **Batter** rolls a ram up to the gate and swings it.
+- **Escalade** throws ladders against the face and sends figures up them, and
+  the garrison makes them pay on the way.
+- **Sap** works a charge in under the foot of the wall, and the wall comes down.
+
+The garrison is on the parapet before any of it starts, standing to, bracing
+behind the merlons, or coming out of the gate, according to the stance the
+defender actually chose.
+
+### What the deployed build showed that the code could not
+
+Three faults, none of which any test could have caught, and all three found by
+looking at it:
+
+**The shot was of masonry, with the fight off screen.** The camera aimed at
+`wallHead`, the top of the wall. A low camera looking *up* at a parapet puts the
+ram, the ladders and every soldier below the bottom edge of the frame. It aims
+at mid-wall now, which holds the foot of the wall and the defenders on top in
+one frame.
+
+**The camera stood inside a tree.** At height 0.52 it sat in the canopy of the
+scenery on the attacker's own hex, and one of them filled the middle of the
+picture. Just over head height clears them, and is the angle the shot wanted.
+
+**The whole thing was composed behind the interface.** The research panel, the
+city panel, the unit card, the log, and the battle banner across the middle.
+`cinematicOverlay` already owned the fix and said so in its own comment, so the
+siege borrows it rather than growing a second way to fade the same panels. The
+banner is added to that fade: it outlives the shot, so fading it delays the
+numbers rather than hiding them.
+
+Bars and title card stay **off**. Those are sized for the intro and first blood,
+which fire once a game. A siege fires several times a turn late on, and stamping
+a title card over every one turns a flourish into a tax. What it does inherit is
+Escape, because the overlay's skip is already wired to `scene.cinema.skip()`.
+
+⚠️ **Skipping is a presentation choice and must never become a rules choice.**
+`onImpact` is what hands the resolved state to the map, so a siege that returned
+early without calling it would leave the board showing a fight that never
+happened. It is idempotent and fired from the `finally` on every path, including
+the thrown one. The abort itself is checked between beats rather than inside
+every tween: the wait is at most one beat, and the alternative is an abort flag
+threaded through sixteen call sites to save a player half a second.
+
+Props are built per siege and disposed in a `finally`, because these materials
+are not in the `entities.ts` cache and nothing else will ever free them. Verified
+live rather than asserted: mesh count returned to exactly 607 after three
+consecutive sieges of different tactics.
+
+⚠️ The wall geometry is **imported** from the city builder, not copied. An
+earlier draft kept its own `WALL_RADIUS` and height formula guarded by a test
+asserting the two copies agreed, which is a worse answer than not having the
+duplicate.
+
+### On testing a thing that has to be looked at
+
+`app/test/siegeStaging.test.ts` reads the source rather than running it, and that
+is a deliberate limit. `siege.ts` builds geometry, drives a camera and animates on
+`requestAnimationFrame`; running it headlessly would test a mock of the renderer,
+which is the exact shape of test that let section 95's bug live for weeks. What
+it pins are the decisions: that each tactic is staged differently, that the
+branch reads the engine's tactic, that every call site frames the shot, and that
+the blow lands even when skipped. The two camera guards are on the *numbers*,
+because in both cases the number was the whole fix.
+
+What it looks like was a question for eyes, and the three faults above are what
+those eyes found.
+
+### An unrelated flake, fixed here because it blocked the gate
+
+The full suite began failing on a **different file each run**, first `ai.test.ts`
+at 27.6 s, then `questions.test.ts` at 41 s, both passing in isolation. That is
+scheduling noise against a fixed timeout, not a broken rule. `questions.test.ts`
+now sets its own budget the way `engine/test/worldSetup.test.ts` already did.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D678 | A city assault is staged as a siege; a field fight stays a duel | The tactic dialog was asking a question the screen never answered |
+| D679 | ⚠️ **Keyed on a city being on the tile, not on `targetKind`** | A garrison in its own town reports as a unit, and would fight outside its own visible walls |
+| D680 | ⚠️ **The staging branches on the tactic the ENGINE reported** | An animation that picks its own tactic makes the assault dialog a lie |
+| D681 | `CombatLog` carries `tactic`, `stance` and `wallBroken` | The rules decided it, so the rules should say it, exactly as with `topicId` |
+| D682 | The outward normal runs town → attacker | Built the other way, the first draft assaulted the back of the fortress while the army stood behind the camera |
+| D683 | ⚠️ **The shot aims at mid-wall, not at the parapet** | Aiming at the wall head put the ram, the ladders and every soldier below the bottom of the frame |
+| D684 | ⚠️ **The camera sits above the canopy, not in it** | At 0.52 it stood inside the scenery on the attacker's own hex |
+| D685 | The siege borrows `cinematicOverlay` rather than fading panels itself | The overlay already owned the answer and documented it |
+| D686 | Bars and title card off for a siege | They are sized for once-a-game moments; a siege fires several times a turn |
+| D687 | The battle banner fades with the panels | It outlives the shot, so this delays the numbers rather than hiding them |
+| D688 | ⚠️ **`onImpact` is idempotent and fires from the `finally`** | Skipping is a presentation choice and must never become a rules choice |
+| D689 | The skip is checked between beats, not inside every tween | An abort flag through sixteen call sites to save half a second is the worse trade |
+| D690 | Props are built per siege and disposed explicitly | They are not in the `entities.ts` cache, so nothing else would ever free them |
+| D691 | The staging tests read the source instead of running it | Running a renderer headlessly tests a mock, which is how section 95's bug survived |
+| D692 | `questions.test.ts` sets its own timeout | The suite was failing on a different file each run from scheduling noise, following the precedent in `worldSetup.test.ts` |
+
 ---
 
 *Last updated: 26 August 2026*

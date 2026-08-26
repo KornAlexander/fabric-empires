@@ -114,6 +114,7 @@ import {
 import { createEffects } from './render/effects.js';
 import { createScene3D } from './three/scene3d.js';
 import { playDuel } from './three/duel.js';
+import { playSiege } from './three/siege.js';
 import { HEX_RADIUS, SEA_LEVEL, hexToWorld } from './three/terrain.js';
 import { HIGH_QUALITY, LOW_QUALITY } from './three/world.js';
 import { createQuestionModal } from './ui/questionModal.js';
@@ -841,6 +842,29 @@ async function playOnce(shot: ReturnType<typeof orbitShot>): Promise<void> {
   } finally {
     cinemaOverlay.hide();
     music.duck(false);
+  }
+}
+
+/**
+ * A siege, with the interface out of the way.
+ *
+ * ⚠️ The set piece drops the camera to the foot of the wall, and the first
+ * live look at it was composed behind the research panel, the city panel and
+ * the log. `cinematicOverlay` already owns the answer to that and says so in
+ * its own comments, so the siege borrows it rather than growing a second way
+ * to fade the same panels.
+ *
+ * Bars off, and no title card: those are sized for the once-a-game shots. What
+ * this buys on top of the framing is Escape, because the overlay's skip
+ * handler is already wired to `scene.cinema.skip()` and a siege is something a
+ * player will see many times in a long game.
+ */
+async function playSiegeFramed(...args: Parameters<typeof playSiege>): Promise<void> {
+  cinemaOverlay.show('', '', { bars: false });
+  try {
+    await playSiege(...args);
+  } finally {
+    cinemaOverlay.hide();
   }
 }
 
@@ -1895,9 +1919,71 @@ async function playAttack(
   const nextState = outcome.result.state;
   const { log: battle } = outcome.result;
 
-  await playDuel(
-    scene,
-    {
+  /*
+   * A town gets a siege; a unit in a field gets a duel.
+   *
+   * ⚠️ Keyed on there being a CITY on the tile, not on `targetKind`. A
+   * garrison standing in its own town makes `targetKind` 'unit', and staging
+   * that as two machines meeting in the open would put the fight outside the
+   * walls that are visibly right there.
+   */
+  const onImpact = (): void => {
+    state = nextState;
+    dirty = true;
+
+    // Damage numbers stay on the 2D layer: text is crisper drawn flat
+    // than projected, and it needs to stay legible at every distance.
+    if (battle.damageToDefender > 0) {
+      effects.floatingText(
+        target,
+        `-${battle.damageToDefender}`,
+        '#ffcf7a',
+        dramatic ? 1.4 : 1.1,
+      );
+    }
+    if (battle.damageToAttacker > 0) {
+      effects.floatingText(
+        attacker.hex,
+        `-${battle.damageToAttacker}`,
+        '#ff9b91',
+        dramatic ? 1.2 : 1,
+      );
+    }
+    if (battle.cityCaptured) {
+      effects.floatingText(target, 'CAPTURED', '#8fd694', 1.5);
+    }
+    if (battle.cityRazed) {
+      effects.floatingText(target, 'RAZED', '#ff9b91', 1.5);
+    }
+  };
+  const shake = (magnitude: number): void => effects.shake(magnitude);
+
+  if (defenderCity) {
+    await playSiegeFramed(
+      scene,
+      {
+        attackerId: unitId,
+        attackerHex: attacker.hex,
+        attackerColour,
+        cityHex: target,
+        defenderColour,
+        wallLevel: defenderCity.wallLevel,
+      },
+      {
+        damageToDefender: battle.damageToDefender,
+        damageToAttacker: battle.damageToAttacker,
+        breached: battle.wallBroken,
+        taken: battle.cityCaptured || battle.cityRazed,
+        attackerDestroyed: battle.attackerDestroyed,
+        tactic: battle.tactic,
+        stance: battle.stance,
+      },
+      { onImpact, shake },
+    );
+  } else {
+    await playDuel(
+      scene,
+      {
       attackerId: unitId,
       attackerHex: attacker.hex,
       attackerColour,
@@ -1905,47 +1991,17 @@ async function playAttack(
       defenderHex: target,
       defenderColour,
     },
-    {
-      damageToDefender: battle.damageToDefender,
-      damageToAttacker: battle.damageToAttacker,
-      defenderDestroyed: battle.defenderDestroyed,
-      attackerDestroyed: battle.attackerDestroyed,
-      ranged,
-      dramatic,
-    },
-    {
-      onImpact: () => {
-        state = nextState;
-        dirty = true;
-
-        // Damage numbers stay on the 2D layer: text is crisper drawn flat
-        // than projected, and it needs to stay legible at every distance.
-        if (battle.damageToDefender > 0) {
-          effects.floatingText(
-            target,
-            `-${battle.damageToDefender}`,
-            '#ffcf7a',
-            dramatic ? 1.4 : 1.1,
-          );
-        }
-        if (battle.damageToAttacker > 0) {
-          effects.floatingText(
-            attacker.hex,
-            `-${battle.damageToAttacker}`,
-            '#ff9b91',
-            dramatic ? 1.2 : 1,
-          );
-        }
-        if (battle.cityCaptured) {
-          effects.floatingText(target, 'CAPTURED', '#8fd694', 1.5);
-        }
-        if (battle.cityRazed) {
-          effects.floatingText(target, 'RAZED', '#ff9b91', 1.5);
-        }
+      {
+        damageToDefender: battle.damageToDefender,
+        damageToAttacker: battle.damageToAttacker,
+        defenderDestroyed: battle.defenderDestroyed,
+        attackerDestroyed: battle.attackerDestroyed,
+        ranged,
+        dramatic,
       },
-      shake: (magnitude) => effects.shake(magnitude),
-    },
-  );
+      { onImpact, shake },
+    );
+  }
 
   // Belt and braces: if the impact hook somehow did not run, the result must
   // still be applied. A silently skipped state change would be a real bug.
@@ -2694,38 +2750,68 @@ async function presentEnemyTurn(
     const defenderColour = state.factions.get(PLAYER_FACTION_ID)?.colour ?? '#4a9fe0';
 
     if (from) {
-      await playDuel(
-        scene,
-        {
-          attackerId: featured.unitId,
-          attackerHex: from,
-          attackerColour,
-          defenderId: defender?.id,
-          defenderHex: target,
-          defenderColour,
-        },
-        {
-          damageToDefender: battle.damageToDefender,
-          damageToAttacker: battle.damageToAttacker,
-          defenderDestroyed: battle.defenderDestroyed,
-          attackerDestroyed: battle.attackerDestroyed,
-          ranged: !isAdjacent(from, target),
-          // A raid on a city is a set piece; a raid on a unit is a scuffle.
-          dramatic: city !== undefined,
-        },
-        {
-          onImpact: () => {
-            adopt?.();
-            if (battle.damageToDefender > 0) {
-              effects.floatingText(target, `-${battle.damageToDefender}`, '#ff9b91', 1.3);
-            }
-            if (battle.damageToAttacker > 0 && from) {
-              effects.floatingText(from, `-${battle.damageToAttacker}`, '#ffcf7a', 1.1);
-            }
+      const onImpact = (): void => {
+        adopt?.();
+        if (battle.damageToDefender > 0) {
+          effects.floatingText(target, `-${battle.damageToDefender}`, '#ff9b91', 1.3);
+        }
+        if (battle.damageToAttacker > 0 && from) {
+          effects.floatingText(from, `-${battle.damageToAttacker}`, '#ffcf7a', 1.1);
+        }
+      };
+      const shake = (magnitude: number): void => effects.shake(magnitude);
+
+      if (city) {
+        /*
+         * ⚠️ The stance and tactic come off the LOG, not from the local
+         * variables the turn was driven with. `defenceStance` here is what the
+         * player picked for the raid they were shown; the log records what
+         * this particular blow was actually resolved with, and section 91
+         * scoped those two apart on purpose.
+         */
+        await playSiegeFramed(
+          scene,
+          {
+            attackerId: featured.unitId,
+            attackerHex: from,
+            attackerColour,
+            cityHex: target,
+            defenderColour,
+            wallLevel: city.wallLevel,
           },
-          shake: (magnitude) => effects.shake(magnitude),
-        },
-      );
+          {
+            damageToDefender: battle.damageToDefender,
+            damageToAttacker: battle.damageToAttacker,
+            breached: battle.wallBroken,
+            taken: battle.cityCaptured || battle.cityRazed,
+            attackerDestroyed: battle.attackerDestroyed,
+            tactic: battle.tactic,
+            stance: battle.stance,
+          },
+          { onImpact, shake },
+        );
+      } else {
+        await playDuel(
+          scene,
+          {
+            attackerId: featured.unitId,
+            attackerHex: from,
+            attackerColour,
+            defenderId: defender?.id,
+            defenderHex: target,
+            defenderColour,
+          },
+          {
+            damageToDefender: battle.damageToDefender,
+            damageToAttacker: battle.damageToAttacker,
+            defenderDestroyed: battle.defenderDestroyed,
+            attackerDestroyed: battle.attackerDestroyed,
+            ranged: !isAdjacent(from, target),
+            dramatic: false,
+          },
+          { onImpact, shake },
+        );
+      }
     }
   }
 

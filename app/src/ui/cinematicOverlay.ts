@@ -24,7 +24,7 @@ const STYLE = `
 }
 .fe-cine-bar.top { top: 0; transform-origin: top; }
 .fe-cine-bar.bottom { bottom: 0; transform-origin: bottom; }
-.fe-cine[data-open='true'] .fe-cine-bar { transform: scaleY(1); }
+.fe-cine[data-open='true'][data-bars='true'] .fe-cine-bar { transform: scaleY(1); }
 .fe-cine-text {
   position: absolute; left: 0; right: 0; bottom: 15vh; text-align: center;
   opacity: 0; transform: translateY(10px); transition: opacity 500ms ease, transform 500ms ease;
@@ -39,6 +39,8 @@ const STYLE = `
   position: absolute; right: 22px; bottom: calc(12vh + 14px);
   font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #8ba2b8;
 }
+/* With no bars there is no 12vh of black to sit above. */
+.fe-cine[data-bars='false'] .fe-cine-skip { bottom: 18px; }
 
 /*
  * The interface gets out of the frame.
@@ -47,16 +49,35 @@ const STYLE = `
  * card, which is the difference between a cinematic and a screenshot of a game
  * with black bars drawn on it. The panels fade rather than vanish so the
  * return is not a jolt.
+ *
+ * ⚠️ The battle banner is in here for the siege, and it costs nothing: the
+ * banner outlives the shot, so fading it for three seconds delays the numbers
+ * rather than hiding them. Left in, it parks a box of text across the middle
+ * of the one frame where the ram reaches the gate.
  */
-body.fe-cine-on .panel {
+body.fe-cine-on .panel,
+body.fe-cine-on .fe-battle {
   opacity: 0; pointer-events: none;
   transition: opacity 300ms ease;
 }
 .panel { transition: opacity 300ms ease; }
 `;
 
+export interface QuietOptions {
+  /**
+   * Draw the letterbox bars. Default true.
+   *
+   * ⚠️ False is for shots that fire *often*. The bars and the title card are
+   * sized for a once-a-game moment; a siege happens several times a turn late
+   * on, and stamping a title card over every one of them turns a flourish
+   * into a tax. What a siege actually needs from this module is the panel
+   * fade, so that is all it takes.
+   */
+  readonly bars?: boolean;
+}
+
 export interface CinematicOverlay {
-  show(title: string, subtitle: string): void;
+  show(title: string, subtitle: string, options?: QuietOptions): void;
   hide(): void;
   /** Called when the player asks to skip. */
   onSkip(handler: () => void): void;
@@ -73,6 +94,7 @@ export function createCinematicOverlay(): CinematicOverlay {
   root.className = 'fe-cine';
   root.dataset.testid = 'cinematic';
   root.dataset.open = 'false';
+  root.dataset.bars = 'true';
   root.innerHTML = `
     <div class="fe-cine-bar top"></div>
     <div class="fe-cine-bar bottom"></div>
@@ -106,12 +128,13 @@ export function createCinematicOverlay(): CinematicOverlay {
   window.addEventListener('keydown', onKey, { capture: true });
 
   return {
-    show(title, subtitle) {
+    show(title, subtitle, options) {
       open = true;
       const t = root.querySelector<HTMLElement>('[data-f="title"]');
       if (t) t.textContent = title;
       const s = root.querySelector<HTMLElement>('[data-f="sub"]');
       if (s) s.textContent = subtitle;
+      root.dataset.bars = options?.bars === false ? 'false' : 'true';
       root.dataset.open = 'true';
       document.body.classList.add('fe-cine-on');
     },

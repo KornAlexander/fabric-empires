@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   ANSWER_SALT,
   DP600_QUESTIONS,
@@ -29,6 +29,23 @@ import {
   type QuestionResult,
   type QuestionUi,
 } from '../src/index.js';
+
+/*
+ * ⚠️ **Room for the clock, for the same reason `worldSetup.test.ts` has it.**
+ *
+ * The bank tests derive a key and decrypt an explanation for all 123
+ * questions, which is deliberately slow work: the whole point of the answer
+ * hashing is that it cannot be brute-forced cheaply. Measured, this file takes
+ * about 18 s alone and blew the 5 s default at 41 s while the rest of the
+ * suite ran, and the file that tipped over was a different one on each run.
+ *
+ * The clock is not the property under test. These assert that every recorded
+ * answer round-trips and that no distractor is accepted, and both are
+ * deterministic. Failing on scheduling noise teaches the reader to distrust a
+ * red suite, which is the most expensive thing a test can do.
+ */
+vi.setConfig({ testTimeout: 60_000 });
+
 import draftA1 from '../content/dp-600/questions/src/A1.json' with { type: 'json' };
 import draftA2 from '../content/dp-600/questions/src/A2.json' with { type: 'json' };
 import draftB1 from '../content/dp-600/questions/src/B1.json' with { type: 'json' };

@@ -12,8 +12,8 @@ import { terrain } from '../map/index.js';
 import { createRng, type Rng } from '../rng/index.js';
 import { isCivilian, cityKind, unitType, type City, type Unit } from '../entities/index.js';
 import { cityAt, tileAt, unitAt, type GameState } from '../state/index.js';
-import { absorbWithWalls, wallDefenceBonus } from './walls.js';
-import { tacticProfile, tacticStrength, type AssaultTactic } from './assault.js';
+import { absorbWithWalls, isBreached, wallDefenceBonus } from './walls.js';
+import { DEFAULT_TACTIC, tacticProfile, tacticStrength, type AssaultTactic } from './assault.js';
 import { counterShare, stanceProfile, type DefenceStance } from './defence.js';
 import { grantFoothold, razeCityAt } from './sack.js';
 import type { ResourceId } from '../map/index.js';
@@ -171,6 +171,26 @@ export interface CombatLog {
    */
   readonly clusterOpened?: string;
   readonly challengeScore: number;
+  /**
+   * How the blow was actually struck and met.
+   *
+   * ⚠️ **Reported rather than assumed, for the same reason
+   * `ChallengeOutcome.topicId` is.** The presentation stages the tactic and
+   * the stance literally now, and both are defaulted inside this function: an
+   * AI attack picks its tactic in `chooseTactic`, and an omitted stance
+   * becomes `hold`. A caller that re-derived them would eventually draw a
+   * siege that did not match the one the numbers came from, and nothing would
+   * say so.
+   */
+  readonly tactic: AssaultTactic;
+  readonly stance: DefenceStance;
+  /**
+   * This blow took the wall past the breach threshold.
+   *
+   * Distinct from `cityCaptured`: a wall can come down turns before the town
+   * falls, and the collapse is worth showing on the blow that caused it.
+   */
+  readonly wallBroken: boolean;
 }
 
 export type AttackCheck =
@@ -685,6 +705,7 @@ export function resolveAttack(
   let defenderDestroyed = false;
   let cityCaptured = false;
   let cityRazed = false;
+  let wallBroken = false;
   let razedCityId: string | undefined;
   let cityFormerFactionId: string | undefined;
 
@@ -715,6 +736,17 @@ export function resolveAttack(
       damageToDefender,
       tacticProfile(options.tactic).wallShare,
     );
+    /*
+     * Did THIS blow break the wall?
+     *
+     * ⚠️ Both sides of the comparison go through `isBreached`, rather than
+     * comparing hit points to a threshold here. The threshold is a rule that
+     * lives in `walls.ts` and has already been changed once; a second copy of
+     * it in the presentation path would put the collapse animation on the
+     * wrong blow the next time it moves.
+     */
+    const wasBreached = isBreached(city);
+    wallBroken = !wasBreached && isBreached({ ...city, wallHp });
     const cityHp = city.hp - toCity;
     if (cityHp <= 0 && !preview.ranged) {
       // Only a melee unit can walk in and take the city. Bombardment alone
@@ -805,6 +837,9 @@ export function resolveAttack(
         ...(loot !== undefined ? { loot } : {}),
         ...(clusterOpened !== undefined ? { clusterOpened } : {}),
         challengeScore: options.challengeScore ?? 0,
+        tactic: options.tactic ?? DEFAULT_TACTIC,
+        stance: options.defenceStance ?? 'hold',
+        wallBroken,
       },
     },
   };

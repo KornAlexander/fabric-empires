@@ -898,6 +898,38 @@ export function buildUnit(unit: Unit, factionColour: string): Group {
 }
 
 /**
+ * Where a town's wall is, in world units.
+ *
+ * ⚠️ **Exported because the siege has to hit it.** These began as three
+ * locals inside `buildCity`, which was fine while the city was the only thing
+ * that knew where its own stonework was. `siege.ts` rears ladders against the
+ * wall head and parks a ram at its foot, so it needs the same three numbers,
+ * and a copy of them there would have drifted the first time a rampart was
+ * made taller: the copy has no reason to be edited in the same change, and
+ * nothing would report ladders ending in mid-air.
+ */
+export const WALL_RADIUS = 0.74;
+
+/**
+ * How tall the rampart stands above the town's platform.
+ *
+ * Each level is a taller work than the last, so 1, 2 and 3 are told apart
+ * at a glance without needing a number on screen.
+ */
+export const wallHeight = (wallLevel: number): number =>
+  0.16 + 0.04 * Math.min(wallLevel, MAX_WALL_LEVEL);
+
+/**
+ * The height a defender stands at, measured from the tile's ground.
+ *
+ * An open town has no wall, so its "head" is just the lip of the platform its
+ * buildings sit on. Returning something sensible for level 0 is what lets the
+ * siege stage an assault on an unwalled place without a special case.
+ */
+export const wallTop = (wallLevel: number): number =>
+  wallLevel >= 1 ? 0.07 + wallHeight(wallLevel) : 0.05;
+
+/**
  * A settlement.
  *
  * Grows with population: the same city at size 1 and size 6 should not be
@@ -974,10 +1006,8 @@ export function buildCity(city: City, factionColour: string): Group {
   const integrity = walled ? wallIntegrity(city) : 0;
   const breached = isBreached(city);
 
-  const RAMPART_RADIUS = 0.74;
-  // Each level is a taller work than the last, so 1, 2 and 3 are told apart
-  // at a glance without needing a number on screen.
-  const RAMPART_HEIGHT = 0.16 + 0.04 * Math.min(city.wallLevel, MAX_WALL_LEVEL);
+  const RAMPART_RADIUS = WALL_RADIUS;
+  const RAMPART_HEIGHT = wallHeight(city.wallLevel);
   /** Where the buildings stand. Inside the walls once there are walls. */
   const GROUND = walled ? 0.14 : 0.02;
 
@@ -1013,7 +1043,7 @@ export function buildCity(city: City, factionColour: string): Group {
   // Faces are drawn double-sided so the inner revetment is visible when the
   // camera looks down into the place, which is the angle this game is played
   // at almost all of the time.
-  const WALL_TOP = 0.07 + RAMPART_HEIGHT;
+  const WALL_TOP = wallTop(city.wallLevel);
   const outer = part(
     new CylinderGeometry(RAMPART_RADIUS, RAMPART_RADIUS + 0.1, RAMPART_HEIGHT, 6, 1, true),
     rubble(),

@@ -13,6 +13,7 @@ import {
   setProduction,
   wallIntegrity,
   wallWork,
+  DEFAULT_TACTIC,
   MAX_GARRISON_PER_FACTION,
   MAX_WALL_LEVEL,
   MIN_DAMAGE,
@@ -378,3 +379,147 @@ describe('the helper still agrees with the rule that uses it', () => {  it('abso
     expect(cityCombatSide(state, before).fortifyBonus).toBeGreaterThan(0);
   });
 });
+
+/*
+  What the blow REPORTS, as opposed to what it does.
+
+  The siege animation stages the tactic and the stance literally: a ram for
+  `batter`, ladders for `escalade`, diggers for `sap`, and defenders who either
+  man the parapet, duck behind it or come out of the gate. All of that is
+  driven off the combat log, so the log has to say which of the nine it was.
+
+  ⚠️ **It has to be reported, not re-derived.** Both are defaulted inside
+  `resolveAttack` (an omitted tactic becomes the default, an omitted stance
+  becomes `hold`), and the AI picks its own. A renderer that guessed would
+  eventually draw a siege that did not match the numbers it was given, and
+  nothing anywhere would say so.
+*/
+describe('⚠️ the log says how the blow was actually fought', () => {
+  it('reports the tactic it was given', () => {
+    const { state, attackerId } = siege({ wallLevel: 2, wallHp: maxWallHp(2) });
+    const out = resolveAttack(state, attackerId, { q: 0, r: 0 }, { tactic: 'sap' });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.result.log.tactic).toBe('sap');
+  });
+
+  it('reports the stance it was met with', () => {
+    const { state, attackerId } = siege({ wallLevel: 2, wallHp: maxWallHp(2) });
+    const out = resolveAttack(state, attackerId, { q: 0, r: 0 }, { defenceStance: 'sally' });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.result.log.stance).toBe('sally');
+  });
+
+  it('fills in the defaults rather than leaving them undefined', () => {
+    // The caller may omit both. The renderer may not receive nothing: an
+    // undefined tactic would fall through the animation's branch to `batter`
+    // silently, which is a guess wearing a default's clothes.
+    const { state, attackerId } = siege({ wallLevel: 1, wallHp: maxWallHp(1) });
+    const out = resolveAttack(state, attackerId, { q: 0, r: 0 });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.result.log.tactic).toBe(DEFAULT_TACTIC);
+    expect(out.result.log.stance).toBe('hold');
+  });
+
+  it('reports the tactic on a field fight too', () => {
+    /*
+     * A duel does not stage a tactic, but the field is where an undefined
+     * would go unnoticed longest, so the log is uniform rather than optional.
+     */
+    const state = base();
+    const units = new Map<string, Unit>();
+    units.set('a', {
+      id: 'a',
+      typeId: 'pipelineRunner',
+      factionId: PLAYER_FACTION_ID,
+      hex: { q: 1, r: 0 },
+      hp: 100,
+      movesLeft: 2,
+      fortified: false,
+    });
+    units.set('b', {
+      id: 'b',
+      typeId: 'pipelineRunner',
+      factionId: 'silo-horde',
+      hex: { q: 0, r: 0 },
+      hp: 100,
+      movesLeft: 2,
+      fortified: false,
+    });
+    const cities = new Map(state.cities);
+    cities.clear();
+
+    const out = resolveAttack(
+      { ...state, units, cities, activeFactionId: PLAYER_FACTION_ID },
+      'a',
+      { q: 0, r: 0 },
+    );
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.result.log.targetKind).toBe('unit');
+    expect(out.result.log.tactic).toBe(DEFAULT_TACTIC);
+    expect(out.result.log.wallBroken).toBe(false);
+  });
+});
+
+describe('⚠️ wallBroken marks the one blow that broke it', () => {
+  it('is false while the wall is still holding', () => {
+    const { state, attackerId } = siege({ wallLevel: MAX_WALL_LEVEL, wallHp: maxWallHp(MAX_WALL_LEVEL) });
+    const out = resolveAttack(state, attackerId, { q: 0, r: 0 }, { tactic: 'batter' });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    // A full third-level wall does not fall to one hit from a runner.
+    expect(isBreached(out.result.state.cities.get('target')!)).toBe(false);
+    expect(out.result.log.wallBroken).toBe(false);
+  });
+
+  it('is true on the blow that takes it past the breach point, and false after', () => {
+    /*
+     * ⚠️ Driven by hitting the same wall until it goes, rather than by
+     * setting `wallHp` to one point above the threshold and swinging once.
+     * A hand-placed number that happens to break is the fixture that produces
+     * the answer you expected; walking it down proves the flag tracks the
+     * real transition, and proves it fires exactly once.
+     */
+    let { state } = siege({ wallLevel: 1, wallHp: maxWallHp(1) });
+    const attackerId = 'attacker';
+
+    let breakingBlows = 0;
+    let blows = 0;
+    let sawBreach = false;
+
+    while (blows < 40 && !state.cities.get('target')) break; // placeholder, replaced below
+    while (blows < 40) {
+      const city = state.cities.get('target');
+      if (!city) break;
+      const out = resolveAttack(state, attackerId, { q: 0, r: 0 }, { tactic: 'batter' });
+      if (!out.ok) break;
+      blows += 1;
+      if (out.result.log.wallBroken) breakingBlows += 1;
+
+      const after = out.result.state.cities.get('target');
+      if (after && isBreached(after)) sawBreach = true;
+
+      // Restore the attacker so the loop is about the wall, not about
+      // attrition or a spent move allowance.
+      const units = new Map(out.result.state.units);
+      const me = units.get(attackerId);
+      if (!me) break;
+      units.set(attackerId, { ...me, hp: 100, movesLeft: 2 });
+      state = { ...out.result.state, units };
+
+      if (sawBreach && breakingBlows > 0 && blows > 0 && !after) break;
+      if (sawBreach && blows > 0) {
+        // Keep going a few more blows to prove the flag does not re-fire.
+        if (breakingBlows > 1) break;
+        if (blows > 20) break;
+      }
+    }
+
+    expect(sawBreach).toBe(true);
+    expect(breakingBlows).toBe(1);
+  });
+});
+
