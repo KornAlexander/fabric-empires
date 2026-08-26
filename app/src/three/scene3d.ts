@@ -12,11 +12,15 @@
  */
 
 import {
+  CanvasTexture,
   Group,
   MOUSE,
   Mesh,
   Object3D,
   Raycaster,
+  SRGBColorSpace,
+  Sprite,
+  SpriteMaterial,
   Vector2,
   Vector3,
 } from 'three';
@@ -38,6 +42,7 @@ import {
   SEA_LEVEL,
   buildTerrain,
   hexPatch,
+  hexRing,
   hexToWorld,
   overlayMaterial,
   worldToAxial,
@@ -198,8 +203,108 @@ const SELECT_COLOUR = '#ffd166';
  * "you can walk here", orange "and that ends your turn", red "you can attack
  * this" and yellow "this is selected". A fifth meaning needs a fifth colour or
  * it is not a meaning.
+ *
+ * ⚠️ **A fifth colour was not enough, and the numbers say why.** Measured
+ * against the ground immediately around it, the strongest of the five
+ * proposals stood out about seven times less than the selection marker: a
+ * soft mint wash laid over grass, on a tile the blue movement wash was
+ * usually tinting as well. The meaning was distinct and the mark was not.
+ *
+ * So the proposals are no longer a wash at all. They are a ring, a rank, and
+ * a beacon over the best one, and the colour is now the least of it.
  */
 const SETTLE_COLOUR = '#8fd694';
+
+/**
+ * How big a rank number and the beacon are drawn, in pixels of screen.
+ *
+ * ⚠️ **Deliberately in SCREEN units, not world units.** Measured at the
+ * camera a game opens on, five proposed hexes together covered about 24 by 11
+ * pixels: roughly five pixels each. Anything painted on the ground is
+ * invisible there however bright it is, because there is no room for it. A
+ * sprite with `sizeAttenuation` off keeps the same size at every zoom, so the
+ * advice survives the view the player actually plans in.
+ */
+const RANK_PIXELS = 26;
+const BEACON_PIXELS = 34;
+
+/** Digits are few and reused every rebuild, so draw each one once. */
+const rankTextures = new Map<number, CanvasTexture>();
+
+function rankTexture(rank: number): CanvasTexture {
+  const existing = rankTextures.get(rank);
+  if (existing) return existing;
+
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.beginPath();
+  ctx.arc(size / 2, size / 2, size / 2 - 3, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(12, 20, 14, 0.82)';
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = SETTLE_COLOUR;
+  ctx.stroke();
+
+  ctx.fillStyle = '#eafbec';
+  ctx.font = 'bold 36px Georgia, serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(String(rank), size / 2, size / 2 + 2);
+
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
+  rankTextures.set(rank, texture);
+  return texture;
+}
+
+let beaconTexture: CanvasTexture | undefined;
+
+/** A pin, drawn once: a stem and a head, pointing down at its own tile. */
+function beaconSprite(): CanvasTexture {
+  if (beaconTexture) return beaconTexture;
+
+  const w = 64;
+  const h = 96;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.strokeStyle = 'rgba(12, 20, 14, 0.85)';
+  ctx.lineWidth = 7;
+  ctx.beginPath();
+  ctx.moveTo(w / 2, 26);
+  ctx.lineTo(w / 2, h - 4);
+  ctx.stroke();
+  ctx.strokeStyle = SETTLE_COLOUR;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(w / 2, 26);
+  ctx.lineTo(w / 2, h - 4);
+  ctx.stroke();
+
+  // The head: a diamond, which is not a shape the terrain or any unit uses.
+  ctx.beginPath();
+  ctx.moveTo(w / 2, 2);
+  ctx.lineTo(w / 2 + 20, 24);
+  ctx.lineTo(w / 2, 46);
+  ctx.lineTo(w / 2 - 20, 24);
+  ctx.closePath();
+  ctx.fillStyle = SETTLE_COLOUR;
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = 'rgba(12, 20, 14, 0.85)';
+  ctx.stroke();
+
+  beaconTexture = new CanvasTexture(canvas);
+  beaconTexture.colorSpace = SRGBColorSpace;
+  return beaconTexture;
+}
+
 
 export function createScene3D(
   canvas: HTMLCanvasElement,
@@ -387,6 +492,13 @@ export function createScene3D(
     for (const object of overlayObjects) {
       overlayGroup.remove(object);
       if (object instanceof Mesh) object.geometry.dispose();
+      /*
+       * ⚠️ The sprite's MATERIAL is per-instance and must go; its TEXTURE is
+       * shared and cached by rank, and disposing that would destroy the digit
+       * for every later rebuild. Overlays are rebuilt on every selection, so
+       * this runs constantly.
+       */
+      if (object instanceof Sprite) object.material.dispose();
     }
     overlayObjects.length = 0;
   }
@@ -398,6 +510,55 @@ export function createScene3D(
     mesh.renderOrder = 3;
     overlayGroup.add(mesh);
     overlayObjects.push(mesh);
+  }
+
+  /** The border of a hex rather than its face, for marks that must not cover. */
+  function addRing(hex: Hex, colour: string, opacity: number, lift: number): void {
+    if (!terrain) return;
+    const geometry = hexRing(hex, terrain, lift);
+    const mesh = new Mesh(geometry, overlayMaterial(colour, opacity));
+    // Above the patches: a ring sits on ground that is usually also tinted.
+    mesh.renderOrder = 5;
+    overlayGroup.add(mesh);
+    overlayObjects.push(mesh);
+  }
+
+  /**
+   * A billboard that keeps its size in pixels, however far away the hex is.
+   *
+   * ⚠️ `sizeAttenuation: false` is the entire point. Everything else drawn on
+   * the map shrinks with the camera, which is right for terrain and wrong for
+   * advice: measured, five proposed hexes at the opening camera covered about
+   * 24 by 11 pixels between them. `scale` is then in a normalised screen unit,
+   * so the pixel sizes above are divided by the canvas height to get there.
+   */
+  function addSprite(
+    hex: Hex,
+    map: CanvasTexture,
+    pixels: number,
+    lift: number,
+    aspect = 1,
+  ): void {
+    if (!terrain) return;
+    const material = new SpriteMaterial({
+      map,
+      transparent: true,
+      depthWrite: false,
+      // ⚠️ Not depth-tested. A pin standing on a hillside is otherwise buried
+      // by the hill in front of it, which is exactly when it is most needed.
+      depthTest: false,
+      sizeAttenuation: false,
+    });
+    const sprite = new Sprite(material);
+    const { x, z } = hexToWorld(hex);
+    sprite.position.set(x, terrain.heightAt(hex) + lift, z);
+    const unit = pixels / Math.max(1, canvas.clientHeight);
+    sprite.scale.set(unit, unit * aspect, 1);
+    // The pin hangs above its tile, so its anchor is at the bottom of the art.
+    sprite.center.set(0.5, aspect > 1 ? 0 : 0.5);
+    sprite.renderOrder = 6;
+    overlayGroup.add(sprite);
+    overlayObjects.push(sprite);
   }
 
   function placeOnGround(object: Object3D, hex: Hex): void {
@@ -672,14 +833,17 @@ export function createScene3D(
         }
       }
       /*
-       * Settle proposals, above the movement patches so they read as advice
-       * rather than as reachable ground. The best site is drawn at full
-       * strength and the rest fade, which puts the ranking on the map.
+       * Settle proposals: a ring, a rank, and a pin over the best one.
+       *
+       * ⚠️ Drawn above the movement patches, because a proposed site is
+       * usually also somewhere you can walk, and the two washes used to blend
+       * additively into a colour that was neither.
        */
       if (view.settleSites) {
         view.settleSites.forEach((hex, index) => {
-          const strength = index === 0 ? 0.34 : Math.max(0.1, 0.26 - index * 0.05);
-          addPatch(hex, SETTLE_COLOUR, strength, 0.05 + (index === 0 ? 0.012 : 0));
+          addRing(hex, SETTLE_COLOUR, index === 0 ? 0.62 : 0.34, 0.05);
+          addSprite(hex, rankTexture(index + 1), RANK_PIXELS, 0.55);
+          if (index === 0) addSprite(hex, beaconSprite(), BEACON_PIXELS, 1.9, 1.5);
         });
       }
       if (view.hover && state.map.tiles.has(hexKey(view.hover))) {

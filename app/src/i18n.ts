@@ -75,6 +75,15 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
   'will not grow': 'wächst nicht',
   '{n} turn to grow': '{n} Runde bis zum Wachstum',
   '{n} turns to grow': '{n} Runden bis zum Wachstum',
+  // The proposed-sites list. "Feld" rather than "Hex": the game says Feld
+  // everywhere else it means a tile, and two words for one thing is one word
+  // too many.
+  '{n} hex away': '{n} Feld entfernt',
+  '{n} hexes away': '{n} Felder entfernt',
+  '{n} turn': '{n} Runde',
+  '{n} turns': '{n} Runden',
+  'reachable this turn': 'diese Runde erreichbar',
+  'Show this site': 'Diesen Platz zeigen',
   'Nothing was being studied, so the council began {topic}. Choose another if you like.':
     'Es wurde nichts erforscht, also hat der Rat mit {topic} begonnen. Wähle gerne etwas anderes.',
   'Who is coming': 'Wer kommt',

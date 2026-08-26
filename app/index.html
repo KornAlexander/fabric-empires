@@ -289,7 +289,21 @@
       }
       #turn-badge { font-weight: 600; color: var(--accent); }
 
-      #selection { bottom: 14px; left: 14px; width: 290px; }
+      /*
+        ⚠️ Capped, because this panel and `#research` are both `position:
+        fixed` and anchored to OPPOSITE edges: research hangs from the top,
+        selection stands on the bottom. Nothing in that arrangement stops them
+        meeting in the middle, and adding the proposed-sites list made them.
+
+        The number is the room the research panel needs at its tallest. It is
+        a magic constant and it is a smaller lie than the alternative, which
+        was a list that silently slid underneath another panel.
+      */
+      #selection {
+        bottom: 14px; left: 14px; width: 290px;
+        max-height: calc(100vh - 300px);
+        display: flex; flex-direction: column;
+      }
       #selection .actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
       button {
         background: #1d2636; border: 1px solid var(--border); color: var(--text);
@@ -323,6 +337,34 @@
       #research .options button {
         text-align: left; font-size: 12px; line-height: 1.35; padding: 5px 8px;
       }
+      /*
+        Proposed city sites. Same shape as the research options, because they
+        are the same kind of thing: a short ranked list you pick from.
+
+        The rank badge repeats the number drawn on the map, so the list and
+        the ground are legibly the same advice rather than two hints that
+        happen to agree.
+      */
+      #settle-sites {
+        display: flex; flex-direction: column; gap: 3px; margin: 6px 0 2px;
+        /* ⚠️ The LIST is what scrolls, never the panel. `#selection` is capped
+           below, and if the panel itself scrolled, the Found city button would
+           be the thing that went off the bottom. */
+        flex: 1 1 auto; min-height: 0; overflow-y: auto;
+      }
+      #settle-sites button {
+        text-align: left; font-size: 12px; line-height: 1.3; padding: 4px 8px;
+        display: flex; align-items: center; gap: 8px; white-space: nowrap;
+      }
+      #settle-sites .rank {
+        flex: 0 0 auto; min-width: 15px; height: 15px; border-radius: 50%;
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: 10px; font-weight: 700;
+        background: color-mix(in srgb, #8fd694 22%, transparent);
+        border: 1px solid #8fd694; color: #eafbec;
+      }
+      #settle-sites .now { color: #8fd694; margin-left: auto; font-size: 10px; }
+      #settle-sites button:first-child { border-color: #8fd694; }
       /*
         The one being studied. Marked, not removed: the list has to stay still
         so the row you clicked is the row that changes.
@@ -663,6 +705,14 @@
     <div class="panel" id="selection">
       <h2 id="sel-title" data-i18n="Nothing selected">Nothing selected</h2>
       <div class="muted" id="sel-detail" data-i18n="Click one of your units.">Click one of your units.</div>
+      <!--
+        Proposed city sites, best first. Empty and hidden unless an Architect
+        is selected. ⚠️ This exists because the same advice drawn on the map
+        is unreadable at the zoom a player plans at: five proposed hexes at the
+        opening camera covered about 24 by 11 pixels between them. Text has no
+        such problem, and it can carry the numbers the ranking is based on.
+      -->
+      <div id="settle-sites" hidden></div>
       <div class="actions">
         <button id="act-found" disabled title="Found a city here (b)" data-i18n="Found city">Found city</button>
         <button id="act-raid" disabled title="Plunder the neighbouring village (p). R flies the camera, so this is not on r" data-i18n="Raid">Raid</button>

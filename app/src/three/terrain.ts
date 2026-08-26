@@ -1141,6 +1141,64 @@ export function hexLid(
   return geometry;
 }
 
+/**
+ * A hex-shaped BAND that follows the ground: the border of a hex, not its face.
+ *
+ * ⚠️ **An outline reads as a marker; a wash reads as terrain.** The settle
+ * proposals were drawn as filled patches in a soft green, laid over grass, and
+ * measured against the ground immediately around them the strongest of the
+ * five stood out about seven times less than the selection marker does. They
+ * were on screen and doing nothing, which is the same failure the fog had for
+ * a different reason.
+ *
+ * A band leaves the ground it is marking visible, which is the point: the
+ * player is being asked to compare tiles, so covering them up was working
+ * against the advice being given.
+ *
+ * Built from `hexPatch`'s corners so the two line up exactly, and sampling
+ * `surfaceAt` along the edge for the same reason it does: this is a highlight,
+ * not an occluder, and a little flicker on a bulge is acceptable where hiding
+ * the ground would not be.
+ */
+export function hexRing(
+  h: Hex,
+  terrain: Terrain,
+  lift: number,
+  outer = 0.98,
+  inner = 0.76,
+): BufferGeometry {
+  const { x, z } = hexToWorld(h);
+  const verts: number[] = [];
+
+  for (let i = 0; i < 6; i++) {
+    const o1 = cornerOffset(i);
+    const o2 = cornerOffset((i + 1) % 6);
+    const at = (o: { x: number; z: number }, scale: number) => {
+      const px = x + o.x * scale;
+      const pz = z + o.z * scale;
+      // Sampled at the TRUE corner, not the inset one, so the band sits at the
+      // same height as the neighbouring hex's band along a shared edge.
+      return [px, terrain.surfaceAt(x + o.x, z + o.z) + lift, pz] as const;
+    };
+
+    const ao = at(o1, outer);
+    const bo = at(o2, outer);
+    const ai = at(o1, inner);
+    const bi = at(o2, inner);
+
+    // Two triangles per edge, wound so the band is visible from above. The
+    // overlay material is double-sided anyway, which makes this robust to a
+    // hex whose neighbours put the ground on the other side.
+    verts.push(...ao, ...bo, ...bi);
+    verts.push(...ao, ...bi, ...ai);
+  }
+
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new BufferAttribute(new Float32Array(verts), 3));
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
 /** A hex-shaped patch that follows the ground, for range and selection. */
 export function hexPatch(
   h: Hex,

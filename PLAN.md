@@ -317,6 +317,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D558–D566 | Three buttons, one of them lit | Recorded in full in section 79 |
 | D567–D574 | The film was singing along to the wrong words | Recorded in full in section 80 |
 | D575–D582 | The fog was a hole, not weather | Recorded in full in section 81 |
+| D583–D590 | The advice was correct, drawn, and invisible | Recorded in full in section 82 |
 
 ### 28. Cheat codes
 
@@ -7255,6 +7256,88 @@ cost a build.
 | D580 | ⚠️ **The sheet keeps `fog: true` and the fog chunks explicitly** | A raw ShaderMaterial gets no distance haze. Without it this would be the one surface ignoring distance |
 | D581 | The bounding sphere grows by the billow height | The drawn surface is taller than its geometry, and three culls on the sphere |
 | D582 | Brightness is judged as a ratio to sunlit land, not absolutely | Both known failures are ratio failures: invisible against black, and the island lost inside a bright sheet |
+
+---
+
+## 82. The advice was correct, drawn, and invisible
+
+Alexander: *"the architect does he actually gets good fields proposed. I am not
+seeing them"*.
+
+He was right that something was wrong and wrong about what. Driven live with
+the Architect selected, the engine proposed **five sites**, the panel said
+*"bester Platz in der Nähe (2 Felder): 4 Data, 5 Runden bis zum Wachstum"*, and
+all five patches were in the scene ranked by opacity. Toggling only those five
+materials off and back on changed the picture by a mean of **59 levels** on the
+best tile. Nothing was broken anywhere in the chain.
+
+⚠️ **A feature can be entirely correct and still not exist.** Four separate
+things made it unnoticeable, and only one of them is a colour:
+
+1. **It was a green wash on green ground.** Measured against the ground
+   immediately around it, the strongest of the five stood out about **seven
+   times less** than the selection marker does.
+2. **At the camera a game opens on, all five hexes together covered about 24 by
+   11 pixels.** Roughly five pixels each. Nothing painted on the ground is
+   visible there however bright it is, because there is no room for it.
+3. **One proposal sat exactly under a blue movement patch.** Both blend
+   additively, so on the tiles you can actually reach this turn the green was
+   mixed into something that was neither colour.
+4. **It was a tint with no border, no rank and no label**, so even when seen it
+   never said *"these are proposed city sites, best first"*.
+
+### What it is now
+
+- **A ring, not a wash.** A band along the hex border, leaving the ground
+  visible. That is the point rather than a detail: the player is being asked to
+  compare tiles, so covering them up was working against the advice.
+- **A rank number on each site**, so the ordering is stated instead of implied
+  by opacity.
+- **A beacon over the best site**, and both it and the numbers are sprites with
+  ⚠️ **`sizeAttenuation: false`**, which is the actual fix for point 2. Every
+  other mark on the map shrinks with the camera, which is right for terrain and
+  wrong for advice.
+- **A clickable list in the Architect panel**: rank, Data, turns to grow,
+  distance, and a dot for reachable-this-turn. Text has no zoom problem at all
+  and can carry the numbers the ranking is made of.
+
+Clicking a row moves the **camera**, not the unit. Founding is permanent, and
+one control that sometimes walks an Architect across the map and sometimes only
+looks at a tile is two behaviours wearing one label.
+
+### The bit I got wrong on the way
+
+I proposed also auto-selecting the Architect on turn one, and Alexander agreed.
+It was already implemented: `adopt()` selects it and focuses the camera on it,
+for new and resumed games alike. My evidence had been a probe that read
+`selected()` in the same tick as the click that started the game, so it read a
+value from before the game existed. **A race in the measurement looked exactly
+like a missing feature.**
+
+### And a layout regression the fix caused
+
+Five rows of three wrapped lines pushed the selection panel up **behind** the
+research panel. ⚠️ The two are both `position: fixed` and anchored to opposite
+edges, one hanging from the top and one standing on the bottom, so nothing in
+that arrangement stops them meeting in the middle. Fixed by shortening the rows,
+capping `#selection`, and making the LIST the part that scrolls: if the panel
+scrolled, the Found city button would be what went off the bottom.
+
+The detail line also lost its "best nearby" sentence, which the list now says
+in the same words directly underneath. What it kept is what the list cannot
+say: what you give up by founding where you are standing, since the tile
+underfoot is usually not one of the five.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D583 | ⚠️ **A proposed site is marked with a ring, never a filled patch** | The player is comparing ground, so the mark must not cover the ground. The wash also lost to the terrain it was painted on |
+| D584 | Rank numbers and the beacon are sprites with `sizeAttenuation: false` | Five proposals share ~24 by 11 pixels at the opening camera. Screen-space is the only size that survives the view people plan in |
+| D585 | ⚠️ **The marks are not depth-tested** | A pin behind a ridge is hidden exactly when it is most worth having |
+| D586 | The same advice appears as text in the panel | Text has no zoom problem and can state Data, growth and distance instead of implying a ranking with opacity |
+| D587 | A list row moves the camera, never the unit | Founding is permanent; one label must not mean two actions, one of which is irreversible |
+| D588 | Ring heights are sampled at the TRUE corner, not the inset one | Two inset bands never share vertices, but they must share heights or every edge draws a step |
+| D589 | ⚠️ **`#selection` is capped and the list scrolls inside it** | Two fixed panels anchored to opposite edges will meet in the middle. The buttons must never be the thing that scrolls away |
+| D590 | Rank textures are cached per digit | Overlays rebuild on every selection change, so an uncached canvas is a canvas per click, for ever |
 
 ---
 

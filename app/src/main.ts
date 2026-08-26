@@ -491,6 +491,76 @@ function whyItRose(rank: CityRankInfo): string {
 }
 
 /**
+ * The proposed city sites, as a list you can click.
+ *
+ * ⚠️ **This exists because the map cannot carry this at the zoom people plan
+ * at.** Measured on the deployed build, the five proposed hexes at the opening
+ * camera covered about 24 by 11 pixels between them, so whatever is painted on
+ * the ground there is a handful of pixels per tile. Text has no such problem,
+ * and it can show the numbers the ranking is actually made of rather than
+ * implying them with opacity.
+ *
+ * Clicking a row moves the CAMERA, not the unit. Founding is permanent and
+ * a single control that sometimes walks an Architect across the map and
+ * sometimes only looks at a tile would be two behaviours wearing one label.
+ */
+function renderSettleList(): void {
+  el.settleSites.replaceChildren();
+  if (settleSuggestions.length === 0) {
+    el.settleSites.hidden = true;
+    return;
+  }
+  el.settleSites.hidden = false;
+
+  settleSuggestions.forEach((site, index) => {
+    const button = document.createElement('button');
+    button.title = t('Show this site');
+
+    const rank = document.createElement('span');
+    rank.className = 'rank';
+    // The same number the map draws on the tile, so the two are one message.
+    rank.textContent = String(index + 1);
+
+    const growsShort =
+      site.turnsToGrow === undefined
+        ? t('will not grow')
+        : plural(site.turnsToGrow, '{n} turn', '{n} turns');
+    const growsLong =
+      site.turnsToGrow === undefined
+        ? t('will not grow')
+        : plural(site.turnsToGrow, '{n} turn to grow', '{n} turns to grow');
+    const where =
+      site.distance === 0
+        ? t('here')
+        : plural(site.distance, '{n} hex away', '{n} hexes away');
+
+    /*
+     * ⚠️ Short on the row, long in the tooltip. Five rows of three wrapped
+     * lines pushed the selection panel up behind the research panel, which is
+     * a worse failure than the one this list was added to fix.
+     */
+    button.title = `${site.dataAtFounding} Data, ${growsLong}, ${where}`;
+
+    const text = document.createElement('span');
+    text.textContent = `${site.dataAtFounding} Data · ${growsShort} · ${where}`;
+
+    button.append(rank, text);
+    if (site.reachableNow && site.distance > 0) {
+      const now = document.createElement('span');
+      now.className = 'now';
+      // A mark, not a sentence: the words cost a whole line each.
+      now.textContent = '●';
+      now.title = t('reachable this turn');
+      button.append(now);
+    }
+
+    button.addEventListener('click', () => scene.focus(site.hex));
+    el.settleSites.append(button);
+  });
+}
+
+
+/**
  * A settlement rank in the current language.
  *
  * ⚠️ Reads `labelDe` off the engine's rank table rather than going through the
@@ -690,6 +760,7 @@ const el = {
   tileDetail: document.querySelector<HTMLElement>('#tile-detail')!,
   selTitle: document.querySelector<HTMLElement>('#sel-title')!,
   selDetail: document.querySelector<HTMLElement>('#sel-detail')!,
+  settleSites: document.querySelector<HTMLElement>('#settle-sites')!,
   actFound: document.querySelector<HTMLButtonElement>('#act-found')!,
   actRaid: document.querySelector<HTMLButtonElement>('#act-raid')!,
   actFortify: document.querySelector<HTMLButtonElement>('#act-fortify')!,
@@ -952,6 +1023,7 @@ function refreshSelection(): void {
      */
     el.actFortify.textContent = t('Fortify');
     el.actSkip.disabled = true;
+    renderSettleList();
     refreshCouncil();
     return;
   }
@@ -975,6 +1047,7 @@ function refreshSelection(): void {
    * settled where they happened to be standing.
    */
   settleSuggestions = settleSites(state, unit);
+  renderSettleList();
 
   // ⚠️ The unit's name is NOT translated: Pipeline Runner and Direct Lake
   // Titan are jokes built on Fabric terminology, and a German Fabric user says
@@ -1016,23 +1089,25 @@ function refreshSelection(): void {
       best.distance === 0
         ? `  ·  ${t('good site')}: ${summary(best.dataAtFounding)}`
         : /*
-           * ⚠️ Both stated, neither called better.
+           * ⚠️ **Only the comparison, because the list now carries the rest.**
            *
-           * An earlier version labelled the top-scored site "better site",
-           * and was caught on screen recommending 2 Data and nine turns over
-           * the 3 Data and six turns underfoot. The score and the growth rate
-           * are not the same thing, the player is the one choosing, and a
-           * recommendation that argues with its own numbers is worse than
-           * numbers on their own.
+           * This used to spell out the best nearby site here as well. That is
+           * now rank 1 of the list directly below, in the same words, and the
+           * duplicate cost three wrapped lines: enough to push this panel up
+           * behind the research panel, since both are fixed and anchored to
+           * opposite edges.
+           *
+           * What the list cannot say is what you give up by founding where
+           * you are standing, because the tile underfoot is usually not one of
+           * the five. So that stays.
            */
-          `  ·  ${t('best nearby ({n} away)', { n: best.distance })}: ` +
-          summary(best.dataAtFounding) +
-          (hereData === undefined ? '' : `  ·  ${t('here')}: ${summary(hereData)}`);
+          hereData === undefined
+          ? ''
+          : `  ·  ${t('here')}: ${summary(hereData)}`;
   }
 
   el.actFound.disabled = !canFoundCity(state, unit);
-  el.actRaid.disabled = raidTarget(unit.id) === undefined;
-  // The one action that reverses itself, so it is labelled by what it will do
+  el.actRaid.disabled = raidTarget(unit.id) === undefined;  // The one action that reverses itself, so it is labelled by what it will do
   // next rather than by what it is.
   el.actFortify.disabled = type.strength === 0;
   el.actFortify.textContent = unit.fortified ? t('Wake') : t('Fortify');
