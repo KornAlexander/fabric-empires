@@ -918,6 +918,9 @@ const el = {
   tileDetail: document.querySelector<HTMLElement>('#tile-detail')!,
   selTitle: document.querySelector<HTMLElement>('#sel-title')!,
   selDetail: document.querySelector<HTMLElement>('#sel-detail')!,
+  selPrev: document.querySelector<HTMLButtonElement>('#sel-prev')!,
+  selNext: document.querySelector<HTMLButtonElement>('#sel-next')!,
+  selCount: document.querySelector<HTMLElement>('#sel-count')!,
   settleSites: document.querySelector<HTMLElement>('#settle-sites')!,
   actFound: document.querySelector<HTMLButtonElement>('#act-found')!,
   actRaid: document.querySelector<HTMLButtonElement>('#act-raid')!,
@@ -1163,6 +1166,17 @@ function refreshSelection(): void {
   attackTargets = undefined;
   settleSuggestions = [];
 
+  /*
+   * The stepper is refreshed before the early return, so it stays usable with
+   * nothing selected: that is the state a player is in after a unit dies, and
+   * it is precisely when "show me what I still have" is the useful action.
+   */
+  const own = ownUnits();
+  const place = own.findIndex((u) => u.id === selectedUnitId);
+  el.selPrev.disabled = own.length === 0;
+  el.selNext.disabled = own.length === 0;
+  el.selCount.textContent = own.length === 0 ? '' : `${place + 1 || '-'}/${own.length}`;
+
   const unit = selectedUnitId ? state.units.get(selectedUnitId) : undefined;
   if (!unit || unit.factionId !== state.activeFactionId) {
     selectedUnitId = undefined;
@@ -1368,6 +1382,46 @@ function selectNextIdle(): void {
   const next = idle[(currentIndex + 1) % idle.length]!;
   select(next.id);
   scene.focus(next.hex);
+}
+
+/**
+ * Every unit the player owns, in a stable order, for the panel arrows.
+ *
+ * ⚠️ Stable because `state.units` is a Map and keeps insertion order, so a
+ * unit does not change places in the cycle when another one is built or dies.
+ * Sorting by position instead would reshuffle the whole army every time
+ * anything moved, and the arrows would stop being a way to walk your line.
+ */
+function ownUnits(): readonly Unit[] {
+  return unitsOf(state, PLAYER_FACTION_ID);
+}
+
+/**
+ * Step to the next or previous unit, wrapping at both ends.
+ *
+ * ⚠️ **Walks EVERY unit, unlike `selectNextIdle`.** Tab jumps between units
+ * still awaiting orders and deliberately skips anything dug in or out of
+ * moves, which is right for playing a turn quickly and wrong for looking at
+ * your army: a fortified unit is exactly the one you want to check on, and if
+ * the arrows skipped it you could never step away from the unit on screen and
+ * come back to it.
+ */
+function stepUnit(delta: number): void {
+  const units = ownUnits();
+  if (units.length === 0) return;
+
+  const current = units.findIndex((u) => u.id === selectedUnitId);
+  /*
+   * From no selection, forward starts at the first unit and back at the last,
+   * rather than both landing on the same one. `current` is -1 here, and the
+   * modulo below already does the right thing for +1; the guard is for -1,
+   * where -2 would otherwise wrap to the second-from-last.
+   */
+  const from = current === -1 ? (delta > 0 ? -1 : 0) : current;
+  const next = units[(from + delta + units.length * 2) % units.length]!;
+  select(next.id);
+  scene.focus(next.hex);
+  dirty = true;
 }
 
 // Actions --------------------------------------------------------------
@@ -3731,6 +3785,22 @@ window.addEventListener('keydown', (e) => {
   } else if (e.key === 'n' || e.key === 'Tab') {
     e.preventDefault();
     selectNextIdle();
+  } else if (e.key === '[') {
+    /*
+     * ⚠️ Brackets, not the arrow keys.
+     *
+     * Free flight already gives the arrow keys a meaning: they turn the
+     * camera to look around (`flyControls.ts`). Binding them to selection on
+     * the map would make the same four keys mean "look" in one mode and
+     * "change unit" in the other, which is the kind of thing a player learns
+     * once, in the wrong mode, and then distrusts. Brackets sit next to each
+     * other, are unused, and read as previous/next.
+     */
+    e.preventDefault();
+    stepUnit(-1);
+  } else if (e.key === ']') {
+    e.preventDefault();
+    stepUnit(1);
   } else if (e.key === 'b') {
     doFound();
   } else if (e.key === 'p') {
@@ -3765,6 +3835,8 @@ el.actFound.addEventListener('click', doFound);
 el.actRaid.addEventListener('click', doRaid);
 el.actFortify.addEventListener('click', doFortify);
 el.actSkip.addEventListener('click', doSkip);
+el.selPrev.addEventListener('click', () => stepUnit(-1));
+el.selNext.addEventListener('click', () => stepUnit(1));
 el.actCouncil.addEventListener('click', () => void doCouncil());
 el.seedGo.addEventListener('click', () => {
   lastSetup = { ...lastSetup, seed: el.seedInput.value };

@@ -7896,4 +7896,67 @@ hangs behind a cache that will not settle. Wrapped in `Promise.resolve`.
 
 ---
 
+## 89. Arrows to step through the army
+
+The selection panel now carries `‹ 2/2 ›` on its title row, and `[` / `]` do
+the same thing from the keyboard.
+
+### Why not reuse the key that already existed
+
+Tab and `n` have always jumped to the next unit *still awaiting orders*, which
+filters on `movesLeft > 0 && !fortified`. That is right for playing a turn
+quickly and wrong for looking at your army, and reusing it here would have
+produced a trap: the unit that prompted this, a Profiler at `0/3 moves` and
+fortified, is one the idle cycle deliberately skips. Arrows built on it could
+show that unit and then never come back to it. So the arrows walk **every**
+unit the player owns.
+
+⚠️ The order is `state.units` insertion order, deliberately not a sort by
+position. Sorting would reshuffle the whole army whenever anything moved, and
+the arrows would stop being a way to walk a line you recognise.
+
+### The small things that were still decisions
+
+- **From no selection, forward goes to the first unit and back to the last.**
+  Both landing on the same one would make the two arrows identical in exactly
+  the state a player reaches for them: just after a unit died.
+- **`+ count * 2` before the modulo.** A bare `-1 % 3` is `-1` in JavaScript,
+  which indexes nothing and selects `undefined`.
+- **The stepper is refreshed before `refreshSelection`'s early return**, or it
+  sits disabled precisely when nothing is selected.
+- **`[` and `]`, not the arrow keys.** Free flight already gives the arrow keys
+  a meaning (turn the camera). Four keys meaning "look" in one mode and "change
+  unit" in the other is the kind of thing learned once, in the wrong mode.
+
+## 90. ⚠️ The publishable gate was scanning one commit too late
+
+`verify_publishable.py` enumerated with a bare `git ls-files`, i.e. **tracked
+files only**. A brand-new file is therefore invisible to it until the commit
+that adds it has already been made.
+
+This is not theoretical. Section 88's `tools/treasure-clips.py` was written,
+run through `npm run verify` clean at 214 files, and committed **with a
+hard-coded Azure OpenAI resource host and a `C:\Users\<name>` path in it**. The
+gate reported the leak on the next run, from the git history, where deleting
+the line no longer removes it.
+
+A gate whose whole job is to run before publication, and which cannot see the
+thing being published until after it is published, did not run at all.
+
+Now `git ls-files --cached --others --exclude-standard`: untracked-and-ignored
+is genuinely not published, untracked-and-stage-able is about to be.
+`.gitignore` is still honoured, so build output and the ignored media stay out.
+Proven by planting a file with a known-bad host and watching the count go 219 →
+221 with one finding.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D634 | The arrows walk **every** unit, unlike Tab's idle cycle | A fortified or spent unit is exactly the one worth inspecting; skipping it means the unit on screen cannot be returned to |
+| D635 | Cycle order is `state.units` insertion order, never sorted | A positional sort reshuffles the army whenever anything moves |
+| D636 | From no selection, the two arrows land on different units | Otherwise they are identical in the state that prompts their use |
+| D637 | `[` and `]` rather than the arrow keys | Free flight already uses the arrows to look around |
+| D638 | ⚠️ **The publishable gate scans untracked files too** | Tracked-only meant a new file was first scanned one commit after it was published, which is the one moment the gate exists to prevent |
+
+---
+
 *Last updated: 26 August 2026*

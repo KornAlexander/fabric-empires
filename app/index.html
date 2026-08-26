@@ -305,6 +305,25 @@
         display: flex; flex-direction: column;
       }
       #selection .actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+      /*
+        Title row: name on the left, the stepper hard against the right edge.
+        ⚠️ `min-width: 0` on the heading, or a long unit name pushes the
+        arrows off the panel instead of ellipsing itself.
+      */
+      .sel-head { display: flex; align-items: center; gap: 8px; }
+      .sel-head h2 { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .sel-steps { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+      /*
+        ⚠️ Sized in a fixed square rather than by padding. These carry a single
+        glyph, and ‹ and › have different advance widths in the fallback font,
+        so padding alone gave two buttons of visibly different width.
+      */
+      .sel-steps button {
+        width: 24px; height: 24px; padding: 0;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 15px; line-height: 1;
+      }
+      #sel-count { font-size: 11px; min-width: 26px; text-align: center; }
       button {
         background: #1d2636; border: 1px solid var(--border); color: var(--text);
         border-radius: 6px; padding: 6px 12px; font: inherit; cursor: pointer;
@@ -703,7 +722,22 @@
     </div>
 
     <div class="panel" id="selection">
-      <h2 id="sel-title" data-i18n="Nothing selected">Nothing selected</h2>
+      <!--
+        The title, with a way to step through the army.
+        ⚠️ These arrows walk EVERY unit you own, not just the ones still
+        awaiting orders. Tab already jumps between idle units and deliberately
+        skips anything dug in or out of moves; if the arrows did the same, the
+        unit on screen in that state could not be stepped away from and back
+        to, which is exactly when you want to look at your line.
+      -->
+      <div class="sel-head">
+        <h2 id="sel-title" data-i18n="Nothing selected">Nothing selected</h2>
+        <div class="sel-steps">
+          <button id="sel-prev" disabled data-i18n-title="Previous unit ([)" title="Previous unit ([)" aria-label="Previous unit">‹</button>
+          <span id="sel-count" class="muted"></span>
+          <button id="sel-next" disabled data-i18n-title="Next unit (])" title="Next unit (])" aria-label="Next unit">›</button>
+        </div>
+      </div>
       <div class="muted" id="sel-detail" data-i18n="Click one of your units.">Click one of your units.</div>
       <!--
         Proposed city sites, best first. Empty and hidden unless an Architect

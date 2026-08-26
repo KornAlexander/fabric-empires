@@ -148,8 +148,32 @@ RULES: tuple[Rule, ...] = (
 
 
 def tracked_files() -> list[str]:
+    """
+    Everything that is in the repository, or about to be.
+
+    ⚠️ **`--others` matters as much as the tracked list, and its absence let a
+    real leak through.** `git ls-files` alone names only files git already
+    knows, so a BRAND NEW file is invisible to this checker until the commit
+    that adds it has been made: you run the gate, it passes on 214 files, you
+    commit, and only the *next* run scans the file you just published. That is
+    exactly one commit too late, which for a gate whose whole job is to run
+    before publication means it did not run at all.
+
+    It happened: `tools/treasure-clips.py` was written, verified clean, and
+    committed with a hard-coded Azure resource host and a `C:\\Users\\<name>`
+    path in it. The gate caught it on the following run, from the git history,
+    where removing it is no longer enough.
+
+    `--exclude-standard` keeps .gitignore honoured, so build output and the
+    ignored media are still skipped. Untracked-and-ignored is genuinely not
+    published; untracked-and-stage-able is about to be.
+    """
     out = subprocess.run(
-        ['git', 'ls-files'], cwd=REPO, capture_output=True, text=True, check=True
+        ['git', 'ls-files', '--cached', '--others', '--exclude-standard'],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     return out.stdout.split('\n')
 

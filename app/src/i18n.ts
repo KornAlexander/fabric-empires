@@ -45,6 +45,10 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
   Library: 'Bibliothek',
   'New game': 'Neues Spiel',
   Skip: 'Überspringen',
+  // The unit stepper. "Einheit" is the word the rest of the interface already
+  // uses, and the key hint stays as the literal bracket in both languages.
+  'Previous unit ([)': 'Vorherige Einheit ([)',
+  'Next unit (])': 'Nächste Einheit (])',
   // Buried caches. "Fund" rather than "Schatz": the thing is a data cache left
   // by whoever was here before, not pirate gold, and the film shows a strongbox.
   Treasure: 'Fund',
