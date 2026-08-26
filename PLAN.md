@@ -321,6 +321,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D591–D600 | The ground opened after the fact | Recorded in full in section 83 |
 | D601–D606 | Taking cover made the city easier to take | Recorded in full in section 84 |
 | D607–D613 | Digging in was worth forty percent and nothing else | Recorded in full in section 85 |
+| D614–D620 | A cheat that crosses the line the file drew | Recorded in full in section 86 |
 
 ### 28. Cheat codes
 
@@ -7640,6 +7641,90 @@ applies: at full health that line would be a promise the game is not keeping.
 | D611 | It is folded into `attacker.effective`, not kept as its own factor | `resolveAttack` recomputes from that field. Two places to remember is how this file has already drifted twice |
 | D612 | Weight still wins against a dug-in scout, and that is the tuning check | Otherwise the answer to every question is fortify and wait |
 | D613 | ⚠️ **The docblock's measurement was invented and had to be replaced** | It read like evidence. A fabricated number in a comment is worse than silence, because nobody thinks to doubt it |
+
+---
+
+## 86. A cheat that crosses the line the file drew
+
+Alexander: *"implement a cheat code so that I can automatically pick the correct
+answer. something like pressing o and k at the same time for 'okay'"*.
+
+### The collision, found before building anything
+
+`cheats.ts` opens with the flattest promise in the repository:
+
+> *A code that wrote to mastery would hand somebody a green 82% and a false
+> belief that they can sit DP-600, which is a worse outcome than any amount of
+> losing.*
+
+and the console's help text ended every listing with *"None of them can make
+you ready. Only answering does that."* There is even a test asserting that
+`cheats.ts` cannot so much as reference `mastery`.
+
+An auto-correct-answer cheat walks straight into that: answers flow through
+`Dp600ChallengeProvider` into `mastery`, and mastery is the only thing the
+readiness figure and the Great Library are built from.
+
+⚠️ **So this was put to Alexander rather than decided quietly**, with three
+options: unblock the game but teach the schedule nothing; count it fully; or
+count it as a miss. He chose to count it fully, which is his call — it is his
+study tool, and a person who wants to skip a question they already know is not
+the person the warning was written about.
+
+### What that obliged, and it is the whole point of this section
+
+The claim had to go. It was true of every typed code and became false the
+moment the chord existed, and ⚠️ **a promise the code no longer keeps is worse
+than no promise**: nobody re-reads help text hunting for sentences that have
+quietly stopped being true, and a claim stated that plainly gives the reader no
+reason to doubt it. Section 85 had just finished recording exactly this failure
+in a code comment (D613).
+
+So the docblock and the help text both say the new rule instead, and a test
+bans the old wording **by name**, comparing against the sources with comments
+stripped — because both files now explain at length what the promise used to be
+and why it went, and checking raw text would make the documentation fail the
+test it documents. That stripping trick is not new: the test above it already
+does the same thing for the same reason.
+
+The guarantee that survives untouched is the narrower one worth keeping:
+`cheats.ts` still cannot reach `mastery`, so every TYPED code is still
+incapable of making anyone look ready. The chord lives in `main.ts`.
+
+What keeps the chord honest is disclosure. `okay` goes into `state.cheatsUsed`
+on first use, that lives in the save, and the end screen reads it.
+
+### The mechanics
+
+- **A chord, not a key.** The modal is a keyboard surface: 1 to 6 pick options
+  and Enter submits. A lone letter is one fumble away from answering a question
+  the player meant to read.
+- ⚠️ **Keyed on `event.code`, not `event.key`.** `key` is layout-dependent; on
+  a German keyboard the physical Z reports "y". "Hold O and K" is a claim about
+  where two fingers go, so the code has to name physical keys.
+- ⚠️ **Held keys are cleared on `blur` as well as `keyup`.** A key held while
+  the window loses focus never gets its keyup, so without that the set keeps
+  `KeyO` for ever and a lone K answers questions from then on.
+- **Auto-repeat is guarded**, because keydown fires forever while a key is held
+  and submitting takes a moment, so the chord would otherwise race itself.
+- **One implementation.** `answerOpen` (the harness) and the chord both call
+  `answerCurrentQuestion`. Written twice they would drift, which this file has
+  already paid for twice over.
+
+Verified on the deployed build: the chord answered a research question,
+`cheatsUsed` gained `okay`, the log read *"Okay. Die Antwort hat sich selbst
+gewählt."*, the research completed, and a lone K followed by a lone O did
+nothing at all.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D614 | ⚠️ **The chord counts towards readiness, by explicit instruction** | It contradicts the file's stated rule, so it was put to the owner rather than decided quietly. He owns the study tool and the trade-off |
+| D615 | ⚠️ **The old promise was deleted from the help text and the docblock** | It stopped being true. A claim nobody thinks to re-read is the cheapest kind of lie to ship |
+| D616 | A test bans the old wording by name, against comment-stripped sources | The files must be free to explain what the promise was without failing the test that removed it |
+| D617 | `cheats.ts` still cannot reference `mastery`, and that test stands | The narrower guarantee is still worth keeping: no TYPED code can make anyone look ready |
+| D618 | The chord is disclosed in `cheatsUsed` on first use | Disclosure is the only honesty left once the answer counts |
+| D619 | ⚠️ **Keyed on `event.code` and cleared on `blur`** | `key` is layout-dependent, and a key held through a focus change never sends keyup |
+| D620 | The chord and the harness share `answerCurrentQuestion` | Two copies of "pick the right options and submit" would drift, as the tactic maths already did |
 
 ---
 

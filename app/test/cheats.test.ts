@@ -16,7 +16,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createGameState, PLAYER_FACTION_ID, unitsOf } from '@fabric-empires/engine';
-import { CHEATS, findCheat, type CheatContext } from '../src/cheats.js';
+import { CHEATS, OKAY_CHEAT, findCheat, type CheatContext } from '../src/cheats.js';
 
 function context(overrides: Partial<CheatContext> = {}): CheatContext {
   return {
@@ -241,5 +241,84 @@ describe('⚠️ the promise: no cheat can make you look ready', () => {
     // The guarantee is only durable if the reason survives with it.
     expect(raw).toContain('mastery');
     expect(raw.toLowerCase()).toContain('ready');
+  });
+});
+
+describe('⚠️ the O+K chord, and the promise it broke', () => {
+  const cheatsSource = readFileSync(resolve(process.cwd(), 'app/src/cheats.ts'), 'utf8');
+  const mainRaw = readFileSync(resolve(process.cwd(), 'app/src/main.ts'), 'utf8');
+
+  /*
+   * Comments stripped, for the reason the test above already gives: both files
+   * explain at length what the old promise was and why it had to go, and those
+   * explanations quote it. Checking the raw text would make the documentation
+   * fail the test it documents. What matters is that the claim is not SHOWN to
+   * a player, not that the word never appears in the repository.
+   */
+  const strip = (text: string): string =>
+    text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  const mainSource = strip(mainRaw);
+
+  it('names the code in one place, so recording and listing cannot disagree', () => {
+    expect(OKAY_CHEAT).toBe('okay');
+    expect(mainSource, 'main.ts must use the constant, not a literal')
+      .toContain('OKAY_CHEAT');
+  });
+
+  it('⚠️ no longer claims that no cheat can make you ready', () => {
+    /*
+     * The claim was true of every typed code and became false the moment the
+     * chord existed, because the chord's answer feeds the schedule like any
+     * other. Both the docblock and the console's help text used to say it.
+     *
+     * This is the cheapest kind of lie to ship: nobody re-reads help text
+     * looking for sentences that have quietly stopped being true, and the
+     * reader has no reason to doubt a promise stated that plainly. So the
+     * exact old wording is banned by name.
+     */
+    const gone = 'None of them can make you ready';
+    expect(mainSource, 'the help text still makes a promise the chord breaks')
+      .not.toContain(gone);
+    expect(strip(cheatsSource), 'the docblock still makes a promise the chord breaks')
+      .not.toContain('The one line no cheat crosses');
+  });
+
+  it('says instead that the chord counts, and where that is disclosed', () => {
+    // Replacing a false claim with silence would be barely better. The help
+    // text has to state the new rule, not merely stop stating the old one.
+    expect(mainSource).toContain('O+K');
+    expect(mainSource.toLowerCase()).toContain('end screen');
+  });
+
+  it('⚠️ records the chord so the end screen can disclose it', () => {
+    // Disclosure is the only thing keeping this honest now that the answer
+    // counts. If the recording goes, nothing else notices.
+    expect(mainSource).toContain('recordCheat(state, OKAY_CHEAT)');
+  });
+
+  it('⚠️ keys on the physical key, not on the letter', () => {
+    /*
+     * `event.key` is layout-dependent: on a German keyboard the physical Z
+     * reports "y". "Hold O and K" is a claim about where two fingers go, so
+     * the code has to read `event.code`.
+     */
+    expect(mainSource).toContain("held.has('KeyO')");
+    expect(mainSource).toContain("held.has('KeyK')");
+  });
+
+  it('⚠️ forgets held keys when the window loses focus', () => {
+    /*
+     * A key held while focus leaves never gets its keyup. Without the blur
+     * reset the set would keep KeyO for ever, and from then on a lone K would
+     * answer the player's question for them.
+     */
+    expect(mainSource).toMatch(/addEventListener\('blur', clear\)/);
+  });
+
+  it('answers through the same function the harness uses', () => {
+    // Two implementations of "pick the right options and submit" would drift,
+    // and this file has already paid for that kind of split twice.
+    expect(mainSource).toContain('answerCurrentQuestion(true)');
+    expect(mainSource).toContain('answerOpen: async (correct = true) => answerCurrentQuestion(correct)');
   });
 });

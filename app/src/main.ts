@@ -123,7 +123,7 @@ import { createCheatConsole } from './ui/cheatConsole.js';
 import { createRaidAlert } from './ui/raidAlert.js';
 import { createDuoModal } from './ui/duoModal.js';
 import { createAttract } from './ui/attract.js';
-import { CHEATS, findCheat } from './cheats.js';
+import { CHEATS, OKAY_CHEAT, findCheat } from './cheats.js';
 import { approachShot, descendShot, orbitShot } from './three/cinematic.js';
 import { introShots } from './intro.js';
 import { createAnthem } from './audio.js';
@@ -367,7 +367,15 @@ function runCheat(raw: string): void {
     for (const cheat of CHEATS) {
       cheats.say(`  ${cheat.code.padEnd(14)} ${cheat.describe}`);
     }
-    cheats.say('  None of them can make you ready. Only answering does that.');
+    /*
+     * ⚠️ This used to end "None of them can make you ready. Only answering
+     * does that." That was true of every typed code and stopped being true of
+     * the game the moment the O+K chord existed. Leaving the line in would
+     * have been the cheapest possible lie: nobody re-reads help text looking
+     * for things that have quietly become false.
+     */
+    cheats.say(`  ${'O+K'.padEnd(14)} Held together while a question is open: answers it.`);
+    cheats.say('  The codes above cannot make you ready. O+K can, and says so on the end screen.');
     return;
   }
 
@@ -405,6 +413,149 @@ function runCheat(raw: string): void {
 }
 
 const cheats = createCheatConsole({ submit: runCheat });
+
+/**
+ * Answer the question currently on screen, correctly or deliberately wrongly.
+ *
+ * ⚠️ **One implementation, two callers.** The harness (`answerOpen`) and the
+ * O+K chord both go through here. Written twice they would drift, and this
+ * file has already paid for that twice: the tactic arithmetic split the
+ * preview from the resolution, and `againstWalls` nearly did the same.
+ */
+async function answerCurrentQuestion(correct: boolean): Promise<string | undefined> {
+  const question = modal.current();
+  if (!question || !modal.isOpen()) return undefined;
+  const options = question.options ?? [];
+
+  /*
+   * ⚠️ Selecting an option is not answering it.
+   *
+   * This used to click one option and stop, which sets `aria-pressed` and
+   * nothing else: the modal stayed open, the promise never resolved, and
+   * the research it was waiting on sat at 12/12 Compute forever. Every
+   * assertion downstream then read a game that had quietly stopped, and
+   * the only visible symptom was a counter that would not move.
+   *
+   * A multi-answer question needs every correct option before Submit even
+   * enables, so the loop collects them all rather than breaking at the
+   * first.
+   */
+  const multi = question.type === 'multi';
+  const needed = multi ? (question.selectCount ?? 2) : 1;
+  const wanted: string[] = [];
+  for (const option of options) {
+    const isRight = await checkAnswer(question.id, option, question.answerHash);
+    if (isRight === correct) {
+      wanted.push(option);
+      if (wanted.length === needed) break;
+    }
+  }
+  if (wanted.length === 0) return undefined;
+
+  const nodes = [...document.querySelectorAll<HTMLElement>('.fe-option')];
+  for (const choice of wanted) {
+    nodes[options.indexOf(choice)]?.click();
+  }
+
+  /*
+   * ⚠️ Found by `data-act`, not by the word on the button.
+   *
+   * This matched `textContent === 'Submit'`, which worked for exactly as
+   * long as the interface was English. Translating the modal would have
+   * silently broken every automated playthrough in German, and the symptom
+   * would have been `answerOpen` returning undefined, which the comment
+   * on `openQuestion` already warns has two very different causes.
+   */
+  const submit = document.querySelector<HTMLButtonElement>('.fe-modal button[data-act="submit"]');
+  if (!submit || submit.disabled) return undefined;
+  submit.click();
+
+  /*
+   * Submitting is still not the end of it. The modal then shows why the
+   * answer was what it was, and waits on Continue: that explanation is the
+   * point of the whole game, so it is not skippable and nothing downstream
+   * resumes until it is dismissed. A test that stopped at Submit left the
+   * research permanently at 12/12 Compute.
+   */
+  for (let i = 0; i < 40; i++) {
+    const cont = document.querySelector<HTMLButtonElement>(
+      '.fe-modal button[data-act="continue"]',
+    );
+    if (cont) {
+      cont.click();
+      break;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
+  }
+  return wanted.join(' | ');
+}
+
+/**
+ * The O+K chord: hold both and the question answers itself.
+ *
+ * ⚠️ **This one DOES count towards readiness, and that is a deliberate change
+ * of policy rather than an oversight.** Every other code in `cheats.ts` moves
+ * Compute, armies, walls and turns and pointedly leaves `mastery` alone,
+ * because a false 82% is worse than any amount of losing. Alexander asked for
+ * this one to count anyway, and it is his study tool. The docblock in
+ * `cheats.ts` and the console's help text were both rewritten to stop claiming
+ * otherwise: a promise the code no longer keeps is worse than no promise.
+ *
+ * What keeps it honest is disclosure. `okay` is written into `state.cheatsUsed`
+ * the first time it is used, it lives in the save, and the end screen reads it.
+ *
+ * A chord rather than a single key because the modal is a keyboard surface: 1
+ * to 6 pick options and Enter submits, so a lone letter is one fumble away
+ * from answering a question the player meant to read.
+ */
+function armAnswerChord(): void {
+  const held = new Set<string>();
+  let firing = false;
+
+  const clear = (): void => {
+    held.clear();
+    firing = false;
+  };
+
+  window.addEventListener('keydown', (event) => {
+    // ⚠️ Not `event.key`, which is layout-dependent: on a German keyboard the
+    // physical Z key reports "y". `code` names the physical key, which is what
+    // "press O and K together" actually means to a hand.
+    held.add(event.code);
+    if (!held.has('KeyO') || !held.has('KeyK')) return;
+    if (!modal.isOpen()) return;
+    // Auto-repeat fires keydown forever while a key is held, and the answer
+    // takes a moment to submit; without this the chord would try again on
+    // every repeat and race itself.
+    if (firing) return;
+    firing = true;
+    event.preventDefault();
+    event.stopPropagation();
+
+    void (async () => {
+      const given = await answerCurrentQuestion(true);
+      if (given === undefined) return;
+      if (!state.cheatsUsed.includes(OKAY_CHEAT)) {
+        state = recordCheat(state, OKAY_CHEAT);
+        saveGame(slot, state);
+      }
+      log(t('Okay. The answer picked itself.'));
+    })();
+  }, true);
+
+  /*
+   * ⚠️ Released on keyup AND on blur. A key held while the window loses focus
+   * never gets its keyup, so without the blur the set would keep "KeyO" for
+   * ever and the chord would fire on a lone K from then on.
+   */
+  window.addEventListener('keyup', (event) => {
+    held.delete(event.code);
+    if (!held.has('KeyO') || !held.has('KeyK')) firing = false;
+  }, true);
+  window.addEventListener('blur', clear);
+}
+
+armAnswerChord();
 
 /**
  * Disclose a harness call that granted something ordinary play cannot.
@@ -4092,73 +4243,7 @@ window.__fabricEmpires = {
    *
    * Returns the option that was chosen, or undefined if nothing is open.
    */
-  answerOpen: async (correct = true) => {
-    const question = modal.current();
-    if (!question || !modal.isOpen()) return undefined;
-    const options = question.options ?? [];
-
-    /*
-     * ⚠️ Selecting an option is not answering it.
-     *
-     * This used to click one option and stop, which sets `aria-pressed` and
-     * nothing else: the modal stayed open, the promise never resolved, and
-     * the research it was waiting on sat at 12/12 Compute forever. Every
-     * assertion downstream then read a game that had quietly stopped, and
-     * the only visible symptom was a counter that would not move.
-     *
-     * A multi-answer question needs every correct option before Submit even
-     * enables, so the loop collects them all rather than breaking at the
-     * first.
-     */
-    const multi = question.type === 'multi';
-    const needed = multi ? (question.selectCount ?? 2) : 1;
-    const wanted: string[] = [];
-    for (const option of options) {
-      const isRight = await checkAnswer(question.id, option, question.answerHash);
-      if (isRight === correct) {
-        wanted.push(option);
-        if (wanted.length === needed) break;
-      }
-    }
-    if (wanted.length === 0) return undefined;
-
-    const nodes = [...document.querySelectorAll<HTMLElement>('.fe-option')];
-    for (const choice of wanted) {
-      nodes[options.indexOf(choice)]?.click();
-    }
-
-    /*
-     * ⚠️ Found by `data-act`, not by the word on the button.
-     *
-     * This matched `textContent === 'Submit'`, which worked for exactly as
-     * long as the interface was English. Translating the modal would have
-     * silently broken every automated playthrough in German, and the symptom
-     * would have been `answerOpen` returning undefined, which the comment
-     * below already warns has two very different causes.
-     */
-    const submit = document.querySelector<HTMLButtonElement>('.fe-modal button[data-act="submit"]');
-    if (!submit || submit.disabled) return undefined;
-    submit.click();
-
-    /*
-     * Submitting is still not the end of it. The modal then shows why the
-     * answer was what it was, and waits on Continue: that explanation is the
-     * point of the whole game, so it is not skippable and nothing downstream
-     * resumes until it is dismissed. A test that stopped at Submit left the
-     * research permanently at 12/12 Compute.
-     */
-    for (let i = 0; i < 40; i++) {
-      const cont = document.querySelector<HTMLButtonElement>(
-        '.fe-modal button[data-act="continue"]',
-      );
-      if (cont) {
-        cont.click();
-        break;
-      }
-      await new Promise((resolve) => window.setTimeout(resolve, 50));
-    }
-    return wanted.join(' | ');
-  },
+  answerOpen: async (correct = true) => answerCurrentQuestion(correct),
 
   /**
    * What the answer check makes of the question currently on screen.

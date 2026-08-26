@@ -1,7 +1,7 @@
 /**
  * Cheat codes.
  *
- * ⚠️ **The one line no cheat crosses: none of them can make you look ready.**
+ * ⚠️ **Every TYPED code here leaves `mastery` alone. The O+K chord does not.**
  *
  * This is a study tool wearing a strategy game. Its only real output is the
  * readiness figure and the Great Library behind it, and those are built from
@@ -9,8 +9,8 @@
  * to mastery would hand somebody a green 82% and a false belief that they can
  * sit DP-600, which is a worse outcome than any amount of losing.
  *
- * So the codes here move Compute, armies, walls and turns. Not one of them
- * touches `mastery`, and the two that come near the exam are careful:
+ * So the codes in this file move Compute, armies, walls and turns. Not one of
+ * them touches `mastery`, and the two that come near the exam are careful:
  *
  *   - `sitthepaper` opens the Proctor early. It does not answer the paper.
  *     You still take forty questions and you still have to pass them.
@@ -19,9 +19,19 @@
  *     and leaves the Great Library untouched, so the topic still shows as
  *     unlearned in the place that matters.
  *
- * Every use is appended to `state.cheatsUsed`, which lives in the save, so an
- * empire built with help says so on the victory screen and keeps saying so
- * after a reload.
+ * ⚠️ **`okay` is the exception, and it is deliberate.** Holding O and K while
+ * a question is open picks the right answer and submits it, and that answer
+ * counts exactly as if it had been known: it feeds the schedule, the Library
+ * and the readiness figure. Alexander asked for it on those terms.
+ *
+ * This file used to promise the opposite, in this docblock and in the console's
+ * help text. Both were rewritten rather than left standing, because a promise
+ * the code no longer keeps is worse than no promise: the next reader has no
+ * reason to doubt it.
+ *
+ * What is left is disclosure. Every use is appended to `state.cheatsUsed`,
+ * which lives in the save, so an empire built with help says so on the victory
+ * screen and keeps saying so after a reload.
  */
 
 import {
@@ -34,6 +44,16 @@ import {
 } from '@fabric-empires/engine';
 
 export type CheatCategory = 'treasury' | 'army' | 'war' | 'exam';
+
+/**
+ * The chord that answers a question for you.
+ *
+ * ⚠️ Not in `CHEATS`, because it is not typed into the console: it is held on
+ * the keyboard while a question is on screen. The code string lives here so
+ * the thing that records it and the thing that lists it cannot disagree about
+ * its name, which is the only reason a UI concern is declared in this file.
+ */
+export const OKAY_CHEAT = 'okay';
 
 export interface CheatContext {
   readonly state: GameState;

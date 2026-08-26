@@ -86,6 +86,9 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
   // Mending while dug in. "Erholt sich" is what a player would say about a
   // unit getting its strength back, and it carries the sense of resting.
   'mending +{hp} HP a turn': 'erholt sich +{hp} TP pro Runde',
+  // The O+K chord. Kept light: it is a cheat, and the log line is the only
+  // place the game admits it happened while you are still playing.
+  'Okay. The answer picked itself.': 'Okay. Die Antwort hat sich selbst gewählt.',
   '{n} turn': '{n} Runde',
   '{n} turns': '{n} Runden',
   'reachable this turn': 'diese Runde erreichbar',
