@@ -1,26 +1,32 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Color, Mesh, ShaderMaterial } from 'three';
-import { hex, type Hex } from '@fabric-empires/engine';
+import { BufferAttribute, Mesh, ShaderMaterial } from 'three';
+import { hex, hexKey, type Hex } from '@fabric-empires/engine';
 import { createFog } from '../src/three/fog.js';
 import type { Terrain } from '../src/three/terrain.js';
 
 /*
   The fog SHEET, as opposed to the lid geometry underneath it (`fogLid.test.ts`).
 
-  ⚠️ The defect this file exists to prevent is the one that shipped: a sheet
-  that was, measured on screen, rgb(9, 13, 19) with a luminance standard
-  deviation of 2 in 255. It read as a hole cut in the world rather than as
-  weather, and nothing was broken. The colour was simply authored in sRGB and
-  then seen through ACES filmic tone mapping at exposure 0.78, which crushes
-  darks, and the mottling that was supposed to break it up multiplied a value
-  near zero by 1 ± 0.11 and therefore moved it by less than one level.
+  ⚠️ Two defects live in this file's history, and they are different in kind.
 
-  None of that can be asserted from here, because it is a fact about pixels and
-  there is no GPU in this process. What CAN be pinned is everything that made
-  the mistake possible in the first place, plus the rules that keep the new
-  sheet from revealing ground it is supposed to hide.
+  The first was that the sheet was, measured on screen, rgb(9, 13, 19) with a
+  luminance standard deviation of 2 in 255: a hole cut in the world rather than
+  weather. Nothing was broken. The colour was authored in sRGB and then seen
+  through ACES filmic tone mapping at exposure 0.78, which crushes darks, and
+  the mottling meant to break it up moved a near-black value by less than one
+  level.
+
+  The second was that changing the fog rebuilt its geometry, which measured
+  **44.8 ms** at full map size. That was affordable while the fog only moved
+  when a turn ended, and stopped being affordable the moment it had to keep up
+  with a unit walking. Geometry is now built once per map and every tile
+  carries its own state as an attribute.
+
+  Neither can be asserted from pixels here, because the audio of this file is a
+  GPU and there is not one. What CAN be pinned is the arithmetic and the rules
+  that keep the sheet from revealing ground it is supposed to hide.
 */
 
 const source = readFileSync(
@@ -40,46 +46,115 @@ function flatTerrain(): Terrain {
   } as unknown as Terrain;
 }
 
-function build(unseen: Hex[], remembered: Hex[] = []) {
+const MAP: Hex[] = [hex(0, 0), hex(1, 0), hex(0, 1), hex(1, 1), hex(2, 0)];
+
+function build(map: Hex[] = MAP) {
   const added: Mesh[] = [];
-  const layer = createFog((a) => added.push(...a));
-  layer.set(unseen, remembered, flatTerrain());
-  return { layer, added };
+  const removed: Mesh[] = [];
+  const layer = createFog((a, r) => {
+    added.push(...a);
+    removed.push(...r);
+  });
+  layer.setMap(map, flatTerrain());
+  return { layer, added, removed };
 }
 
-const materialOf = (mesh: Mesh) => mesh.material as ShaderMaterial;
+const attr = (mesh: Mesh, name: string) =>
+  mesh.geometry.getAttribute(name) as BufferAttribute;
+
+/** The state the sheet is heading towards for a given hex. */
+function targetOf(mesh: Mesh, h: Hex): number {
+  const spanStart = MAP.findIndex((m) => hexKey(m) === hexKey(h)) * 36;
+  return attr(mesh, 'aTo').getX(spanStart);
+}
 
 describe('the fog sheet', () => {
-  it('builds one merged mesh per state, not one per hex', () => {
-    const hexes = [hex(0, 0), hex(1, 0), hex(0, 1), hex(1, 1), hex(2, 0)];
-    const { added } = build(hexes, [hex(5, 5), hex(6, 5)]);
-    // Two states present, so two meshes, whatever the hex count.
-    expect(added).toHaveLength(2);
+  it('is one mesh for the whole map, however many tiles are hidden', () => {
+    const { added } = build();
+    expect(added).toHaveLength(1);
+    // Every tile gets geometry, not only the fogged ones.
+    expect(attr(added[0]!, 'position').count).toBe(MAP.length * 36);
   });
 
-  it('draws nothing at all when there is nothing hidden', () => {
-    const { added } = build([], []);
-    expect(added).toEqual([]);
-  });
-
-  it('⚠️ keeps unseen ground fully opaque', () => {
+  it('⚠️ covers tiles that are currently in sight too', () => {
     /*
-     * The whole point of the unseen layer. If this ever goes below 1 the
-     * coastline of an unexplored map becomes readable through the fog, which
-     * is information the player is supposed to have to go and earn.
+     * The reason the sheet is built from the MAP and not from the fog: a clear
+     * tile becomes remembered the moment the unit watching it walks away.
+     * Building only what is hidden now would mean rebuilding then, and
+     * rebuilding is the 44.8 ms this design exists to avoid.
      */
-    const { added } = build([hex(0, 0), hex(1, 0)]);
-    const unseen = materialOf(added[0]!);
-    expect(unseen.uniforms.uOpacity!.value).toBe(1);
-    expect(unseen.transparent).toBe(false);
-    expect(unseen.depthWrite).toBe(true);
+    const { added, layer } = build();
+    layer.set([], []); // nothing hidden at all
+    expect(attr(added[0]!, 'position').count).toBe(MAP.length * 36);
   });
 
-  it('keeps remembered ground translucent, because it is known but stale', () => {
-    const { added } = build([hex(0, 0)], [hex(5, 5)]);
-    const remembered = materialOf(added[1]!);
-    expect(remembered.uniforms.uOpacity!.value).toBeLessThan(1);
-    expect(remembered.transparent).toBe(true);
+  it('⚠️ changes state without rebuilding geometry', () => {
+    const { layer, added, removed } = build();
+    const before = added[0]!.geometry;
+
+    layer.set([hex(0, 0)], [hex(1, 0)]);
+    layer.set([hex(0, 1)], []);
+
+    expect(removed, 'a rebuild would have replaced the mesh').toHaveLength(0);
+    expect(added).toHaveLength(1);
+    expect(added[0]!.geometry, 'the same buffers throughout').toBe(before);
+  });
+
+  it('marks unseen 2, remembered 1 and everything else 0', () => {
+    const { layer, added } = build();
+    layer.set([hex(0, 0)], [hex(1, 0)]);
+    const mesh = added[0]!;
+    expect(targetOf(mesh, hex(0, 0))).toBe(2);
+    expect(targetOf(mesh, hex(1, 0))).toBe(1);
+    expect(targetOf(mesh, hex(0, 1))).toBe(0);
+  });
+
+  it('⚠️ restarts a fade from where it currently is, not from where it began', () => {
+    /*
+     * A tile caught half uncovered when something changes again must carry on
+     * from half, not snap back to fully hidden and start over. That snap is
+     * the one thing a fade exists to prevent, and it is easy to write by
+     * accident because "from" reads like "the previous state".
+     */
+    const { layer, added } = build();
+    const mesh = added[0]!;
+
+    layer.set([hex(0, 0)], []); // hidden
+    layer.set([], []); // start uncovering
+    layer.update(0.375); // roughly half of FADE_SECONDS
+    layer.set([hex(0, 0)], []); // hidden again, mid-fade
+
+    const from = attr(mesh, 'aFrom').getX(0);
+    expect(from, 'should resume from about half, not from 2').toBeGreaterThan(0.5);
+    expect(from).toBeLessThan(1.9);
+  });
+
+  it('does not touch the buffers when nothing changed', () => {
+    /*
+     * ⚠️ Checked through `version`, not `needsUpdate`. On a BufferAttribute
+     * `needsUpdate` is write-only: setting it bumps `version`, and READING it
+     * returns undefined, so the obvious assertion passes against nothing.
+     */
+    const { layer, added } = build();
+    const a = attr(added[0]!, 'aTo');
+    layer.set([hex(0, 0)], []);
+    const uploaded = a.version;
+    layer.set([hex(0, 0)], []);
+    expect(a.version, 'an identical fog must not re-upload').toBe(uploaded);
+  });
+
+  it('⚠️ decides alpha before sampling any noise', () => {
+    /*
+     * The cost rule. Every tile has geometry now, so without an early discard
+     * the sheet would shade the entire board with three fbm calls per fragment
+     * in order to draw nothing at all.
+     */
+    const main = source.slice(source.indexOf('void main() {', source.indexOf('FRAGMENT')));
+    const discard = main.indexOf('discard');
+    const firstNoise = main.indexOf('feFbm(');
+    expect(discard).toBeGreaterThan(0);
+    expect(discard, 'discard must come before the first noise sample')
+      .toBeLessThan(firstNoise);
   });
 
   it('⚠️ displaces the bank upward only', () => {
@@ -92,18 +167,12 @@ describe('the fog sheet', () => {
      * having anyway: the clamp is one `max` that reads like a formality and
      * would be the obvious thing to delete while tidying the shader.
      */
-    expect(source).toMatch(/world\.y \+= max\(0\.0, vBillow\) \* uBillowHeight/);
+    expect(source).toMatch(/world\.y \+= max\(0\.0, vBillow\) \* height/);
     expect(source, 'the height must be ADDED, never mixed towards')
       .not.toMatch(/world\.y = mix\(/);
   });
 
   it('⚠️ samples its noise on world position, so lids meet without a seam', () => {
-    /*
-     * Neighbouring lids own separate copies of the vertices along the edge
-     * they share, so anything derived from a hex id, a local coordinate or a
-     * vertex index differs across that seam and draws a line down it. World
-     * position is identical for both copies by construction.
-     */
     expect(source).toMatch(/feBillow\(world\.xz, uTime\)/);
     expect(source).toMatch(/feFbm\(vWorld\.xz \*/);
     expect(source, 'a vertex-index or uv term would break the seam')
@@ -111,15 +180,9 @@ describe('the fog sheet', () => {
   });
 
   it('⚠️ states its colours as linear values, not as hex strings', () => {
-    /*
-     * The original defect, stated as itself. `new Color('#171f29')` looks like
-     * a considered choice and lands at rgb(9, 13, 19) once the tone curve has
-     * had it. Anything written as a hex in this file is a colour chosen in a
-     * space nobody ever sees it in.
-     */
     const hexColours = source.match(/new Color\(\s*['"`]#/g) ?? [];
     expect(hexColours, 'fog colours must be setRGB, so they are linear').toEqual([]);
-    expect(source).toMatch(/UNSEEN_CREST = new Color\(\)\.setRGB\(/);
+    expect(source).toMatch(/CREST = new Color\(\)\.setRGB\(/);
   });
 
   it('⚠️ has a crest bright enough to be seen against its own trough', () => {
@@ -134,12 +197,12 @@ describe('the fog sheet', () => {
       const parts = m![1]!.split(',').map((v) => Number(v.trim()));
       return 0.2126 * parts[0]! + 0.7152 * parts[1]! + 0.0722 * parts[2]!;
     };
-    expect(read('UNSEEN_CREST') / read('UNSEEN_TROUGH')).toBeGreaterThan(5);
+    expect(read('CREST') / read('TROUGH')).toBeGreaterThan(5);
   });
 
   it('advances its own clock, because fog that does not move is a backdrop', () => {
-    const { layer, added } = build([hex(0, 0)]);
-    const material = materialOf(added[0]!);
+    const { layer, added } = build();
+    const material = added[0]!.material as ShaderMaterial;
     expect(material.uniforms.uTime!.value).toBe(0);
     layer.update(0.5);
     layer.update(0.25);
@@ -147,15 +210,8 @@ describe('the fog sheet', () => {
   });
 
   it('⚠️ takes the distance haze, which a raw ShaderMaterial does not get free', () => {
-    /*
-     * Without `fog: true` and the merged uniforms this sheet would be the one
-     * surface in the scene that ignores distance, staying sharp to the horizon
-     * while the land beside it hazed away. Measured, that haze is also what
-     * lifted the old far fog from rgb(9,13,19) to rgb(38,43,48), which is why
-     * it only ever looked like fog when it was a long way off.
-     */
-    const { added } = build([hex(0, 0)]);
-    const material = materialOf(added[0]!);
+    const { added } = build();
+    const material = added[0]!.material as ShaderMaterial;
     expect(material.fog).toBe(true);
     expect(material.uniforms.fogColor).toBeDefined();
     expect(material.uniforms.fogDensity).toBeDefined();
@@ -164,12 +220,7 @@ describe('the fog sheet', () => {
   });
 
   it('⚠️ grows the bounding sphere by the height the bank rolls', () => {
-    /*
-     * The mesh is taller than its geometry claims, because the swell happens
-     * in the vertex shader. Three culls on the bounding sphere and would pop
-     * the whole sheet out of view at grazing angles.
-     */
-    const { added } = build([hex(0, 0), hex(1, 0), hex(0, 1)]);
+    const { added } = build();
     const sphere = added[0]!.geometry.boundingSphere;
     expect(sphere).not.toBeNull();
 
@@ -179,22 +230,19 @@ describe('the fog sheet', () => {
     flat.dispose();
   });
 
-  it('releases meshes and materials when disposed', () => {
-    const removed: Mesh[] = [];
-    const layer = createFog((_a, r) => removed.push(...r));
-    layer.set([hex(0, 0)], [hex(4, 4)], flatTerrain());
-    expect(layer.meshes).toHaveLength(2);
-    layer.dispose();
-    expect(layer.meshes).toHaveLength(0);
-    expect(removed).toHaveLength(2);
+  it('replaces the sheet when the map changes, and only then', () => {
+    const { layer, added, removed } = build();
+    expect(removed).toHaveLength(0);
+    layer.setMap([hex(9, 9)], flatTerrain());
+    expect(removed, 'a new map is the one time a rebuild is right').toHaveLength(1);
+    expect(added).toHaveLength(2);
   });
 
-  it('does not leak the colour objects it was handed', () => {
-    // The uniforms hold their own Colors, so a later tweak to one material
-    // cannot reach across into the other.
-    const { added } = build([hex(0, 0)], [hex(4, 4)]);
-    const a = materialOf(added[0]!).uniforms.uCrest!.value as Color;
-    const b = materialOf(added[1]!).uniforms.uCrest!.value as Color;
-    expect(a).not.toBe(b);
+  it('releases the mesh when disposed', () => {
+    const { layer, removed } = build();
+    expect(layer.meshes).toHaveLength(1);
+    layer.dispose();
+    expect(layer.meshes).toHaveLength(0);
+    expect(removed).toHaveLength(1);
   });
 });

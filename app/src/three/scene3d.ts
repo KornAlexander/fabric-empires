@@ -638,6 +638,20 @@ export function createScene3D(
       scatter = buildScatter(map, terrain);
       terrainGroup.add(scatter.group);
 
+      /*
+       * ⚠️ The fog sheet is built HERE, with the map, and never again.
+       *
+       * It covers every tile, including the ones currently in sight, because a
+       * clear tile becomes remembered the moment the unit watching it walks
+       * away. Finding that out later would mean rebuilding later, and a
+       * rebuild measured 44.8 ms at full map size, which is the whole reason
+       * the fog could not keep up with a unit walking.
+       */
+      fog.setMap(
+        [...map.tiles.values()].map((tile) => tile.hex),
+        terrain,
+      );
+
       // The sea extends well past the land so the horizon is water rather
       // than an abrupt edge where the map stops.
       const extent = map.radius * HEX_RADIUS * 4;
@@ -924,7 +938,7 @@ export function createScene3D(
     },
 
     setFog(unseen, remembered) {
-      if (terrain) fog.set(unseen, remembered, terrain);
+      fog.set(unseen, remembered);
       /*
        * ⚠️ Props have to be hidden too, not just covered.
        *

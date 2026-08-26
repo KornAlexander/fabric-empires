@@ -1,30 +1,36 @@
 /**
- * Fog of war, as two merged layers.
+ * Fog of war: one sheet, whose tiles change state without rebuilding anything.
  *
- * ⚠️ **One mesh per state, not one per hex.** Unexplored ground is most of the
- * map: about 6,000 hexes on a standard world at the start of a game. Six
- * thousand meshes is six thousand draw calls for something that is, visually, a
- * single sheet, and it would cost more than the terrain underneath it.
- * Merging is what makes the layer free to draw.
+ * ⚠️ **One mesh for the whole map, built once.** Unexplored ground is most of
+ * the map, about 6,000 hexes on a standard world, and six thousand meshes
+ * would be six thousand draw calls for what is visually a single sheet.
  *
- * The two layers are genuinely different things, which is why they are not one:
+ * ⚠️ **And rebuilt on a map change, never on a fog change.** It used to merge
+ * fresh geometry every time the fog moved, which measured **44.8 ms median**
+ * at full map size, plus a complete re-upload of 223,000 vertices. That was
+ * affordable while the fog only changed when a turn ended. It stopped being
+ * affordable the moment the fog had to keep up with a unit walking, which is
+ * six changes in a second and a half: six 45 ms stalls, one per step.
  *
- *   - **unseen** is opaque. There is nothing to look at, so nothing is drawn
- *     through it and the shape of the coastline stays secret.
- *   - **remembered** is translucent and cool, so the ground reads as known but
- *     stale. Units standing on it are hidden by the renderer rather than by
- *     this layer, because "I remember the hill, not who is on it now" is the
- *     whole distinction fog of war exists to draw.
+ * So the geometry is now constant and every tile carries its own state as a
+ * vertex attribute. Changing the fog writes three floats per vertex of the
+ * tiles that actually changed, which is work proportional to what moved rather
+ * than to the size of the map.
  *
- * ⚠️ **It was a flat plate, and it read as a hole rather than as weather.**
- * Measured on screen, the near fog was rgb(9, 13, 19) against sunlit land at
- * rgb(126, 120, 100): nine times darker, with a luminance standard deviation
- * of 2 in 255 across the whole sheet, which is below anything an eye resolves.
- * Both numbers had a cause, and neither cause was the colour written down.
- * See the notes on `FRAGMENT` and `VERTEX` for what replaced it.
+ * The three states, as a single number so they can be interpolated:
+ *
+ *   2  **unseen**      never visited; opaque, and nothing is drawn through it
+ *   1  **remembered**  seen before, not watched now; translucent and cool
+ *   0  **clear**       currently in sight; not drawn at all
+ *
+ * ⚠️ Because it is one number, "this tile is being uncovered" is just a slide
+ * from 2 to 0, and the shader does it over `FADE_SECONDS` for free. That is
+ * what makes ground uncover rather than pop, and it is the reason the states
+ * are a float rather than an enum.
  */
 
 import {
+  BufferAttribute,
   Color,
   Mesh,
   ShaderMaterial,
@@ -35,12 +41,20 @@ import {
 } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { hexLid, type Terrain } from './terrain.js';
-import type { Hex } from '@fabric-empires/engine';
+import { hexKey, type Hex } from '@fabric-empires/engine';
 
 export interface FogLayer {
-  /** Replace both layers. Pass the hexes, not the whole map. */
-  set(unseen: readonly Hex[], remembered: readonly Hex[], terrain: Terrain): void;
-  /** Advance the drift. Fog that does not move is a painted backdrop. */
+  /**
+   * Build the sheet for this map. Expensive, and done once per map.
+   *
+   * Every tile gets geometry, including the ones currently in sight: a tile
+   * that is clear now becomes remembered the moment the unit watching it walks
+   * away, and finding out then would mean rebuilding then.
+   */
+  setMap(hexes: readonly Hex[], terrain: Terrain): void;
+  /** Change what is hidden. Attribute writes only; no geometry is touched. */
+  set(unseen: readonly Hex[], remembered: readonly Hex[]): void;
+  /** Advance the drift and the uncovering fades. */
   update(deltaSeconds: number): void;
   readonly meshes: readonly Mesh[];
   dispose(): void;
@@ -98,22 +112,50 @@ float feBillow(vec2 world, float time) {
  * seen, so a downward displacement would sink it into the hillside and open a
  * window onto unexplored ground. `max(0.0, ...)` is the whole guard, and the
  * height is added rather than mixed so the floor can never rise.
+ *
+ * The state slide also happens here, once per vertex rather than once per
+ * fragment, and is handed to the fragment shader as a varying.
  */
 const VERTEX = `
 #include <common>
 #include <fog_pars_vertex>
 
 uniform float uTime;
-uniform float uBillowHeight;
+uniform float uFade;
+uniform float uBillowUnseen;
+uniform float uBillowRemembered;
+
+attribute float aFrom;
+attribute float aTo;
+attribute float aChanged;
+
 varying vec3 vWorld;
 varying float vBillow;
+varying float vLit;
+varying float vDeep;
 
 ${NOISE}
 
 void main() {
+  // Where this tile is between its old state and its new one.
+  float k = clamp((uTime - aChanged) / uFade, 0.0, 1.0);
+  float state = mix(aFrom, aTo, k);
+
+  // Split once, so both shaders agree about what the number means.
+  vLit = clamp(state, 0.0, 1.0);          // 0 clear, 1 remembered or deeper
+  vDeep = clamp(state - 1.0, 0.0, 1.0);   // 0 remembered, 1 unseen
+
   vec4 world = modelMatrix * vec4(position, 1.0);
-  vBillow = feBillow(world.xz, uTime);
-  world.y += max(0.0, vBillow) * uBillowHeight;
+
+  // Clear ground is not drawn, so it is not worth four octaves of noise.
+  if (vLit > 0.001) {
+    vBillow = feBillow(world.xz, uTime);
+    float height = mix(uBillowRemembered, uBillowUnseen, vDeep) * vLit;
+    world.y += max(0.0, vBillow) * height;
+  } else {
+    vBillow = 0.0;
+  }
+
   vWorld = world.xyz;
 
   vec4 mvPosition = viewMatrix * world;
@@ -145,13 +187,27 @@ const FRAGMENT = `
 uniform float uTime;
 uniform vec3 uTrough;
 uniform vec3 uCrest;
-uniform float uOpacity;
+uniform float uRememberedAlpha;
+
 varying vec3 vWorld;
 varying float vBillow;
+varying float vLit;
+varying float vDeep;
 
 ${NOISE}
 
 void main() {
+  /*
+   * ⚠️ Alpha first, and discard before any noise is sampled.
+   *
+   * Every tile on the map now has geometry, including the ones in plain sight,
+   * so without this the sheet would shade the whole board with three fbm calls
+   * per fragment to draw nothing. Deciding early keeps the cost proportional
+   * to the fog actually on screen, which is what it was before.
+   */
+  float alpha = mix(uRememberedAlpha, 1.0, vDeep) * vLit;
+  if (alpha < 0.004) discard;
+
   /*
    * The vertex carries the shape of the bank; this adds detail finer than
    * thirteen vertices per hex could ever hold. Fog is lit by light bouncing
@@ -192,11 +248,28 @@ void main() {
   density = smoothstep(0.18, 0.88, density);
 
   vec3 colour = mix(uTrough, uCrest, density);
-  gl_FragColor = vec4(colour, uOpacity);
+  gl_FragColor = vec4(colour, alpha);
 
   #include <fog_fragment>
 }
 `;
+
+/** Never visited. */
+const UNSEEN = 2;
+/** Seen before, not watched now. */
+const REMEMBERED = 1;
+/** In sight, so not drawn. */
+const CLEAR = 0;
+
+/**
+ * How long a tile takes to change state, in seconds.
+ *
+ * ⚠️ This is the "uncover slowly" the whole rewrite is for. Ground used to
+ * appear the instant a turn ended; now a tile the unit has just walked into
+ * view slides open while the unit is still walking. Long enough to read as
+ * fog thinning, short enough that a scout does not outrun its own reveal.
+ */
+const FADE_SECONDS = 0.75;
 
 export function createFog(
   onChange: (added: readonly Mesh[], removed: readonly Mesh[]) => void,
@@ -230,9 +303,7 @@ export function createFog(
    * ⚠️ Which makes a skirt worse than useless. Measured at 0.5 it still cost
    * **147,600 of the fog's 221,400 triangles**, every one of them hanging
    * below the neighbouring lid's own surface and therefore buried by the
-   * depth test. Two thirds of the layer, drawing nothing. At zero the fog is
-   * 73,800 triangles: smoother than the banded version AND a third of the
-   * geometry it started with.
+   * depth test. Two thirds of the layer, drawing nothing.
    */
   const SKIRT = 0;
 
@@ -245,19 +316,15 @@ export function createFog(
    *
    * ⚠️ **Remembered ground gets almost none of it.** That layer is a veil over
    * ground the player has actually walked, and lifting a veil clear of its own
-   * hillside makes it look like a separate object floating above the map. It
-   * keeps a trace, so it is not a perfectly flat pane, and no more.
+   * hillside makes it look like a separate object floating above the map.
    */
   const UNSEEN_BILLOW = 1.15;
   const REMEMBERED_BILLOW = 0.14;
+  const REMEMBERED_ALPHA = 0.58;
 
   /*
    * Linear, and tuned against measured screenshots rather than picked by eye.
    * See the note on FRAGMENT for why these are not hex strings.
-   *
-   *   trough  the thin gaps between banks, clearly darker than any land
-   *   crest   the thick tops, still well below sunlit ground so the explored
-   *           island stays the brightest thing in the frame
    *
    * Read back off the deployed build, near fog against the land beside it:
    *
@@ -269,145 +336,161 @@ export function createFog(
    * | **shipped** | **55** | **10.1** |
    *
    * Sunlit land measures 121 throughout, so the island keeps better than
-   * twice the fog's brightness and three times its local contrast. ⚠️ That
-   * ratio is the actual constraint, not the fog's own number: an earlier
-   * attempt recorded in this file took the sheet to lightness 0.20 and lost
-   * the island inside it, which is a different failure from the black one and
-   * no more readable.
+   * twice the fog's brightness and three times its local contrast.
    */
-  const UNSEEN_TROUGH = new Color().setRGB(0.014, 0.019, 0.028);
-  const UNSEEN_CREST = new Color().setRGB(0.235, 0.278, 0.340);
-  const REMEMBERED_TROUGH = new Color().setRGB(0.030, 0.038, 0.050);
-  const REMEMBERED_CREST = new Color().setRGB(0.120, 0.145, 0.180);
+  const TROUGH = new Color().setRGB(0.014, 0.019, 0.028);
+  const CREST = new Color().setRGB(0.235, 0.278, 0.340);
 
-  function makeMaterial(opts: {
-    trough: Color;
-    crest: Color;
-    opacity: number;
-    billowHeight: number;
-    transparent: boolean;
-  }): ShaderMaterial {
-    /*
-     * ⚠️ A raw `ShaderMaterial` gets no distance haze for free. `UniformsLib.fog`
-     * plus `fog: true` is what makes the renderer keep `fogColor` and
-     * `fogDensity` up to date, and the two chunks in the shaders are what use
-     * them. Without it this sheet would be the one surface in the scene that
-     * ignores distance, staying sharp out to the horizon while the land beside
-     * it hazes away. That haze is also load-bearing here: measured, it is what
-     * lifted the far fog from rgb(9,13,19) to rgb(38,43,48), which is why the
-     * old fog only ever looked like fog when it was a long way off.
-     */
-    const uniforms: Record<string, IUniform> = UniformsUtils.merge([
-      UniformsLib.fog,
-      {
-        uTime: { value: 0 },
-        uTrough: { value: new Color() },
-        uCrest: { value: new Color() },
-        uOpacity: { value: opts.opacity },
-        uBillowHeight: { value: opts.billowHeight },
-      },
-    ]);
-    (uniforms.uTrough!.value as Color).copy(opts.trough);
-    (uniforms.uCrest!.value as Color).copy(opts.crest);
+  /*
+   * ⚠️ A raw `ShaderMaterial` gets no distance haze for free. `UniformsLib.fog`
+   * plus `fog: true` is what makes the renderer keep `fogColor` and
+   * `fogDensity` up to date, and the two chunks in the shaders are what use
+   * them. Measured, that haze is what lifted the far fog from rgb(9,13,19) to
+   * rgb(38,43,48), which is why the old fog only ever looked like fog when it
+   * was a long way off.
+   */
+  const uniforms: Record<string, IUniform> = UniformsUtils.merge([
+    UniformsLib.fog,
+    {
+      uTime: { value: 0 },
+      uFade: { value: FADE_SECONDS },
+      uTrough: { value: new Color() },
+      uCrest: { value: new Color() },
+      uBillowUnseen: { value: UNSEEN_BILLOW },
+      uBillowRemembered: { value: REMEMBERED_BILLOW },
+      uRememberedAlpha: { value: REMEMBERED_ALPHA },
+    },
+  ]);
+  (uniforms.uTrough!.value as Color).copy(TROUGH);
+  (uniforms.uCrest!.value as Color).copy(CREST);
 
-    return new ShaderMaterial({
-      uniforms,
-      vertexShader: VERTEX,
-      fragmentShader: FRAGMENT,
-      transparent: opts.transparent,
-      depthWrite: !opts.transparent,
-      fog: true,
-    });
-  }
-
-  const unseenMaterial = makeMaterial({
-    trough: UNSEEN_TROUGH,
-    crest: UNSEEN_CREST,
-    opacity: 1,
-    billowHeight: UNSEEN_BILLOW,
-    transparent: false,
-  });
-
-  const rememberedMaterial = makeMaterial({
-    trough: REMEMBERED_TROUGH,
-    crest: REMEMBERED_CREST,
-    opacity: 0.58,
-    billowHeight: REMEMBERED_BILLOW,
+  const material = new ShaderMaterial({
+    uniforms,
+    vertexShader: VERTEX,
+    fragmentShader: FRAGMENT,
     transparent: true,
+    depthWrite: true,
+    fog: true,
   });
 
-  const materials = [unseenMaterial, rememberedMaterial];
-
-  let meshes: Mesh[] = [];
-  let geometries: BufferGeometry[] = [];
+  let mesh: Mesh | undefined;
+  let geometry: BufferGeometry | undefined;
+  /** Where each hex's vertices live in the merged buffer. */
+  const spans = new Map<string, { start: number; count: number }>();
+  let aFrom: BufferAttribute | undefined;
+  let aTo: BufferAttribute | undefined;
+  let aChanged: BufferAttribute | undefined;
   let time = 0;
 
-  function clear(): void {
-    const removed = meshes;
-    meshes = [];
-    for (const geometry of geometries) geometry.dispose();
-    geometries = [];
-    if (removed.length > 0) onChange([], removed);
-  }
-
-  function build(hexes: readonly Hex[], terrain: Terrain, material: ShaderMaterial):
-    | { mesh: Mesh; geometry: BufferGeometry }
-    | undefined {
-    if (hexes.length === 0) return undefined;
-    const patches = hexes.map((hex) => hexLid(hex, terrain, LIFT, SKIRT));
-    const merged = mergeGeometries(patches, false);
-    for (const patch of patches) patch.dispose();
-    if (!merged) return undefined;
-
-    const mesh = new Mesh(merged, material);
-    // Above the corruption layer (2) and the grid, below nothing.
-    mesh.renderOrder = 4;
-    mesh.castShadow = false;
-    mesh.receiveShadow = false;
-    /*
-     * ⚠️ The bank rolls above the lid, so the drawn surface is taller than the
-     * geometry claims. Three culls against the bounding sphere and would pop
-     * the whole sheet out of view at grazing angles; growing the sphere by the
-     * displacement is cheaper and more honest than turning culling off.
-     */
-    merged.computeBoundingSphere();
-    if (merged.boundingSphere) merged.boundingSphere.radius += UNSEEN_BILLOW;
-    return { mesh, geometry: merged };
+  function teardown(): void {
+    if (!mesh) return;
+    const removed = [mesh];
+    mesh = undefined;
+    geometry?.dispose();
+    geometry = undefined;
+    spans.clear();
+    aFrom = aTo = aChanged = undefined;
+    onChange([], removed);
   }
 
   return {
-    set(unseen, remembered, terrain) {
-      clear();
+    setMap(hexes, terrain) {
+      teardown();
+      if (hexes.length === 0) return;
 
-      const added: Mesh[] = [];
-      for (const [hexes, material] of [
-        [unseen, unseenMaterial],
-        [remembered, rememberedMaterial],
-      ] as const) {
-        const built = build(hexes, terrain, material);
-        if (!built) continue;
-        meshes.push(built.mesh);
-        geometries.push(built.geometry);
-        added.push(built.mesh);
+      const patches = hexes.map((h) => hexLid(h, terrain, LIFT, SKIRT));
+      let cursor = 0;
+      hexes.forEach((h, i) => {
+        const count = patches[i]!.getAttribute('position').count;
+        spans.set(hexKey(h), { start: cursor, count });
+        cursor += count;
+      });
+
+      const merged = mergeGeometries(patches, false);
+      for (const patch of patches) patch.dispose();
+      if (!merged) return;
+      geometry = merged;
+
+      const total = merged.getAttribute('position').count;
+      /*
+       * Everything starts unseen and already settled, so the first `set` does
+       * not fade the entire map in from nothing on the frame a game loads.
+       */
+      aFrom = new BufferAttribute(new Float32Array(total).fill(UNSEEN), 1);
+      aTo = new BufferAttribute(new Float32Array(total).fill(UNSEEN), 1);
+      aChanged = new BufferAttribute(new Float32Array(total).fill(-FADE_SECONDS * 4), 1);
+      merged.setAttribute('aFrom', aFrom);
+      merged.setAttribute('aTo', aTo);
+      merged.setAttribute('aChanged', aChanged);
+
+      mesh = new Mesh(merged, material);
+      // Above the corruption layer (2) and the grid, below nothing.
+      mesh.renderOrder = 4;
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+      /*
+       * ⚠️ The bank rolls above the lid, so the drawn surface is taller than
+       * the geometry claims. Three culls against the bounding sphere and would
+       * pop the whole sheet out of view at grazing angles.
+       */
+      merged.computeBoundingSphere();
+      if (merged.boundingSphere) merged.boundingSphere.radius += UNSEEN_BILLOW;
+
+      onChange([mesh], []);
+    },
+
+    set(unseen, remembered) {
+      if (!aFrom || !aTo || !aChanged) return;
+
+      const wanted = new Map<string, number>();
+      for (const h of unseen) wanted.set(hexKey(h), UNSEEN);
+      for (const h of remembered) wanted.set(hexKey(h), REMEMBERED);
+
+      const from = aFrom.array as Float32Array;
+      const to = aTo.array as Float32Array;
+      const changed = aChanged.array as Float32Array;
+
+      let touched = false;
+      for (const [key, span] of spans) {
+        const target = wanted.get(key) ?? CLEAR;
+        const first = span.start;
+        if (to[first] === target) continue;
+
+        /*
+         * ⚠️ The slide restarts from where it currently IS, not from the state
+         * it was heading for. A tile that is half uncovered when something
+         * changes again would otherwise jump back to fully hidden and start
+         * over, which is the one thing a fade is supposed to prevent.
+         */
+        const k = Math.min(1, Math.max(0, (time - changed[first]!) / FADE_SECONDS));
+        const current = from[first]! + (to[first]! - from[first]!) * k;
+
+        for (let i = first; i < first + span.count; i += 1) {
+          from[i] = current;
+          to[i] = target;
+          changed[i] = time;
+        }
+        touched = true;
       }
 
-      if (added.length > 0) onChange(added, []);
+      if (!touched) return;
+      aFrom.needsUpdate = true;
+      aTo.needsUpdate = true;
+      aChanged.needsUpdate = true;
     },
 
     update(deltaSeconds) {
       time += deltaSeconds;
-      for (const material of materials) {
-        material.uniforms.uTime!.value = time;
-      }
+      material.uniforms.uTime!.value = time;
     },
 
     get meshes() {
-      return meshes;
+      return mesh ? [mesh] : [];
     },
 
     dispose() {
-      clear();
-      for (const material of materials) material.dispose();
+      teardown();
+      material.dispose();
     },
   };
 }

@@ -38,6 +38,51 @@ import type { GameState } from '../state/gameState.js';
 export const CITY_SIGHT = 3;
 
 /**
+ * Fold in what ONE unit would see standing at each hex of a route.
+ *
+ * ⚠️ **Deliberately not `rememberVisible` per step.** That recomputes sight for
+ * the entire faction, every city and every other unit included, none of which
+ * moved. Calling it once per hex of a march made the engine's own world-setup
+ * tests time out under load: a march of three hexes did three full-faction
+ * sweeps to learn what one scout could see.
+ *
+ * Nothing else on the board changes while a single unit walks, so the only new
+ * knowledge is its own sight radius along the way.
+ */
+export function rememberAlong(
+  state: GameState,
+  steps: readonly Hex[],
+  sight: number,
+): GameState {
+  if (steps.length === 0) return state;
+
+  /*
+   * ⚠️ **Collect first, copy only if there is something to copy.**
+   *
+   * Most moves reveal nothing: the AI walks its own units around ground it has
+   * already explored, all game long. Copying the explored set before checking
+   * meant cloning up to 6,211 strings on every one of those, which is what
+   * made the world-setup tests time out. `rememberVisible` has always had this
+   * shape for the same reason.
+   */
+  let fresh: string[] | undefined;
+  for (const step of steps) {
+    for (const hex of hexSpiral(step, sight)) {
+      const key = hexKey(hex);
+      // Off-map hexes are not secrets, they are nothing.
+      if (!state.map.tiles.has(key)) continue;
+      if (state.explored.has(key)) continue;
+      (fresh ??= []).push(key);
+    }
+  }
+  if (!fresh) return state;
+
+  const explored = new Set(state.explored);
+  for (const key of fresh) explored.add(key);
+  return { ...state, explored };
+}
+
+/**
  * Every hex this faction can see right now.
  *
  * ⚠️ Named `sightOf` rather than `visibleHexes`, which the renderer already

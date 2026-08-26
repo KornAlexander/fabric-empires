@@ -1372,6 +1372,7 @@ async function actOn(target: Hex): Promise<void> {
   }
 
   const from = unit.hex;
+  const beforeExplored = state.explored;
   const moved = moveUnit(state, unit.id, target);
   if (!moved.ok) {
     log(moved.reason, 'bad');
@@ -1380,10 +1381,65 @@ async function actOn(target: Hex): Promise<void> {
   state = moved.state;
   const landed = state.units.get(unit.id);
   if (landed && (landed.hex.q !== from.q || landed.hex.r !== from.r)) {
-    void effects.travel(unit.id, from, landed.hex);
+    void walk(unit.id, from, moved.path ?? [landed.hex], beforeExplored);
   }
   refreshSelection();
   dirty = true;
+}
+
+/**
+ * Walk a unit along its route, uncovering ground as it arrives rather than
+ * when the turn ends.
+ *
+ * ⚠️ **The engine has already finished the move.** `state` holds the unit at
+ * its destination with the whole corridor explored, which is correct for the
+ * rules and wrong for the eye: it would open six hexes at once while the unit
+ * is still at the near end. So this walks the same path the rules walked and
+ * hands the fog a view of the world as of each step.
+ *
+ * Deliberately NOT awaited by the caller. The player can select and order
+ * another unit while this one is still walking, which is how the game already
+ * behaved and is worth keeping: a march across the map should not lock the
+ * interface for a second and a half.
+ */
+async function walk(
+  unitId: string,
+  from: Hex,
+  path: readonly Hex[],
+  beforeExplored: ReadonlySet<string>,
+): Promise<void> {
+  const shown = new Set(beforeExplored);
+  let previous = from;
+
+  try {
+    for (const step of path) {
+      await effects.travel(unitId, previous, step, STEP_MS);
+      previous = step;
+
+      /*
+       * What the player would see standing here. The unit is at its final hex
+       * in `state`, so it is moved back for the question and nothing is
+       * written: this is a view of the world, not a change to it.
+       */
+      const here = state.units.get(unitId);
+      if (!here) break;
+      const units = new Map(state.units);
+      units.set(unitId, { ...here, hex: step });
+      const sight = sightOf({ ...state, units }, PLAYER_FACTION_ID);
+      for (const key of sight) shown.add(key);
+
+      walkReveal = { explored: shown, sight };
+      refreshFog();
+    }
+  } finally {
+    /*
+     * Back to the truth, whatever happened. A walk interrupted by a new game
+     * or by the unit dying must not leave the fog frozen at a half-finished
+     * march.
+     */
+    walkReveal = undefined;
+    refreshFog();
+  }
 }
 
 /**
@@ -3440,6 +3496,26 @@ let fogSignature = '';
  */
 let revealingForOpening = false;
 
+/**
+ * What the player has been shown so far, while a unit is walking.
+ *
+ * ⚠️ Undefined at every other moment, and that is deliberate: the fog agrees
+ * with the rules unless something is actively being uncovered, so there is
+ * exactly one short-lived window in which the view is allowed to lag.
+ */
+let walkReveal: { explored: ReadonlySet<string>; sight: ReadonlySet<string> } | undefined;
+
+/**
+ * How long one hex of a march takes.
+ *
+ * ⚠️ Slower than the old single glide of 260 ms for the whole move, because
+ * the fog now uncovers per step and a step the eye cannot follow uncovers
+ * ground the player never saw arrive. The fade in the fog shader runs 750 ms,
+ * so a unit crossing several hexes leaves a trail of ground still opening
+ * behind it, which is the intended reading: the fog thins where you have been.
+ */
+const STEP_MS = 240;
+
 function refreshFog(): void {
   currentSight = sightOf(state, PLAYER_FACTION_ID);
 
@@ -3450,15 +3526,31 @@ function refreshFog(): void {
     return;
   }
 
-  const signature = `${state.explored.size}:${currentSight.size}:${state.seed}`;
+  /*
+   * ⚠️ **The view can lag the rules, and during a walk it does.**
+   *
+   * The engine folds sight in at every hex a unit passes, so by the time
+   * `moveUnit` returns, `state.explored` already contains the whole corridor.
+   * Showing that immediately would uncover six hexes of ground the instant the
+   * unit set off, while it is still standing at the near end of the march.
+   *
+   * `walkReveal`, when set, is what the player has been shown SO FAR: the
+   * explored set as of the step the animation has actually reached. It is
+   * cleared when the walk finishes, and the fog then agrees with the rules
+   * again.
+   */
+  const explored = walkReveal?.explored ?? state.explored;
+  const sight = walkReveal?.sight ?? currentSight;
+
+  const signature = `${explored.size}:${sight.size}:${state.seed}:${walkReveal ? 'w' : ''}`;
   if (signature === fogSignature) return;
   fogSignature = signature;
 
   const unseen: Hex[] = [];
   const remembered: Hex[] = [];
   for (const [key, tile] of state.map.tiles) {
-    if (currentSight.has(key)) continue;
-    if (state.explored.has(key)) remembered.push(tile.hex);
+    if (sight.has(key)) continue;
+    if (explored.has(key)) remembered.push(tile.hex);
     else unseen.push(tile.hex);
   }
 

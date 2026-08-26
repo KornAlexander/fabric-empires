@@ -12,10 +12,22 @@ import { cityKind, unitType, type City, type CityKind, type Unit } from '../enti
 import { FIRST_RANK } from '../entities/rank.js';
 import { tileAt, unitAt, type GameState } from '../state/index.js';
 import { canFoundCity, pathTo, reachable } from './movement.js';
-import { rememberVisible } from './vision.js';
+import { rememberAlong, rememberVisible } from './vision.js';
 
 export type ActionResult =
-  | { readonly ok: true; readonly state: GameState }
+  | {
+      readonly ok: true;
+      readonly state: GameState;
+      /**
+       * The hexes walked, in order, NOT including where the unit started.
+       *
+       * Only movement sets this. It exists so the view can follow the same
+       * route the rules did: the fog is folded in one hex at a time here, and
+       * a presentation that jumped straight to the destination would uncover
+       * the whole corridor at once.
+       */
+      readonly path?: readonly Hex[];
+    }
   | { readonly ok: false; readonly reason: string };
 
 function fail(reason: string): ActionResult {
@@ -61,22 +73,30 @@ export function moveUnit(
   // had left. That is the whole point of a zone of control.
   const movesLeft = destination.stops ? 0 : unit.movesLeft - destination.cost;
 
-  const moved = replaceUnit(state, {
+  /*
+   * Reveal as you go, not at the end of the turn, and not at the destination
+   * either.
+   *
+   * ⚠️ **This used to fold sight ONCE, after the unit had already arrived**,
+   * directly under a comment claiming it did otherwise. A scout that walks six
+   * hexes then lit up only what it could see from the far end: the ground it
+   * had actually walked past stayed dark unless it happened to fall inside the
+   * destination's sight radius, which on a six-hex march it mostly does not.
+   *
+   * `pathTo` includes the starting hex, whose sight is already folded in, so
+   * the walk begins at index 1.
+   */
+  const walked = path.slice(1);
+  const carried = rememberAlong(state, walked, unitType(unit.typeId).sight);
+
+  const moved = replaceUnit(carried, {
     ...unit,
     hex: target,
     movesLeft: Math.max(0, movesLeft),
     fortified: false,
   });
 
-  /*
-   * Reveal as you go, not at the end of the turn.
-   *
-   * ⚠️ A scout that walked six hexes and only lit up the last one would be
-   * useless, and worse, would show a corridor of ground it never passed
-   * through. Folding sight in after each move is also what makes the fog
-   * respond while the player is still deciding where to stop.
-   */
-  return { ok: true, state: rememberVisible(moved, unit.factionId) };
+  return { ok: true, state: rememberVisible(moved, unit.factionId), path: walked };
 }
 
 /** Terrain decides what kind of settlement an Architect can raise. */

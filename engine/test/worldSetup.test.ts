@@ -9,7 +9,7 @@
  * other test.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   ANTAGONISTS,
   DEFAULT_WORLD_CHOICE,
@@ -31,6 +31,27 @@ import {
   type GameMap,
   type WorldChoice,
 } from '../src/index.js';
+
+/*
+ * ⚠️ **Raised deliberately, and not to make a failing test pass.**
+ *
+ * These tests generate whole worlds: every shape crossed with every size, and
+ * for two of them a real game started on each combination. That is seconds of
+ * honest work, against vitest's default budget of five.
+ *
+ * The result was a test that passed on an idle machine and failed on a busy
+ * one, and which failed on a DIFFERENT pair of cases each run because it is a
+ * timeout rather than a fault. It cost two false diagnoses in one afternoon:
+ * twice, an unrelated change appeared to have broken world generation, and
+ * twice the truth was that the suite was simply loaded. Measured, the file
+ * takes about 9.8 s alone and about 28 s while the rest of the suite runs.
+ *
+ * The timeout is not the property under test. What these tests assert is that
+ * every preset leaves seven reachable factions, and that assertion is
+ * deterministic. A clock is the wrong thing to be measuring here, so it is
+ * given enough room to stop measuring it.
+ */
+vi.setConfig({ testTimeout: 45_000 });
 
 /** A full choice from a partial one, so tests only name what they care about. */
 const choice = (partial: Partial<WorldChoice>): WorldChoice => ({

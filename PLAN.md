@@ -318,6 +318,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D567–D574 | The film was singing along to the wrong words | Recorded in full in section 80 |
 | D575–D582 | The fog was a hole, not weather | Recorded in full in section 81 |
 | D583–D590 | The advice was correct, drawn, and invisible | Recorded in full in section 82 |
+| D591–D600 | The ground opened after the fact | Recorded in full in section 83 |
 
 ### 28. Cheat codes
 
@@ -7338,6 +7339,132 @@ underfoot is usually not one of the five.
 | D588 | Ring heights are sampled at the TRUE corner, not the inset one | Two inset bands never share vertices, but they must share heights or every edge draws a step |
 | D589 | ⚠️ **`#selection` is capped and the list scrolls inside it** | Two fixed panels anchored to opposite edges will meet in the middle. The buttons must never be the thing that scrolls away |
 | D590 | Rank textures are cached per digit | Overlays rebuild on every selection change, so an uncached canvas is a canvas per click, for ever |
+
+---
+
+## 83. The ground opened after the fact
+
+Alexander: *"don't wait till the turn is finished to see the new land. once the
+profiler or the unit reaches the the dark area than uncover slowly"*.
+
+Two faults, in different layers, and a test that was named after the property
+it did not test.
+
+### The rules only lit up the far end of the march
+
+`moveUnit` folded sight in **once, after the unit had already arrived**, under
+a comment that said the opposite:
+
+> *A scout that walked six hexes and only lit up the last one would be useless,
+> and worse, would show a corridor of ground it never passed through.*
+
+That is an exact description of what the code did. Ground the unit walked past
+stayed dark unless it happened to fall inside the destination's sight radius,
+which on a long march it mostly does not.
+
+⚠️ **The test that should have caught it moved exactly one hex.** With a single
+step the destination *is* the corridor, so it passed against the broken
+implementation, and it passed under the name *"reveals ground as a unit walks,
+not only where it stops"*. It now marches as far as the unit can reach and
+checks every tile beside the route, plus a discriminator: at least one such
+tile must be out of range of the destination, or the march is too short to tell
+the two implementations apart. Verified by restoring the old behaviour, which
+fails it by name and tile.
+
+### The view never asked
+
+Separately, the app called `refreshFog()` on attack, on founding, on adopting a
+state and at end of turn, but **not after a move**. So even the destination's
+own reveal waited for the turn to end. That is the half Alexander could see.
+
+### Uncovering per step cost more than a frame
+
+The obvious fix is to refresh the fog once per step of the walk. Measured, one
+fog rebuild at full map size is **44.8 ms median**, plus a re-upload of 223,000
+vertices, because the sheet re-merged its geometry every time the fog moved.
+Six steps would be six 45 ms stalls in a second and a half.
+
+That was affordable while the fog only changed when a turn ended. It stopped
+being affordable the moment it had to keep up with a unit walking, so the sheet
+was rebuilt around the new requirement:
+
+- **Geometry is built once per map**, covering *every* tile, including the ones
+  currently in sight. A clear tile becomes remembered as soon as the unit
+  watching it walks away, and discovering that later would mean rebuilding
+  later.
+- **Each tile carries its own state as a vertex attribute**: 2 unseen, 1
+  remembered, 0 clear. Changing the fog writes three floats per vertex of the
+  tiles that actually changed, so the work is proportional to what moved rather
+  than to the size of the map.
+- ⚠️ **The state is a float precisely so it can be interpolated.** "This tile is
+  being uncovered" is a slide from 2 to 0, and the shader does it over 0.75 s
+  for nothing. That is the *slowly* in the request, and it is the reason the
+  three states are a number rather than an enum.
+- **Alpha is decided before any noise is sampled, and cleared tiles discard.**
+  Every tile has geometry now, so without that the sheet would shade the whole
+  board with three fbm calls per fragment in order to draw nothing.
+
+### The view is allowed to lag the rules, in exactly one window
+
+The engine finishes the move instantly and correctly: by the time `moveUnit`
+returns, the whole corridor is explored. Showing that at once would open six
+hexes while the unit is still at the near end.
+
+So the walk hands the fog a view of the world *as of the step the animation has
+reached*, and drops it the moment the walk ends. Measured on the deployed
+build, marching a Profiler three hexes:
+
+| time | tiles still hidden | what the rules had explored |
+| --- | --- | --- |
+| 0 ms | 6150 | 61 |
+| 164 ms | 6150 | **88** |
+| 315 ms | 6141 | 88 |
+| 633 ms | 6132 | 88 |
+| 790 ms | **6123** | 88 |
+
+The rules jumped to 88 at 164 ms; the ground opened in three instalments, one
+per hex walked. Cost of the same march: **zero frames over 16 ms**, median
+2.3 ms, worst 4.3 ms.
+
+⚠️ One trap worth recording: on a `BufferAttribute`, `needsUpdate` is
+**write-only**. Setting it bumps `version`; reading it returns `undefined`, so
+the obvious assertion that a redundant update did not re-upload passes against
+nothing at all. The test reads `version`.
+
+### A pre-existing flake that cost two false diagnoses
+
+Twice during this work `worldSetup.test.ts` failed, and twice it looked like I
+had broken world generation. The second time it failed on a *different* pair of
+cases, which is the tell: a fault is not choosy about which assertion it
+breaks, and a **timeout** is.
+
+Stashing the change and running the suite on the committed baseline reproduced
+the failure exactly, so it was never mine. ⚠️ **My earlier "all green" runs in
+this session were partly luck.**
+
+The cause: those tests generate every world shape crossed with every size, and
+start a real game on each combination. Measured, the file takes about 9.8 s
+alone and 28 s while the rest of the suite runs, against vitest's default
+budget of five per test. It passed on an idle machine and failed on a busy one.
+
+Raising a timeout to make a test pass is usually how a guard dies, so being
+precise about which this is: the timeout is not the property under test. What
+these tests assert is that every preset leaves seven reachable factions, and
+that is deterministic and passes consistently in isolation. A clock was the
+wrong thing to be measuring, so it has been given enough room to stop.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D591 | ⚠️ **`moveUnit` folds sight at every hex walked, not at the destination** | It claimed to do this already. A scout lit only the far end of its own march |
+| D592 | The move reports the path it walked | The view has to follow the same route the rules did, or it cannot uncover in step with the unit |
+| D593 | ⚠️ **The fog sheet is built once per map and changed by attribute** | A rebuild is 44.8 ms. Six per march is six stalls; the requirement changed, so the design had to |
+| D594 | Tile state is one interpolable number, not an enum | Uncovering is then a slide from 2 to 0, and the fade is free rather than a second mechanism |
+| D595 | A fade restarts from where it currently is, not from where it began | A tile caught half open must carry on from half, not snap shut and start again |
+| D596 | Alpha is decided before any noise, and clear tiles discard | Every tile has geometry now; without this the whole board would be shaded to draw nothing |
+| D597 | ⚠️ **The view may lag the rules only while a unit is walking** | The engine is right immediately and the eye must not be. One short window, cleared in a `finally` so an interrupted march cannot freeze the fog |
+| D598 | The corridor test marches as far as the unit can, and says so when it cannot | The old one moved a single hex, where destination and corridor are the same tile |
+| D599 | ⚠️ **`rememberAlong` collects before it copies** | Most moves reveal nothing, and cloning 6,211 keys on each of those was enough on its own to time the world tests out |
+| D600 | `worldSetup.test.ts` gets 45 s, and the reason is written down | Five seconds is not a property of anything the file asserts. Load-dependent flakiness had already been mistaken for a regression twice |
 
 ---
 

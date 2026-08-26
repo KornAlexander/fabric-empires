@@ -21,6 +21,7 @@ import {
   hexDistance,
   hexKey,
   moveUnit,
+  reachable,
   rememberVisible,
   serialise,
   sightOf,
@@ -93,18 +94,62 @@ describe('a new game starts dark', () => {
 });
 
 describe('memory grows and never shrinks', () => {
-  it('reveals ground as a unit walks, not only where it stops', () => {
+  it('⚠️ reveals the whole corridor, not just what the far end can see', () => {
+    /*
+     * ⚠️ **This test used to move exactly one hex.** With a single step the
+     * destination IS the corridor, so it passed against an implementation that
+     * folded sight once, after the unit had already arrived, and it passed
+     * under a name describing the property it was not testing. A scout that
+     * marched three hexes lit up only what it could see from the far end, and
+     * the ground it had walked past stayed dark.
+     *
+     * The march has to be longer than the sight radius is generous, or the
+     * destination would cover the whole route by itself and prove nothing
+     * again. The assertion below therefore checks BOTH directions: everything
+     * beside the route is explored, and at least one such tile is out of range
+     * of the destination.
+     */
     const state = createGameState('FABRIC');
     const scout = unitsOf(state, PLAYER_FACTION_ID).find((u) => u.typeId === 'profiler');
     if (!scout) return;
+    const sight = unitType('profiler').sight;
 
-    const before = state.explored.size;
-    const target = { q: scout.hex.q + 1, r: scout.hex.r };
+    // The furthest tile this unit can actually reach in one turn.
+    let target = scout.hex;
+    let furthest = 0;
+    for (const tile of reachable(state, scout).values()) {
+      const distance = hexDistance(scout.hex, tile.hex);
+      if (distance > furthest) {
+        furthest = distance;
+        target = tile.hex;
+      }
+    }
+    expect(furthest, 'needs a multi-hex march, or this proves nothing')
+      .toBeGreaterThan(1);
+
     const moved = moveUnit(state, scout.id, target);
+    expect(moved.ok).toBe(true);
     if (!moved.ok) return;
 
-    expect(moved.state.explored.size).toBeGreaterThanOrEqual(before);
-    expect(moved.state.explored.has(hexKey(target))).toBe(true);
+    const path = moved.path ?? [];
+    expect(path.length, 'the route walked must be reported').toBe(furthest);
+
+    let provesTheCorridor = 0;
+    for (const [key, tile] of state.map.tiles) {
+      const besideTheRoute = path.some((step) => hexDistance(step, tile.hex) <= sight);
+      if (!besideTheRoute) continue;
+      expect(
+        moved.state.explored.has(key),
+        `${key} sits beside ground the unit walked through`,
+      ).toBe(true);
+      if (hexDistance(target, tile.hex) > sight) provesTheCorridor += 1;
+    }
+
+    expect(
+      provesTheCorridor,
+      'no tile is beside the route yet out of the destination\u2019s sight, ' +
+        'so this march could not tell the two implementations apart',
+    ).toBeGreaterThan(0);
   });
 
   it('remembers ground after the unit has walked away', () => {
