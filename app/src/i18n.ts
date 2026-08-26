@@ -45,6 +45,10 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
   Library: 'Bibliothek',
   'New game': 'Neues Spiel',
   Skip: 'Überspringen',
+  // City health. "TP" (Trefferpunkte) is what the unit panel already uses for
+  // HP, so the two read the same way.
+  '{hp}/{full} HP': '{hp}/{full} TP',
+  'No yield': 'Kein Ertrag',
   // The unit stepper. "Einheit" is the word the rest of the interface already
   // uses, and the key hint stays as the literal bracket in both languages.
   'Previous unit ([)': 'Vorherige Einheit ([)',

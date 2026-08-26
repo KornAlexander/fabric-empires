@@ -30,6 +30,7 @@ import {
   hexRound,
   unitType,
   isBreached,
+  maxCityHp,
   PLAYER_FACTION_ID,
   type GameMap,
   type GameState,
@@ -391,6 +392,71 @@ function chestSprite(): CanvasTexture {
   chestTexture = new CanvasTexture(canvas);
   chestTexture.colorSpace = SRGBColorSpace;
   return chestTexture;
+}
+
+/**
+ * Width of a city's health bar, in screen pixels.
+ *
+ * Wider than the chest, because this one has to be readable as a *proportion*
+ * rather than recognised as a shape: the whole message is how much of the bar
+ * is gone, and that judgement needs length.
+ */
+const HEALTH_BAR_PIXELS = 46;
+const HEALTH_BAR_ASPECT = 0.16;
+
+/**
+ * How many distinct bars are drawn.
+ *
+ * ⚠️ Quantised so the textures can be cached. A bar drawn from the exact
+ * fraction would need a new canvas every time a city took a hit, and cities
+ * are re-synced on every dirty frame: that is a texture upload per frame per
+ * damaged town, for a difference of well under one pixel at this width.
+ * Twelve steps is finer than the eye resolves across 46 pixels.
+ */
+const HEALTH_BAR_STEPS = 12;
+
+const healthBarTextures = new Map<number, CanvasTexture>();
+
+/**
+ * A health bar, drawn once per twelfth.
+ *
+ * ⚠️ Red-to-amber-to-green by remaining fraction, and NOT the faction colour.
+ * A bar that changed hue by owner would collide with the seven antagonist
+ * colours the map already uses, and the one thing this has to say at a glance
+ * is "how bad is it", which is a scale, not an identity.
+ */
+function healthBarSprite(fraction: number): CanvasTexture {
+  const step = Math.max(0, Math.min(HEALTH_BAR_STEPS, Math.round(fraction * HEALTH_BAR_STEPS)));
+  const cached = healthBarTextures.get(step);
+  if (cached) return cached;
+
+  const w = 128;
+  const h = Math.round(w * HEALTH_BAR_ASPECT);
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d')!;
+
+  const share = step / HEALTH_BAR_STEPS;
+  const pad = 3;
+
+  // The empty trough, dark enough to read against grass, snow and water.
+  ctx.fillStyle = 'rgba(10, 14, 20, 0.82)';
+  ctx.fillRect(0, 0, w, h);
+
+  const colour = share > 0.6 ? '#7fd48a' : share > 0.3 ? '#ffcf7a' : '#ff6b5e';
+  ctx.fillStyle = colour;
+  ctx.fillRect(pad, pad, Math.max(0, (w - pad * 2) * share), h - pad * 2);
+
+  // A hairline keeps the bar from dissolving into a bright background.
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, w - 2, h - 2);
+
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
+  healthBarTextures.set(step, texture);
+  return texture;
 }
 
 
@@ -961,6 +1027,39 @@ export function createScene3D(
           addRing(hex, TREASURE_COLOUR, 0.5, 0.052);
           addSprite(hex, chestSprite(), CHEST_PIXELS, 0.9);
         }
+      }
+      /*
+       * A health bar over any town that has been hurt.
+       *
+       * ⚠️ **Only when damaged, and that is the whole design.** Seven
+       * antagonist capitals plus the player's own, each wearing a full green
+       * bar for the entire game, is furniture: it would be on screen
+       * constantly and mean nothing, so the one time it matters would be the
+       * one time nobody looks. A bar that appears only when something is
+       * wrong is an event rather than a decoration.
+       *
+       * ⚠️ **Gated on `canSee`, exactly as the city model above is.** Overlay
+       * sprites are drawn with `depthTest: false` so they are never buried by
+       * a hill, which also means they punch straight through fog. Without
+       * this line a bar would hover over a town the player cannot see, giving
+       * them a live readout of a siege happening somewhere dark, and would
+       * appear over remembered ground where the town itself is deliberately
+       * not drawn. The first version of this loop had exactly that bug.
+       *
+       * Enemy towns you CAN see are included on purpose: that a hostile
+       * capital is at half strength is what turns a raid into a plan.
+       */
+      for (const city of state.cities.values()) {
+        if (!canSee(city.hex, city.factionId)) continue;
+        const full = maxCityHp(city);
+        if (city.hp >= full) continue;
+        addSprite(
+          city.hex,
+          healthBarSprite(city.hp / full),
+          HEALTH_BAR_PIXELS,
+          1.35,
+          HEALTH_BAR_ASPECT,
+        );
       }
       if (view.hover && state.map.tiles.has(hexKey(view.hover))) {
         addPatch(view.hover, HOVER_COLOUR, 0.1, 0.05);

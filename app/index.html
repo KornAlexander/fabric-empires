@@ -506,6 +506,14 @@
       #cities select { flex: 1; font: inherit; font-size: 12px; padding: 3px 4px; background: #131a25; color: var(--text); border: 1px solid var(--border); border-radius: 4px; }
       #cities .status { color: var(--muted); font-size: 11px; }
       #cities .status.blocked { color: #ff9b91; }
+      /*
+        A damaged city is called out in warm amber rather than the muted grey.
+        ⚠️ Amber, not the red used by `.blocked`: red on this panel already
+        means "this cannot proceed", and a chipped town is a fact rather than
+        an obstruction. `tabular-nums` so the figure does not jitter as the
+        digits change width during a siege.
+      */
+      #cities .status.hurt { color: #ffcf7a; font-variant-numeric: tabular-nums; }
 
       #readiness { color: var(--muted); font-variant-numeric: tabular-nums; }
 

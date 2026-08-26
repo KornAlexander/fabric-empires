@@ -39,6 +39,7 @@ import {
   productionCost,
   isWallTarget,
   maxWallHp,
+  maxCityHp,
   wallWork,
   WALL_TARGET,
   type ProductionTarget,
@@ -2949,7 +2950,33 @@ function describeTile(h: Hex | undefined): void {
         : '';
 
   el.tileName.textContent = info.label + (tile.river ? ' (river)' : '') + who;
-  el.tileDetail.textContent = parts.length > 0 ? parts.join('  ') : 'No yield';
+  /*
+   * ⚠️ A city's health is appended here, not substituted for the yields.
+   *
+   * The tile is still a tile: what it grows is the reason to settle there and
+   * the reason to take it off somebody. Replacing that with the town's health
+   * would answer a question the player did not ask while hiding the one this
+   * panel exists for.
+   *
+   * ⚠️ **Gated on sight, using the same rule the 3D scene uses for the town
+   * itself**: your own always, anybody else's only while you can see it. The
+   * scene is emphatic that remembered ground must not carry a live readout of
+   * a place you walked past once, and a hover panel reporting "140/200" for a
+   * siege happening in the dark is exactly that readout.
+   *
+   * ⚠️ Note this panel already names the city and its owner with NO such gate,
+   * which contradicts the scene and predates this change. Left alone rather
+   * than quietly widened: fixing it is a separate decision about how much the
+   * map should hide, not a detail of showing health.
+   */
+  const yields = parts.length > 0 ? parts.join('  ') : t('No yield');
+  const cityVisible =
+    city !== undefined &&
+    (city.factionId === PLAYER_FACTION_ID || currentSight.has(hexKey(h)));
+  el.tileDetail.textContent =
+    city && cityVisible
+      ? `${yields}  |  ${t('HP')} ${city.hp}/${maxCityHp(city)}`
+      : yields;
 }
 
 /**
@@ -3041,6 +3068,23 @@ function refreshCities(): void {
       });
       row.append(walls);
     }
+
+    /*
+     * The city's own health, under the walls that are supposed to protect it.
+     *
+     * ⚠️ **Marked when hurt, because it never mends.** Nothing in the engine
+     * restores a city's HP: promotion raises the ceiling and keeps the damage.
+     * So this is not a bar that will quietly refill, it is a standing record
+     * of every assault that got through, and a player who does not know that
+     * will read "160/200" as something time will fix.
+     */
+    const integrity = document.createElement('div');
+    integrity.className = city.hp < maxCityHp(city) ? 'status hurt' : 'status';
+    integrity.textContent = t('{hp}/{full} HP', {
+      hp: String(city.hp),
+      full: String(maxCityHp(city)),
+    });
+    row.append(integrity);
 
     if (city.producing) {
       // ⚠️ `producing` is a unit OR a wall, so nothing here may call
@@ -4341,6 +4385,7 @@ declare global {
       quality: (level: 'high' | 'low') => void;
       spawnEnemyAdjacent: (unitId: string) => Hex | undefined;
       besiegeMyCity: (cityId?: string) => Hex | undefined;
+      hurtCity: (cityId: string, hp: number) => number | undefined;
       plantWalledCity: (unitId: string, wallLevel?: number, wallHp?: number) => Hex | undefined;
       clickHex: (hex: Hex) => void;
       endTurn: () => Promise<void>;
@@ -4757,6 +4802,34 @@ window.__fabricEmpires = {
       return hex;
     }
     return undefined;
+  },
+  hurtCity: (cityId: string, hp: number) => {
+    /*
+     * Test affordance: put a town at a chosen health.
+     *
+     * ⚠️ Added because a damaged city could not be produced on demand at all,
+     * and the health bar only exists when one is. The honest routes are an
+     * assault, which needs an army the harness cannot conjure in a turn, or an
+     * AI siege, which section 91 records as not happening. So the one visual
+     * this feature ships could be reasoned about and never looked at, which is
+     * the complaint `plantWalledCity` was written to answer for walls.
+     *
+     * Clamped to the real ceiling rather than trusting the caller: a bar drawn
+     * from a fraction above 1 or below 0 renders as a glitch instead of as a
+     * wrong number, which is the harder thing to notice.
+     */
+    recordHarnessGrant('hurtCity');
+    const city = state.cities.get(cityId);
+    if (!city) return undefined;
+    const full = maxCityHp(city);
+    const next = Math.max(0, Math.min(full, Math.round(hp)));
+    const cities = new Map(state.cities);
+    cities.set(cityId, { ...city, hp: next });
+    state = { ...state, cities };
+    refreshCities();
+    refreshSelection();
+    dirty = true;
+    return next;
   },
   plantWalledCity: (unitId: string, wallLevel = MAX_WALL_LEVEL, wallHp?: number) => {
     /*

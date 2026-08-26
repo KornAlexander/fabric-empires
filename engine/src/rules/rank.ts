@@ -18,6 +18,7 @@ import {
   type StrengthOf,
 } from '../entities/rank.js';
 import type { City } from '../entities/index.js';
+import { cityKind } from '../entities/index.js';
 import type { GameState } from '../state/index.js';
 
 export interface Promotion {
@@ -30,6 +31,32 @@ export interface Promotion {
 export interface PromotionResult {
   readonly state: GameState;
   readonly promoted: readonly Promotion[];
+}
+
+/**
+ * The hit points this city has when undamaged.
+ *
+ * ⚠️ **The ceiling was implied by the rules but never stated anywhere**, which
+ * is why nothing could report a city's health as a fraction. `promoteCities`
+ * below moves it by adding the *difference* between two rank bonuses, so the
+ * total `baseHp + bonusHp` was never written down and any caller wanting it
+ * had to rediscover the formula. One place, as `maxWallHp` already is.
+ *
+ * ⚠️ **A city's HP is never restored.** Nothing in the engine heals one, and
+ * promotion deliberately grants the difference rather than topping up, so
+ * damage taken in turn twelve is still there at the end of the game. That is
+ * what makes showing the number worth doing at all: it is a permanent record,
+ * not a bar that quietly refills while you are not looking.
+ */
+export function maxCityHp(city: City): number {
+  return cityKind(city.kind).baseHp + rankInfo(city.rank).bonusHp;
+}
+
+/** How much of the city is still standing, 0 to 1. */
+export function cityIntegrity(city: City): number {
+  const full = maxCityHp(city);
+  if (full <= 0) return 1;
+  return Math.max(0, Math.min(1, city.hp / full));
 }
 
 /**

@@ -8141,4 +8141,85 @@ by `app/test/reaskWiring.test.ts`.
 
 ---
 
+## 93. A city's health, which nothing was showing
+
+Walls had a readout. The town behind them did not.
+
+### Why it matters more than it looks
+
+⚠️ **A city never heals.** Nothing in the engine restores `city.hp`, and
+promotion deliberately grants the difference between two rank bonuses rather
+than topping up, so the ceiling rises and the damage stays. A town chipped in
+turn twelve is still chipped at the end of the game.
+
+That makes this a permanent record rather than a bar that quietly refills, and
+a player who could not see the number had no way to learn that a raid they
+shrugged off had cost them something they would never get back.
+
+### The ceiling was never written down
+
+`baseHp + bonusHp` existed only as an implication: `promoteCities` moves the
+total by adding a *difference*, so the total itself appeared nowhere and any
+caller wanting it had to rediscover the formula. `maxCityHp` now states it once,
+as `maxWallHp` already did for walls, with `cityIntegrity` for the fraction.
+
+### Shown in three places, on two different rules
+
+- **The city panel**, on every row, amber when hurt. Amber rather than the red
+  `.blocked` already uses: red on that panel means "this cannot proceed", and a
+  chipped town is a fact, not an obstruction.
+- **The tile panel**, appended to the yields rather than replacing them. What a
+  tile grows is the reason to settle there and the reason to take it off
+  somebody; that question should not be answered away.
+- **A bar on the map, only when damaged.** Eight capitals each wearing a full
+  green bar all game is furniture: on screen constantly, meaning nothing, so
+  the one moment it matters is the moment nobody looks.
+
+### ⚠️ The bar leaked through fog, and the scene had already solved this
+
+Overlay sprites are drawn with `depthTest: false` so a marker on a hillside is
+never buried by the hill in front of it. That also means they punch straight
+through fog. The first version of the loop therefore hovered a health bar over
+towns the player could not see, including remembered ground where the scene
+**deliberately refuses to draw the town at all** — its comment says a
+remembered village must not become "a permanent live readout of a place they
+walked past once, including whether it still stands after somebody else took
+it". The bar would have been exactly that readout.
+
+Fixed by reusing the scene's own `canSee`: your own always, anybody else's only
+while in sight. The tile panel got the same gate for the same reason.
+
+⚠️ **Found by accident.** The guard was missing, and what surfaced it was a
+test whose `indexOf` matched the wrong `for (const city of ...)` loop; the
+failure message quoted the fog comment from the loop above. A test that failed
+for the wrong reason still pointed at a real bug.
+
+⚠️ **Left alone, and worth naming**: the tile panel already reports a city's
+**name and owner** with no such gate, which contradicts the scene and predates
+this change. Widening the leak would have been easy; closing it is a separate
+decision about how much the map should hide.
+
+### Seeing it required a way to break a town
+
+There was no route to a damaged city on demand. An assault needs an army the
+harness cannot raise in a turn, and an AI siege is section 91's open question,
+so the one visual this feature ships could be reasoned about and never looked
+at. `hurtCity` is the affordance, clamped to the real ceiling so an
+out-of-range fraction cannot render as a glitch instead of as a wrong number.
+
+Measured on the deployed build: one 128×20 bar sprite at the city's position
+while damaged, **zero** at full health, one again at low health.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D651 | `maxCityHp` / `cityIntegrity` in the engine, not arithmetic in the app | The ceiling was implied by a delta and written down nowhere; two copies drift |
+| D652 | ⚠️ **The map bar appears only when a town is damaged** | Eight permanent green bars is furniture, and furniture is invisible exactly when it matters |
+| D653 | ⚠️ **Both the bar and the panel HP are gated on `canSee`** | Overlay sprites ignore depth and so ignore fog; the scene already refuses to draw remembered towns for this reason |
+| D654 | The tile panel appends HP to the yields rather than replacing them | The yield is why the tile is worth having; the health is a second question |
+| D655 | Amber for a hurt city, not the panel's existing red | Red there means "blocked"; damage is a fact, not an obstruction |
+| D656 | The bar is quantised to twelfths and cached | A bar drawn from the exact fraction is a texture upload per damaged town per frame, for a sub-pixel difference |
+| D657 | `hurtCity` harness affordance | Otherwise the only visual this section ships could never be seen where it runs |
+
+---
+
 *Last updated: 26 August 2026*
