@@ -21,6 +21,7 @@ import { rememberVisible } from '../rules/vision.js';
 import { productionPhase, type ProductionEvent } from '../rules/production.js';
 import { checkOutcome, type Outcome } from '../rules/victory.js';
 import type { DefenceStance } from '../rules/defence.js';
+import type { Hex } from '../hex/index.js';
 import type { GameState } from '../state/index.js';
 
 export interface TurnOptions {
@@ -39,6 +40,8 @@ export interface TurnOptions {
    * fought on the units alone. It is an option rather than a callback because
    * the engine stays synchronous and pure: asking a human a question is the
    * app's job, exactly as it is for research (D35).
+   *
+   * ⚠️ **Only reaches the tile named by `defendAt`.** See below.
    */
   readonly defenderChallengeScore?: number | undefined;
   /**
@@ -48,8 +51,32 @@ export interface TurnOptions {
    * arrives as data rather than a callback. Defaults to `hold`, which is a
    * no-op on every number in combat, so a caller that does not offer the
    * choice fights the raid exactly as it always did.
+   *
+   * ⚠️ **Only reaches the tile named by `defendAt`.** See below.
    */
   readonly defenceStance?: DefenceStance | undefined;
+  /**
+   * Which tile the player was actually asked about.
+   *
+   * ⚠️ **Without this, one answer was applied to every fight on the map.**
+   *
+   * The app previews the turn, finds the raids, and asks the player about
+   * *one* of them. Both the answer and the stance were then handed to the
+   * whole enemy phase, so a garrison bracing behind its walls in the north
+   * also braced a lone scout being jumped in the south, and a battle question
+   * answered about one siege stiffened every unrelated skirmish in the same
+   * breath. Neither unit was in the fight the player was shown.
+   *
+   * Naming the tile keeps the engine pure and the scope honest: the
+   * preparation applies where it was made, and every other defender that turn
+   * fights on its own merits with `hold` and a score of zero, exactly as it
+   * would if the player had never been asked anything.
+   *
+   * Omitted means the old behaviour is *not* restored: nothing is scoped
+   * anywhere, so the score and stance are simply unused. A caller that wants
+   * them to count has to say where.
+   */
+  readonly defendAt?: Hex | undefined;
 }
 
 export interface TurnReport {
@@ -319,6 +346,7 @@ export function endTurn(state: GameState, options: TurnOptions = {}): TurnResult
     const played = runFactionTurn(raised.state, id, {
       defenderChallengeScore: options.defenderChallengeScore ?? 0,
       defenceStance: options.defenceStance ?? 'hold',
+      defendAt: options.defendAt,
     });
     world = played.state;
     enemyEvents.push(...played.events);

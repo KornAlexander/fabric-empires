@@ -2236,7 +2236,21 @@ async function doEndTurn(): Promise<void> {
   const raids = preview.report.enemyEvents.filter(
     (e) => e.intent.kind === 'raid' && defends(e.intent.target),
   );
-  const incoming = raids[0];
+  /*
+   * ⚠️ A raid on a town outranks a raid on anything else.
+   *
+   * The turn choreographs exactly one incoming attack: the camera flies to it,
+   * the banner names the faction, and the question is asked about it. Taking
+   * the first one in the list meant a lone scout being jumped could be shown
+   * while a city was being stormed in the same turn and never mentioned. A
+   * city is permanent, expensive and the thing the player actually loses the
+   * game over, so it is the fight worth showing.
+   *
+   * `find` rather than a sort: the list order is otherwise meaningful (it is
+   * the order the enemy acted) and only the town needs to jump the queue.
+   */
+  const incoming =
+    raids.find((e) => e.intent.kind === 'raid' && cityAt(state, e.intent.target)) ?? raids[0];
 
   let defenderChallengeScore = 0;
   let defenceStance: DefenceStance = DEFAULT_STANCE;
@@ -2302,11 +2316,17 @@ async function doEndTurn(): Promise<void> {
      * and being asked to commit after already knowing the answer would turn a
      * decision into a formality.
      *
-     * ⚠️ Asked on every raid rather than only against walls, which is where
-     * the attacker's tactic dialog draws its line. The reason they differ:
-     * storming a wall that is not there is not a choice, but a defender always
-     * has one. A dug-in unit in the open can still brace or come out, and
-     * `fortifyShare` scales whatever cover it does have.
+     * ⚠️ **Only for a town, and this reverses an earlier decision.** It used
+     * to be asked on every raid, reasoning that "a defender always has a
+     * choice" even in the open. In play that was wrong twice over. Sally and
+     * hold are written in the language of a gate and a wall, so on a scout
+     * caught in a field the words describe something that is not there; and
+     * the whole point of the stance is trading away fortification you paid
+     * for, which a unit standing in grass has not got. Three options where two
+     * are nearly identical is a menu, not a decision.
+     *
+     * Everything that is not a town now defends as it always did before the
+     * stance existed, which is `hold`: a no-op on every number in combat.
      */
     const stanceLabels: Record<DefenceStance, { label: string; detail: string }> = {
       hold: {
@@ -2322,16 +2342,18 @@ async function doEndTurn(): Promise<void> {
         detail: t('Everything into cover. Much harder to hurt, and you do not hit back at all.'),
       },
     };
-    defenceStance = await choice.ask(
-      t('{who} is at your gates. How do you meet them?', { who }),
-      t('The target is {what}.', { what }),
-      DEFENCE_STANCES.map((id, i) => ({
-        id,
-        label: stanceLabels[id].label,
-        detail: stanceLabels[id].detail,
-        primary: i === 0,
-      })),
-    );
+    if (city) {
+      defenceStance = await choice.ask(
+        t('{who} is at your gates. How do you meet them?', { who }),
+        t('The target is {what}.', { what }),
+        DEFENCE_STANCES.map((id, i) => ({
+          id,
+          label: stanceLabels[id].label,
+          detail: stanceLabels[id].detail,
+          primary: i === 0,
+        })),
+      );
+    }
 
     if (topicId) {
       defenderChallengeScore = await askBattle(topicId, 2, timeLimit(BATTLE_TIME_MS));
@@ -2339,7 +2361,19 @@ async function doEndTurn(): Promise<void> {
     raidAlert.hide();
   }
 
-  const result = endTurn(state, { dueTopics, defenderChallengeScore, defenceStance });
+  const result = endTurn(state, {
+    dueTopics,
+    defenderChallengeScore,
+    defenceStance,
+    /*
+     * ⚠️ Both of the above count ONLY here, on the tile that was shown.
+     *
+     * They used to be handed to the whole enemy phase, so one answer stiffened
+     * every unrelated fight on the map and one stance was adopted by units
+     * that were never in the battle the player watched.
+     */
+    defendAt: incoming?.intent.kind === 'raid' ? incoming.intent.target : undefined,
+  });
   const { report } = result;
   /*
    * ⚠️ **The result is held back until the raid has been watched.**
@@ -2457,6 +2491,7 @@ async function doEndTurn(): Promise<void> {
     report.enemyEvents,
     defenderChallengeScore,
     adoptResult,
+    incoming?.intent.kind === 'raid' ? incoming.intent.target : undefined,
   );
   resolvingTurn = true;
   try {
@@ -2555,6 +2590,7 @@ async function presentEnemyTurn(
   events: readonly AiEvent[],
   defenceScore = 0,
   adopt?: () => void,
+  featuredAt?: Hex,
 ): Promise<void> {
   if (events.length === 0) {
     adopt?.();
@@ -2588,8 +2624,18 @@ async function presentEnemyTurn(
 
   // The one the player was asked about, and the only one that can be fought
   // on screen, because adopting the result resolves all of them at once.
+  //
+  // ⚠️ **`featuredAt` is passed in rather than re-derived.** `doEndTurn`
+  // prefers a raid on a town when choosing what to show and ask about, so
+  // "the first raid the player defends" is no longer the same event. Working
+  // it out twice, from two different rules, put the banner and the question on
+  // a city while the duel was fought over whichever scout happened to be
+  // earlier in the list.
   const featuredIndex = events.findIndex(
-    (e) => e.intent.kind === 'raid' && defends(e.intent.target),
+    (e) =>
+      e.intent.kind === 'raid' &&
+      defends(e.intent.target) &&
+      (featuredAt === undefined || hexKey(e.intent.target) === hexKey(featuredAt)),
   );
   const featured = featuredIndex >= 0 ? events[featuredIndex] : undefined;
 
@@ -4269,6 +4315,7 @@ declare global {
       showcase: (typeIds: string[], centre: Hex) => string[];
       quality: (level: 'high' | 'low') => void;
       spawnEnemyAdjacent: (unitId: string) => Hex | undefined;
+      besiegeMyCity: (cityId?: string) => Hex | undefined;
       plantWalledCity: (unitId: string, wallLevel?: number, wallHp?: number) => Hex | undefined;
       clickHex: (hex: Hex) => void;
       endTurn: () => Promise<void>;
@@ -4629,6 +4676,54 @@ window.__fabricEmpires = {
         hex,
         hp: 100,
         movesLeft: 0,
+        fortified: false,
+      });
+      state = { ...state, units, nextEntityId: state.nextEntityId + 1 };
+      refreshSelection();
+      dirty = true;
+      return hex;
+    }
+    return undefined;
+  },
+  besiegeMyCity: (cityId?: string) => {
+    /*
+     * Test affordance: a hostile next to one of YOUR towns, ready to strike.
+     *
+     * ⚠️ Added because the defender's side of a siege could not be staged at
+     * all. `spawnEnemyAdjacent` takes a unit, and `plantWalledCity` plants an
+     * *enemy* town: both exist to exercise the player as the ATTACKER. There
+     * was no way to make the AI come at a town of yours, so the stance dialog,
+     * which is now the one thing that only appears when a town is attacked,
+     * could be reasoned about but not watched. Measured: fourteen turns of
+     * ending the turn next to a hostile city produced no raid on my own.
+     *
+     * That is the exact complaint the docblock below already records about
+     * assault tactics, seen from the other side of the wall.
+     *
+     * `movesLeft: 1` rather than 0, unlike `spawnEnemyAdjacent`: this one has
+     * to be able to act in the enemy phase that follows, or it just stands
+     * there and the siege never happens.
+     */
+    recordHarnessGrant('besiegeMyCity');
+    const city = cityId
+      ? state.cities.get(cityId)
+      : [...state.cities.values()].find((c) => c.factionId === PLAYER_FACTION_ID);
+    if (!city || city.factionId !== PLAYER_FACTION_ID) return undefined;
+
+    for (let d = 0; d < 6; d++) {
+      const hex = hexNeighbour(city.hex, d);
+      const tile = state.map.tiles.get(hexKey(hex));
+      if (!tile || tile.terrain === 'onelake' || tile.terrain === 'semanticPeaks') continue;
+      if (unitAt(state, hex) || cityAt(state, hex)) continue;
+      const id = `test-siege-${state.nextEntityId}`;
+      const units = new Map(state.units);
+      units.set(id, {
+        id,
+        typeId: 'pipelineRunner',
+        factionId: ANTAGONIST_FACTION_ID,
+        hex,
+        hp: 100,
+        movesLeft: 1,
         fortified: false,
       });
       state = { ...state, units, nextEntityId: state.nextEntityId + 1 };

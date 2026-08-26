@@ -554,11 +554,30 @@ export function runFactionTurn(
   options: {
     readonly defenderChallengeScore?: number;
     readonly defenceStance?: DefenceStance;
+    /**
+     * The one tile the player was asked to defend.
+     *
+     * ⚠️ When absent, the score and stance above apply to **every** attack
+     * this faction makes, which is what they used to do unconditionally and
+     * is almost never what a caller means. `endTurn` always names a tile.
+     */
+    readonly defendAt?: Hex | undefined;
   } = {},
 ): AiTurnResult {
   const events: AiEvent[] = [];
   const restoreTo = state.activeFactionId;
   let current: GameState = { ...state, activeFactionId: factionId };
+
+  /*
+   * Whether this is the fight the player was shown and answered for.
+   *
+   * ⚠️ No tile named means nothing is prepared, rather than everything being
+   * prepared. The failure modes are not symmetrical: a caller that forgets to
+   * say where loses a bonus it can see is missing, whereas the old default
+   * spread one answer silently across every skirmish on the map.
+   */
+  const prepared = (target: Hex): boolean =>
+    options.defendAt !== undefined && hexKey(options.defendAt) === hexKey(target);
 
   const ids = inTurnOrder(
     [...current.units.values()].filter((u) => u.factionId === factionId).map((u) => u.id),
@@ -580,7 +599,7 @@ export function runFactionTurn(
       }
 
       const fought = resolveAttack(current, id, intent.target, {
-        defenderChallengeScore: options.defenderChallengeScore ?? 0,
+        defenderChallengeScore: prepared(intent.target) ? options.defenderChallengeScore ?? 0 : 0,
         // ⚠️ The antagonists get the same three choices the player does.
         // Without this every AI attack used the default, so a player's walls
         // were never escaladed and never sapped.
@@ -590,8 +609,14 @@ export function runFactionTurn(
          * player, so it is passed in rather than chosen. An AI city defending
          * against the player picks its own in `chooseStance`, on the other
          * side of this call.
+         *
+         * ⚠️ **Only on the tile the player was actually asked about.** This
+         * used to apply to every attack in the phase, so bracing one city
+         * braced a scout being jumped on the far side of the map, and that
+         * scout's owner was never shown the fight or offered the choice. A
+         * defender nobody asked fights on its own merits.
          */
-        defenceStance: options.defenceStance ?? 'hold',
+        defenceStance: prepared(intent.target) ? options.defenceStance ?? 'hold' : 'hold',
       });
       if (!fought.ok) break;
       current = fought.result.state;

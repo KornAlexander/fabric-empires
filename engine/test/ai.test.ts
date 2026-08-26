@@ -307,9 +307,15 @@ describe('raiding', () => {
   });
 
   it('lets the defender answer for themselves', () => {
-    const { state } = raidSetup();
-    const weak = runFactionTurn(state, ANTAGONIST_FACTION_ID, { defenderChallengeScore: -1 });
-    const strong = runFactionTurn(state, ANTAGONIST_FACTION_ID, { defenderChallengeScore: 1 });
+    const { state, playerHex } = raidSetup();
+    const weak = runFactionTurn(state, ANTAGONIST_FACTION_ID, {
+      defenderChallengeScore: -1,
+      defendAt: playerHex,
+    });
+    const strong = runFactionTurn(state, ANTAGONIST_FACTION_ID, {
+      defenderChallengeScore: 1,
+      defendAt: playerHex,
+    });
 
     const hurt = (r: ReturnType<typeof runFactionTurn>) =>
       r.events.find((e) => e.intent.kind === 'raid')?.log?.damageToDefender ?? 0;
@@ -318,6 +324,66 @@ describe('raiding', () => {
     // being accepted and quietly dropped, which is the failure mode that
     // looks exactly like success.
     expect(hurt(strong)).toBeLessThan(hurt(weak));
+  });
+
+  it('⚠️ does not spend the answer on a fight the player was never shown', () => {
+    /*
+     * The score and the stance describe ONE defence: the raid the app put on
+     * screen and asked a question about. They used to be handed to the whole
+     * enemy phase, so answering about a siege in the north also stiffened a
+     * scout being jumped in the south, whose owner saw nothing and chose
+     * nothing.
+     *
+     * Naming a tile nobody is attacking is the cleanest way to state that:
+     * the preparation exists, it simply does not belong here.
+     */
+    const { state, playerHex } = raidSetup();
+    const elsewhere = { q: playerHex.q + 9, r: playerHex.r + 9 };
+
+    const hurt = (score: number, at: typeof playerHex) =>
+      runFactionTurn(state, ANTAGONIST_FACTION_ID, {
+        defenderChallengeScore: score,
+        defendAt: at,
+      }).events.find((e) => e.intent.kind === 'raid')?.log?.damageToDefender ?? 0;
+
+    // A right answer aimed at the wrong tile buys this defender nothing, and
+    // a wrong one costs it nothing either: both equal the unprepared fight.
+    const unprepared = hurt(0, elsewhere);
+    expect(hurt(1, elsewhere)).toBe(unprepared);
+    expect(hurt(-1, elsewhere)).toBe(unprepared);
+    // ...and aimed correctly it still works, or the test above proves nothing.
+    expect(hurt(1, playerHex)).toBeLessThan(unprepared);
+  });
+
+  it('⚠️ treats "no tile named" as nothing prepared, not everything prepared', () => {
+    /*
+     * The safer default of the two. A caller that forgets to say where loses
+     * a bonus it can see is missing; the opposite default is what spread one
+     * answer silently across every skirmish on the map.
+     */
+    const { state, playerHex } = raidSetup();
+    const hurt = (options: Parameters<typeof runFactionTurn>[2]) =>
+      runFactionTurn(state, ANTAGONIST_FACTION_ID, options).events.find(
+        (e) => e.intent.kind === 'raid',
+      )?.log?.damageToDefender ?? 0;
+
+    expect(hurt({ defenderChallengeScore: 1 })).toBe(hurt({}));
+    expect(hurt({ defenderChallengeScore: 1, defendAt: playerHex })).toBeLessThan(hurt({}));
+  });
+
+  it('⚠️ does not let one city\'s stance be adopted by a unit elsewhere', () => {
+    const { state, playerHex } = raidSetup();
+    const elsewhere = { q: playerHex.q + 9, r: playerHex.r + 9 };
+    const hurt = (stance: 'hold' | 'brace', at: typeof playerHex) =>
+      runFactionTurn(state, ANTAGONIST_FACTION_ID, {
+        defenceStance: stance,
+        defendAt: at,
+      }).events.find((e) => e.intent.kind === 'raid')?.log?.damageToDefender ?? 0;
+
+    // Bracing is a large, easily measured effect, which is what makes it a
+    // good probe: if scoping leaked, this would be visibly softer.
+    expect(hurt('brace', elsewhere)).toBe(hurt('hold', elsewhere));
+    expect(hurt('brace', playerHex)).toBeLessThan(hurt('hold', playerHex));
   });
 
   it('does not send civilians into a fight', () => {

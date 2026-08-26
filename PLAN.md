@@ -7959,4 +7959,93 @@ Proven by planting a file with a known-bad host and watching the count go 219 �
 
 ---
 
+## 91. One fight's preparation stops leaking into every other fight
+
+Two changes, and the second was a bug that had been live for as long as
+stances have existed.
+
+### Sally and hold are town words
+
+Section 19.4 asked for a stance on **every** raid, reasoning that "storming a
+wall that is not there is not a choice, but a defender always has one". In play
+that was wrong twice over.
+
+The words describe a gate: *sally out*, *open the gates*, *hold the line*. Put
+them on a scout caught in a field and they name something that is not there.
+And the trade the stance exists to make is giving away fortification you paid
+for, which a unit standing in grass has not got: `fortifyShare` scales a number
+that is zero, so two of the three options collapse into each other. Three
+options where two are identical is a menu, not a decision.
+
+⚠️ **This reverses the earlier decision rather than refining it**, and the old
+reasoning is left in the commit history rather than in a comment claiming both
+things at once. Everything that is not a town now defends the way it did before
+stances existed, which is `hold`: a no-op on every number in combat.
+
+### ⚠️ The real defect: one answer was applied to every fight on the map
+
+`endTurn` took `defenderChallengeScore` and `defenceStance` and handed both to
+the **whole enemy phase**. Every faction, every attack, every defender.
+
+So bracing a city in the north also braced a lone Profiler being jumped in the
+south, and a battle question answered about one siege stiffened every unrelated
+skirmish in the same breath. Neither of those defenders was in the fight the
+player was shown, and neither owner was offered a choice about it.
+
+Both are now scoped by a new `defendAt` option naming the tile the player was
+actually asked about. Everything else that turn fights on its own merits.
+
+⚠️ **Absent means nothing is prepared, not everything is prepared.** The two
+defaults are not symmetrically risky: a caller that forgets to name a tile
+loses a bonus it can see is missing, whereas the old default spread one answer
+silently across the map. Measured in `engine/test/ai.test.ts`: brace-aimed-
+elsewhere now equals hold exactly, and brace-aimed-here is still visibly softer.
+
+### A town outranks whatever the enemy happened to do first
+
+The turn choreographs exactly one incoming raid, and it took `raids[0]`. A city
+could be stormed in the same turn a scout was jumped and never be mentioned.
+Now a raid on a town jumps the queue.
+
+⚠️ **`presentEnemyTurn` had to be told which one**, because it re-derived the
+featured raid as "the first one the player defends". Two rules for the same
+question stopped agreeing the moment towns were preferred, and the banner and
+question would have sat on a city while the duel was fought over a scout.
+
+### The defender's side of a siege could not be staged at all
+
+`spawnEnemyAdjacent` takes a unit; `plantWalledCity` plants an **enemy** town.
+Both exist to exercise the player as the attacker. There was no way to make the
+AI come at a town of yours, so the one dialog that now only appears when a town
+is attacked could be reasoned about but not watched. `besiegeMyCity` fixes
+that, for the same reason `plantWalledCity` exists.
+
+### ⚠️ Unresolved: the AI did not attack my city, and I did not find out why
+
+Measured on the deployed build: a player city at full health with **six hostile
+units adjacent**, over four turns, took **zero damage** and produced no raid.
+
+`planUnitAction` does list cities and scores them ahead of units, so the
+suspect is the `HOPELESS_ASSAULT_TURNS = 12` guard: a fresh unwalled town has a
+200-point shield, so any raider averaging under ~17 damage a hit is talked out
+of the assault. That is a **hypothesis, not a finding.** An attempt to measure
+`expectedDamageToDefender` directly returned 0 from a hand-built city object,
+which almost certainly means the fixture was malformed rather than that the
+maths says zero, so it proves nothing and was deleted rather than written up.
+
+Recorded here because it matters to section 91: if the player is never
+besieged, the stance dialog this section just narrowed to towns is a feature
+nobody will meet. Worth a section of its own.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D639 | ⚠️ **The stance is asked only when a town is attacked**, reversing 19.4 | Sally and hold name a gate; on a unit in the open two of the three options are the same option |
+| D640 | ⚠️ **`defendAt` scopes the stance AND the battle answer to one tile** | Both used to apply to every fight in the enemy phase, including defenders the player never saw |
+| D641 | No tile named means nothing is prepared | The opposite default is what caused D640's bug, and it fails silently; this one fails visibly |
+| D642 | A raid on a town jumps the queue for the turn's alert | A city is permanent and is what the game is lost over; it should not be hidden behind a skirmish |
+| D643 | `presentEnemyTurn` is **told** the featured raid rather than re-deriving it | Two rules answering the same question drift, and these two did the moment towns were preferred |
+| D644 | `besiegeMyCity` harness affordance | The defender's half of a siege was unobservable in a browser, which is how 19.4 shipped a dialog nobody had watched |
+
+---
+
 *Last updated: 26 August 2026*
