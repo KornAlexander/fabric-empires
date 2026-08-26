@@ -8307,4 +8307,92 @@ dial if it turns out to be too subtle.
 
 ---
 
+## 95. The antagonists would not storm a town, and walls made it obvious
+
+Section 91 recorded this as an open question with a hypothesis. The hypothesis
+was right, the cause was worse than expected, and the player found it by
+building walls and watching enemies gather outside them for the rest of the
+game.
+
+### The measurement
+
+Seed FABRIC, one Pipeline Runner beside a fresh Workspace:
+
+| walls | shield | damage per hit | turns to take it, alone |
+| --- | --- | --- | --- |
+| none | 200 | 10 | **20** |
+| 1 | 240 | 10 | 24 |
+| 2 | 280 | 10 | 28 |
+| 3 | 320 | 10 | **32** |
+
+`HOPELESS_ASSAULT_TURNS` was **12**, so every row is a refusal. ⚠️ **Walls did
+not cause this.** A lone raider declined an *unwalled* town too; fortifying
+only widened the margin and gave the player a reason to stand and watch.
+
+Note the damage: **exactly `MIN_DAMAGE`**. A line unit against a town is
+already at the floor.
+
+### The real error was the question, not the number
+
+The guard asked **each raider privately** whether *it alone* could break the
+town. Six units around a capital break it six times faster, and every one of
+them individually answered no, so nobody attacked. Six-to-one must never
+resolve to nobody moving.
+
+`siegeRate` now sums what the whole force can take off in a turn, gated by the
+same `canAttack` the attack itself uses, so a unit that is out of moves or out
+of range is not counted as part of a force it cannot join.
+
+⚠️ **Only the acting faction's units count.** The seven antagonists plan
+separately and do not coordinate; pooling their arithmetic would have them
+besiege as a coalition the rules never agreed to.
+
+### And the number, deliberately, second
+
+12 turns was quietly cautious rather than generous, which is the opposite of
+what its own comment claims for it. At **24** a lone unit will besiege an
+unwalled town (20 turns) and still declines a full fortress alone (32), which
+is correct: at floor damage into `WALL_MEND_PER_CYCLE` it is hitting a wall
+that repairs faster than it breaks. That refusal is kept as its own assertion
+so the fix cannot drift into "everybody always attacks".
+
+### ⚠️ Why every test passed while this was true
+
+`siege.test.ts` proves a level-three wall can be broken, and does it by calling
+`resolveAttack` **directly**. The combat maths was never wrong. What was wrong
+was the decision to enter combat, and nothing tested that, so the suite was
+green while the antagonists quietly refused to play.
+
+That is the same lesson `siege.test.ts` already records one level down, where
+free wall mending made a city untakeable while every unit test passed. Twice
+now, in the same subsystem: **a rule proven in isolation says nothing about
+whether anything ever invokes it.** `siegeWillingness.test.ts` is the missing
+half.
+
+### ⚠️ Two fixtures lied before one told the truth
+
+The first attempt at measuring this (section 91) built a `City` by hand,
+omitted half its fields, got `expectedDamageToDefender: 0` and was correctly
+thrown away rather than believed. The second attempt built a complete city and
+still reported 0 at **every** wall level including none, which reads exactly
+like the bug and is really a fixture that forgot to set `activeFactionId` to
+the attacking faction. Only the third measurement was real.
+
+A fixture that produces the answer you are expecting is the most dangerous kind.
+
+### Verified in the running game
+
+Six besiegers ringed a freshly founded town: **200 → 140 → 79 → 14** over three
+turns. The same arrangement before the fix took **zero** damage over four.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D666 | ⚠️ **The siege is judged by the faction's whole force, not one raider** | Asking each unit privately makes six-to-one resolve to nobody attacking |
+| D667 | Only the acting faction's units count toward the rate | The antagonists do not coordinate, and pooling would invent an alliance |
+| D668 | `HOPELESS_ASSAULT_TURNS` 12 → 24 | 12 refused even an unwalled town, which the constant's own comment forbids |
+| D669 | A lone unit still declines a full fortress, asserted explicitly | Floor damage into a faster-mending wall is the pathological case the guard is for |
+| D670 | ⚠️ **Willingness gets its own test file** | Proving a wall can be broken says nothing about whether anybody chooses to break it |
+
+---
+
 *Last updated: 26 August 2026*

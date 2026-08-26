@@ -13,8 +13,20 @@ import { canAttack, previewAttack, resolveAttack, type CombatLog } from './comba
  * not talk the AI out of a fight it would actually win: it exists to stop the
  * pathological case where the arithmetic says never, not to make antagonists
  * cautious.
+ *
+ * ⚠️ **Raised from 12, which was quietly cautious rather than generous.**
+ * Measured against a fresh Workspace on seed FABRIC: a Pipeline Runner does
+ * `MIN_DAMAGE` to a town, so it needed 20 turns for an UNWALLED one and 32 for
+ * a level-three. Both were over the old limit, so a lone raider declined every
+ * town in the game, walls or no walls. The player saw enemies gather outside
+ * their capital and mill about for the rest of the match, which is the exact
+ * failure this constant's own comment says it must not cause.
+ *
+ * At 24 a lone unit will besiege an unwalled town (20 turns) and still declines
+ * a full fortress alone (32), which is right: against `WALL_MEND_PER_CYCLE` it
+ * is doing floor damage into a wall that repairs faster than it breaks.
  */
-export const HOPELESS_ASSAULT_TURNS = 12;
+export const HOPELESS_ASSAULT_TURNS = 24;
 
 /**
  * Which way an antagonist goes at a wall.
@@ -305,6 +317,27 @@ function targetsFor(state: GameState, factionId: string): Hex[] {
  * nearest thing worth hitting. A city outranks a unit at equal distance
  * because a captured city is the only permanent gain on this map.
  */
+/**
+ * What this faction can take off a town in one turn, all attackers together.
+ *
+ * ⚠️ Counts every unit of the faction that could strike the tile **this turn**,
+ * which is what makes a siege a siege. `canAttack` is the same gate the attack
+ * itself uses, so a unit that is out of moves, out of range or civilian is not
+ * counted as part of a force it cannot join.
+ *
+ * The unit doing the asking is included by the same rule as everybody else,
+ * so a lone raider still gets its own honest number rather than a special case.
+ */
+function siegeRate(state: GameState, factionId: string, target: Hex): number {
+  let total = 0;
+  for (const unit of state.units.values()) {
+    if (unit.factionId !== factionId) continue;
+    if (!canAttack(state, unit.id, target).ok) continue;
+    total += previewAttack(state, unit.id, target)?.expectedDamageToDefender ?? 0;
+  }
+  return total;
+}
+
 export function planUnitAction(state: GameState, unitId: string): AiIntent | undefined {
   const unit = state.units.get(unitId);
   if (!unit || unit.movesLeft <= 0) return undefined;
@@ -338,9 +371,22 @@ export function planUnitAction(state: GameState, unitId: string): AiIntent | und
       if (kind === 'city' && city) {
         const preview = previewAttack(state, unitId, hex);
         if (preview) {
-          const perHit = preview.expectedDamageToDefender;
+          /*
+           * ⚠️ **The whole besieging force, not this one raider.**
+           *
+           * The original asked each unit privately whether IT could break the
+           * town, which is the wrong question and produced the worst possible
+           * answer: six units around a walled capital each computed a siege
+           * they could not finish alone, every one declined, and nobody
+           * attacked at all. Six-to-one must never resolve to nobody moving.
+           *
+           * ⚠️ Only this faction's units count. The seven antagonists plan
+           * separately and do not coordinate, so pooling their arithmetic
+           * would have them fight as an alliance the game does not model.
+           */
+          const perTurn = siegeRate(state, unit.factionId, hex);
           const shield = city.wallHp + city.hp;
-          if (perHit <= 0 || shield / perHit > HOPELESS_ASSAULT_TURNS) continue;
+          if (perTurn <= 0 || shield / perTurn > HOPELESS_ASSAULT_TURNS) continue;
         }
       }
 
