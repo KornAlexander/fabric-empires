@@ -19,10 +19,14 @@ const world: IntroWorld = {
 
 const shots = introShots(world);
 
+/** A beat by name. Positions shift whenever the song gains or loses one. */
+const byId = (id: string) => shots.find((s) => s.id === id)!;
+
 describe('the opening sequence', () => {
-  it('is five beats, in a fixed order', () => {
+  it('is six beats, in a fixed order', () => {
     expect(shots.map((s) => s.id)).toEqual([
       'intro-forge',
+      'intro-build',
       'intro-dawn',
       'intro-rivers',
       'intro-hands',
@@ -43,9 +47,22 @@ describe('the opening sequence', () => {
      * two drift apart silently.
      */
     expect(shots[0]!.title).toBe('Fabrica');
-    expect(shots[1]!.title).toBe('Ex nihilo');
-    expect(shots[2]!.title).toBe('Flumina viam inveniunt');
-    expect(shots[3]!.title).toBe('Manus parvae, manus magnae');
+    expect(shots[1]!.title).toBe('');
+    expect(shots[2]!.title).toBe('Ex nihilo');
+    expect(shots[3]!.title).toBe('Flumina viam inveniunt');
+    expect(shots[4]!.title).toBe('Manus parvae, manus magnae');
+  });
+
+  it('⚠️ carries no card across the wordless build', () => {
+    /*
+     * The anthem sings nothing between *Texamus una* and *Ex nihilo terra
+     * surgit*. A card held over that names a line nobody is singing, which is
+     * the same fault as showing one early.
+     */
+    const build = shots.find((s) => s.id === 'intro-build')!;
+    expect(build.title).toBe('');
+    expect(build.subtitle).toBe('');
+    expect(shots.filter((s) => s.title === '')).toHaveLength(1);
   });
 });
 
@@ -66,6 +83,7 @@ describe('⚠️ the cards land on the lines they name', () => {
    */
   const SUNG_AT: Readonly<Record<string, number>> = {
     'intro-forge': ANTHEM_MARKS.forge,
+    'intro-build': ANTHEM_MARKS.build,
     'intro-dawn': ANTHEM_MARKS.dawn,
     'intro-rivers': ANTHEM_MARKS.rivers,
     'intro-hands': ANTHEM_MARKS.hands,
@@ -105,18 +123,49 @@ describe('⚠️ the cards land on the lines they name', () => {
     expect(title.end).toBeGreaterThan(CHORUS_MS);
   });
 
+  it('⚠️ takes every card down as the next line begins', () => {
+    /*
+     * The other half of "the card lands on its line", and the half that was
+     * missing. A card that arrives on time but outstays the passage is still
+     * naming something nobody is singing any more, which is how the film read
+     * before: one card covering three lines.
+     *
+     * Beat lengths therefore come from the marks by subtraction and must not
+     * be hand-set. This asserts the arithmetic really is that, so a tweaked
+     * `durationMs` cannot quietly reintroduce an overhang.
+     */
+    const order = windows();
+    for (let i = 0; i < order.length - 1; i++) {
+      const nextLine = SUNG_AT[order[i + 1]!.id]!;
+      expect(order[i]!.end, `${order[i]!.id} overruns into the next line`)
+        .toBeCloseTo(nextLine, 3);
+    }
+  });
+
   it('runs no longer than the anthem it is cut to', () => {
-    // The recording is 145 s, so there is room, but a film that outlasts its
+    // The recording is 193 s, so there is room, but a film that outlasts its
     // own music ends in silence.
-    expect(introDurationMs(shots)).toBeLessThan(145_000);
+    expect(introDurationMs(shots)).toBeLessThan(193_000);
   });
 });
 
 describe('the beats themselves', () => {
-  it('gives every beat long enough to be read', () => {
+  it('gives every card long enough to be read', () => {
+    /*
+     * ⚠️ This floor was 5 s, and the measured recording makes that
+     * unsatisfiable rather than merely tight. *Ex nihilo terra surgit* is sung
+     * for 3.8 s and then *Flumina viam inveniunt* begins; a 5 s card would
+     * still be on screen naming the previous line, which is the exact fault
+     * this whole file exists to prevent.
+     *
+     * Raising a bound to make a change pass is usually how a guard dies, so
+     * be clear about which one this is. The song sets the length of a beat.
+     * What is still ours to get wrong is showing a card so briefly that it
+     * cannot be read at all, and 3.5 s is the shortest line the anthem has.
+     */
     for (const shot of shots) {
-      // A card that leaves before it has been read is a wasted card.
-      expect(shot.durationMs, shot.id).toBeGreaterThanOrEqual(5000);
+      if (shot.title === '') continue;
+      expect(shot.durationMs, shot.id).toBeGreaterThanOrEqual(3_500);
       expect(shot.subtitle.length, shot.id).toBeGreaterThan(0);
     }
   });
@@ -124,26 +173,23 @@ describe('the beats themselves', () => {
   it('runs well under a minute, so it can be sat through', () => {
     /*
      * ⚠️ This bound was 45 s, and the re-recorded anthem made it unsatisfiable
-     * rather than merely tight. Three requirements above now collide:
+     * rather than merely tight. Three requirements collide:
      *
-     *   - the title card comes up on *Simul aedificant*, at 41.5 s
-     *   - every card is on screen at least 5 s, or it cannot be read
-     *   - the title is still up when the full choir enters, at 49.8 s
+     *   - the title card comes up on *Simul aedificant*, at 42.3 s
+     *   - the title is still up when the full choir enters, at 48.8 s
+     *   - a card is never on screen ahead of the line it names
      *
-     * The first two alone put the end past 46.5 s. There is no film that
-     * satisfies all three and finishes inside 45 s, because the new take
-     * spends 41 s on a verse the old one sang in 25.
+     * There is no film that satisfies all three and finishes inside 45 s,
+     * because this take spends 42 s reaching a line the old one sang at 25.
      *
-     * Raising a bound to make a change pass is usually how a guard dies, so:
-     * the guard is the *minute*, and it still holds. The 45 s figure was a
-     * property of a recording that no longer exists. What actually protects
+     * The guard is the *minute*, and it still holds. What actually protects
      * the player is that the film plays once per new game (a resumed empire
      * never sees it, D308) and Esc skips it at any frame.
      *
      * The alternative was to cut the audio, which would mean editing inside
      * sung phrases to remove 15 s, and an audible splice in the one piece of
-     * music the game leads with is a worse outcome than twenty extra seconds
-     * of a film nobody is forced to watch twice.
+     * music the game leads with is a worse outcome than a film nobody is
+     * forced to watch twice.
      */
     const total = introDurationMs(shots);
     expect(total).toBeGreaterThan(20_000);
@@ -204,8 +250,14 @@ describe('the shape of the flight', () => {
     const reach = (f: { position: Vector3; target: Vector3 }): number =>
       f.position.distanceTo(f.target);
 
-    const opening = reach(shots[0]!.frame(0));
-    const widest = reach(shots[1]!.frame(0));
+    /*
+     * ⚠️ By id, not by index. This read `shots[1]` for "the widest", which
+     * silently became the wordless build beat the moment one was inserted
+     * ahead of the reveal. The test still passed something, just not the
+     * thing it is named after.
+     */
+    const opening = reach(byId('intro-forge').frame(0));
+    const widest = reach(byId('intro-dawn').frame(0));
     const last = reach(shots.at(-1)!.frame(1));
 
     // The opening beat is intimate, not an establishing shot.
@@ -223,10 +275,10 @@ describe('the shape of the flight', () => {
      * added beat is a close orbit over ground the player already occupies, so
      * every frame of it stays far inside what the wide beat shows anyway.
      */
-    const widest = shots[1]!.frame(0);
+    const widest = byId('intro-dawn').frame(0);
     const widestReach = widest.position.distanceTo(widest.target);
     for (let i = 0; i <= 20; i++) {
-      const f = shots[0]!.frame(i / 20);
+      const f = byId('intro-forge').frame(i / 20);
       expect(f.position.distanceTo(f.target)).toBeLessThan(widestReach);
     }
   });

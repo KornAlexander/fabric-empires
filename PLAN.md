@@ -315,6 +315,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D554 | The score played on top of the teaser | Recorded in full in section 78.7 |
 | D555–D557 | The fog was a flight of steps | Recorded in full in section 78.8 |
 | D558–D566 | Three buttons, one of them lit | Recorded in full in section 79 |
+| D567–D574 | The film was singing along to the wrong words | Recorded in full in section 80 |
 
 ### 28. Cheat codes
 
@@ -7019,4 +7020,124 @@ requires two.
 
 ---
 
-*Last updated: 25 August 2026*
+## 80. The film was singing along to the wrong words
+
+Alexander, on the opening: *"the text on the starting video is not matching the
+song. Make sure the text appears exactly when it is in the song. I know will be
+fairly quick most of it at the end. But that is okay."*
+
+The prediction in that last sentence turned out to be exactly right, which is
+worth noting before anything else: he could hear the shape of the song from
+watching a film that disagreed with it.
+
+### The marks were wrong by most of a film
+
+`ANTHEM_MARKS` says where each sung line begins. Measured against the
+recording:
+
+| line | the marks said | actually sung |
+| --- | --- | --- |
+| *Fabrica* (soloist, alone) | 0.0 s | 0.65 s |
+| *Ex nihilo terra surgit* | 9.0 s | **26.88 s** |
+| *Flumina viam inveniunt* | 20.6 s | **30.70 s** |
+| *Manus parvae, manus magnae* | 29.4 s | **37.22 s** |
+| *Simul aedificant* | 41.5 s | **42.28 s** |
+| full choir | 49.8 s | 48.76 s |
+
+*Ex nihilo* was on screen for eighteen seconds before anyone sang it.
+
+⚠️ **This is the third time this file has been wrong, and the second time it
+was wrong immediately after being "fixed".** Section 41 had the cards one
+passage early. The Pro re-recording made them early again, and the correction
+re-measured the track by watching for spectral change in the band the voices
+occupy.
+
+**That method cannot tell a sung line from a hummed one.** The lyric sheet says
+Verse 1 enters with *"choir hums beneath"*, so the vocal band lights up at 9 s
+and stays lit, and the measurement dutifully reported a line that nobody sings
+for another eighteen seconds. It was not a sloppy measurement; it was a precise
+measurement of the wrong thing.
+
+The marks now come from a forced alignment of the audio against the known
+lyrics (faster-whisper `large-v3`, Latin, word timestamps), cross-checked
+against a second model, against a re-run over isolated windows, and against
+pitch tracking for the unaccompanied opening. A recogniser knows the difference
+between a word and a vowel. A spectrum does not.
+
+⚠️ **The opening was the one mark that was already right.** pYIN finds a
+sustained monophonic note at 312 Hz from 0.65 s to 3.45 s while the bass is
+still at −60 dB: the boy soprano, alone. Worth stating because the previous
+correction "fixed" `forge` from 0 to a value derived from the accompaniment,
+and moving a correct number is how the next person loses confidence in all of
+them.
+
+### Thirteen seconds where nothing is sung
+
+The alignment turned up something no amount of re-timing would have solved:
+between *Texamus una* (ends 13.6 s) and *Ex nihilo* (26.9 s) **the anthem sings
+no words at all**. The choir hums, the strings enter, the piece climbs.
+
+A card held across that names a line nobody is singing, which is the same fault
+as showing one early, only slower. So the film gained a sixth beat that carries
+no text: the camera leaves the tight turn on the home tile and climbs through
+the build, and the wide map arrives on the downbeat of *out of nothing, the
+land rises* rather than seconds before it.
+
+The rest of the film is then exactly as quick as Alexander guessed: 3.8 s,
+6.5 s, 5.1 s, and the title.
+
+### The cards now follow the recording, not a stopwatch
+
+Beats used to accumulate: each shot ran its `durationMs` from wherever the
+previous one finished. That is fine on a smooth machine and drifts one way only
+on any other, since a dropped frame or a late audio start pushes every later
+card out and nothing pulls it back.
+
+Each beat now takes its length from `anthem.at` at the moment it starts, so a
+beat that is already late gets a shorter shot instead of an even later one.
+Measured on the deployed build, against the real audio clock:
+
+| card | sung at | appeared | error |
+| --- | --- | --- | --- |
+| *Fabrica* | 0.65 s | 0.09 s | card up first, correctly |
+| (no card) | 13.60 s | 13.84 s | +0.24 s |
+| *Ex nihilo terra surgit* | 26.88 s | 26.96 s | +0.08 s |
+| *Flumina viam inveniunt* | 30.70 s | 30.71 s | **+0.01 s** |
+| *Manus parvae, manus magnae* | 37.22 s | 37.23 s | **+0.01 s** |
+| FABRIC EMPIRES | 42.28 s | 42.37 s | +0.09 s |
+
+### What the tests were and were not protecting
+
+`intro.test.ts` was green through all of this, because it imports the marks it
+is checking. It can prove the film agrees with `ANTHEM_MARKS`; it cannot prove
+`ANTHEM_MARKS` agrees with the mp3, and no unit test can. **The audio is the
+thing under test and it is not in the repository.** What the suite gained
+instead is the other half of the property: a card must also come *down* as the
+next line starts, which is what a single card spanning three lines violated.
+
+⚠️ Two guards had to move, and it is worth being explicit that this is not the
+usual "raise the bound until it passes". The 5 s minimum per card is now 3.5 s
+because *Ex nihilo terra surgit* is sung for 3.8 s: a 5 s card would still be
+up while the next line played, which is the exact defect the file exists to
+prevent. The song sets the length of a beat. What is still ours to get wrong is
+a card too brief to read.
+
+⚠️ And one test was quietly measuring the wrong shot. `shots[1]` meant "the
+wide reveal" until a beat was inserted ahead of it, after which the test named
+one thing and asserted about another while staying green. Beats are addressed
+by id now.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D567 | ⚠️ **Marks come from forced alignment against the lyrics, never from band energy** | A hummed choir lights up the vocal band. The previous method put a line 18 s before it is sung and looked rigorous doing it |
+| D568 | Cross-check every mark with a second model, isolated windows, and pitch tracking | `large-v3` skipped *Ex nihilo* entirely; `medium` found it. One recogniser is one opinion |
+| D569 | ⚠️ **A sixth beat, carrying no text, for the wordless build** | Nothing is sung for 13.3 s. A card held over it names a line nobody is singing |
+| D570 | ⚠️ **Each beat is timed from `anthem.at`, not from the end of the last shot** | Accumulated durations drift one way only. Anchoring makes a late beat shorter instead of making the next one later |
+| D571 | Fall back to the authored duration when no anthem file is present | There is nothing to sync to, and a build without the mp3 must still play the film |
+| D572 | The minimum card is 3.5 s, not 5 s | The shortest sung line is 3.8 s. A 5 s floor would guarantee an overhang, which is the defect itself |
+| D573 | Cards must come down as the next line starts, as a test | "Lands on its line" was only half the property. One card spanning three lines satisfied the old half |
+| D574 | ⚠️ **Beats are addressed by id in tests, never by index** | Inserting a beat silently repointed `shots[1]` from the reveal to the build, and the test passed while meaning something else |
+
+---
+
+*Last updated: 26 August 2026*

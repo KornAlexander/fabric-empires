@@ -8,10 +8,10 @@
  * the game is currently lit for. Two players who compare their openings are
  * looking at two different films.
  *
- * The five beats are the five sung passages of the anthem, in order, which is
- * what makes the film and the song the same text rather than a picture with
- * music laid over it. The last card is the only English in the sequence, and
- * it is the only thing the sequence is actually for:
+ * The cards are the sung passages of the anthem, in order, which is what makes
+ * the film and the song the same text rather than a picture with music laid
+ * over it. The last card is the only English in the sequence, and it is the
+ * only thing the sequence is actually for:
  *
  *   Learn Fabric. Learn as a family.
  *
@@ -23,10 +23,23 @@
  *
  * ⚠️ **They are therefore measurements of ONE PERFORMANCE, and do not survive
  * a re-generation.** Re-recording the anthem on the Pro plan produced a take
- * that is roughly 1.6 times slower through the same words, and the film went
- * straight back to showing each card ahead of its line. That is not a bug in
- * either the film or the song; it is what happens when a constant describes an
- * artefact that got replaced. `ANTHEM_MARKS` is the one place to fix it.
+ * that is slower through the same words, and the film went straight back to
+ * showing each card ahead of its line. That is not a bug in either the film or
+ * the song; it is what happens when a constant describes an artefact that got
+ * replaced. `ANTHEM_MARKS` is the one place to fix it.
+ *
+ * ⚠️ **And it survived a second correction that was itself wrong.** The marks
+ * below were re-measured once by watching for spectral change in the vocal
+ * band, and that method cannot tell a sung line from a hummed one: the choir
+ * hums under the whole of the build, so it read the hum as the verse and put
+ * *Ex nihilo* at 9.0 s when it is sung at 26.9 s. Every middle card was then
+ * about eighteen seconds early, which is most of a film.
+ *
+ * The marks are now taken from a forced alignment of the recording against the
+ * lyric sheet (faster-whisper large-v3, Latin, word timestamps), cross-checked
+ * against a second model and against pitch tracking for the unaccompanied
+ * opening. That is a method that knows the difference between a word and a
+ * vowel, which the spectrum does not.
  */
 
 import { Vector3 } from 'three';
@@ -40,40 +53,45 @@ import {
 /**
  * Where each sung line begins, in milliseconds into the anthem.
  *
- * The lines were located by decoding the track and looking for where the
- * spectrum changes in the band the voices occupy. The unaccompanied opening
- * was found by watching for the arrival of low-frequency energy, since a solo
- * treble voice has almost none.
+ * Located by aligning the recording against the known lyrics, word by word.
  *
- * | mark | measured | the old free-tier take, for comparison |
+ * | line | sung at | what the spectrum claimed |
  * | --- | --- | --- |
- * | accompaniment enters | 8.46 s | 4.60 s |
- * | *Ex nihilo terra surgit* | 8.99 s | 5.35 s |
- * | *Flumina viam inveniunt* | 20.61 s | 12.44 s |
- * | *Manus parvae, manus magnae* | 29.44 s | 18.29 s |
- * | *Simul aedificant* | 41.52 s | 24.79 s |
- * | full choir | 49.76 s | 30.54 s |
+ * | *Fabrica* (soloist, alone) | 0.65 s | 8.46 s |
+ * | *Texamus una* ends | 13.6 s | |
+ * | *Ex nihilo terra surgit* | 26.88 s | 8.99 s |
+ * | *Flumina viam inveniunt* | 30.70 s | 20.61 s |
+ * | *Manus parvae, manus magnae* | 37.22 s | 29.44 s |
+ * | *Simul aedificant* | 42.28 s | 41.52 s |
+ * | full choir | 48.76 s | 49.76 s |
+ *
+ * ⚠️ **Nothing at all is sung between 13.6 s and 26.9 s.** The choir hums and
+ * the orchestra builds, and that is why the spectrum was fooled. It is also
+ * why the film has a beat with no card on it: text on screen during those
+ * thirteen seconds is text that names nothing being sung.
  *
  * ⚠️ **One source of truth, deliberately.** These numbers used to exist twice,
- * once as five `durationMs` values here and once as a `SUNG_AT` table in the
- * test, with nothing to make them agree. Two copies of a measurement is two
- * chances to update one of them.
+ * once as `durationMs` values here and once as a `SUNG_AT` table in the test,
+ * with nothing to make them agree. Two copies of a measurement is two chances
+ * to update one of them.
  */
 export const ANTHEM_MARKS = {
-  /** The film opens here, on the unaccompanied voice. */
+  /** The film opens here. The soloist's first *Fabrica* lands at 0.65 s. */
   forge: 0,
-  /** *Ex nihilo terra surgit*, just after the strings come in at 8.46 s. */
-  dawn: 8_990,
+  /** *Texamus una* is finished. The choir hums, and no words follow for 13 s. */
+  build: 13_600,
+  /** *Ex nihilo terra surgit*, where Verse 1 actually starts. */
+  dawn: 26_880,
   /** *Flumina viam inveniunt*. */
-  rivers: 20_610,
+  rivers: 30_700,
   /** *Manus parvae, manus magnae*. */
-  hands: 29_440,
+  hands: 37_220,
   /** *Simul aedificant*, where the title card belongs. */
-  title: 41_520,
+  title: 42_280,
   /** The full choir. The title must still be on screen for this. */
-  chorus: 49_760,
+  chorus: 48_760,
   /** Where the film stops, a little past the choir's entry. */
-  end: 52_800,
+  end: 53_500,
 } as const;
 
 /** How long a beat runs, from its own mark to the next one. */
@@ -111,10 +129,10 @@ export function introShots(world: IntroWorld): readonly CinematicShot[] {
    * did.** The opening lifts the fog while it runs, so a longer film could
    * easily mean giving away more of a map the player is about to have hidden
    * from them again. A close shot on the one tile they have already explored
-   * adds five seconds and reveals nothing.
+   * adds seconds and reveals nothing.
    *
-   * It also earns the next cut. The wide reveal now lands on *out of nothing,
-   * the land rises* instead of being spent on an intro nobody is singing yet.
+   * It runs exactly as long as the soloist does, and hands over the moment
+   * *Texamus una* is finished.
    */
   const forge = orbitShot({
     id: 'intro-forge',
@@ -126,7 +144,35 @@ export function introShots(world: IntroWorld): readonly CinematicShot[] {
     toHeight: 3.4,
     sweepRad: 0.34,
     startAngleRad: -1.2,
-    durationMs: beat('forge', 'dawn'),
+    durationMs: beat('forge', 'build'),
+  });
+
+  /*
+   * Beat half. The climb, with nothing written on it.
+   *
+   * ⚠️ **The only card-less beat, and the reason is the recording.** Between
+   * *Texamus una* and *Ex nihilo terra surgit* the anthem sings no words for
+   * thirteen seconds: the choir hums, the strings come in underneath, and the
+   * piece climbs towards the verse. A card held across that is a card naming a
+   * line nobody is singing, which is the same fault as showing it early, only
+   * slower.
+   *
+   * So the film says nothing and moves instead. The camera leaves the tight
+   * turn on the home tile and climbs, which spends the build on the one thing
+   * a build is for, and earns the cut: the wide map arrives on the downbeat of
+   * *out of nothing, the land rises* rather than several seconds before it.
+   */
+  const build = orbitShot({
+    id: 'intro-build',
+    title: '',
+    subtitle: '',
+    centre: home,
+    radius: extent * 0.2,
+    fromHeight: 3.4,
+    toHeight: extent * 0.5,
+    sweepRad: 0.5,
+    startAngleRad: -0.86,
+    durationMs: beat('build', 'dawn'),
   });
 
   /*
@@ -211,7 +257,7 @@ export function introShots(world: IntroWorld): readonly CinematicShot[] {
     durationMs: beat('title', 'end'),
   });
 
-  return [forge, dawn, rivers, hands, title];
+  return [forge, build, dawn, rivers, hands, title];
 }
 
 /** How long the whole sequence runs, before anyone skips it. */

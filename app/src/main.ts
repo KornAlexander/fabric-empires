@@ -3003,12 +3003,36 @@ async function playOpening(): Promise<void> {
   }
 
   try {
+    /*
+     * ⚠️ **Each beat is measured from the anthem's own clock, not from the
+     * end of the last shot.**
+     *
+     * Shot lengths used to accumulate: every beat ran `durationMs` from
+     * whenever the previous one happened to finish. That is fine on a smooth
+     * machine and wrong on any other, because a dropped frame, a slow fog
+     * rebuild or an audio start that lags the film pushes every later card
+     * out and never pulls it back. The cards drift away from the song in one
+     * direction only.
+     *
+     * Anchoring to `anthem.at` makes each cut land where the recording says
+     * it should, whatever happened during the beat before it. A beat that is
+     * already late gets a shorter shot rather than an even later one.
+     */
+    let mark = 0;
     for (const shot of shots) {
       if (finished || openingSkipped) break;
+      mark += shot.durationMs;
       // ⚠️ The Latin titles are NOT translated. They are the words of the anthem
       // and the same in every language, which is the whole reason the film uses
       // Latin (D255). Only the English glosses beneath them change.
-      cinemaOverlay.show(shot.title, t(shot.subtitle));
+      //
+      // A beat with no title is the anthem's wordless build, and it gets no
+      // card at all rather than an empty one.
+      if (shot.title) {
+        cinemaOverlay.show(shot.title, t(shot.subtitle));
+      } else {
+        cinemaOverlay.hide();
+      }
       // The fog falls on the last beat, under the title, rather than after the
       // sequence has ended. Letting it happen off screen wastes the one moment
       // the player can see what was taken away from them.
@@ -3017,7 +3041,17 @@ async function playOpening(): Promise<void> {
         fogSignature = '';
         refreshFog();
       }
-      await scene.cinema.play(shot);
+      /*
+       * With no anthem file there is nothing to sync to, so the authored
+       * length stands. The floor keeps a very late start from collapsing a
+       * beat into a single frame, which would read as a glitch rather than as
+       * a cut.
+       */
+      const playing = anthem.available && anthem.at > 0;
+      const remaining = playing
+        ? Math.max(900, mark - anthem.at * 1000)
+        : shot.durationMs;
+      await scene.cinema.play({ ...shot, durationMs: remaining });
     }
   } finally {
     revealingForOpening = false;
