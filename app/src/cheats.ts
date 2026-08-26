@@ -35,7 +35,17 @@
  */
 
 import {
+  ANTAGONIST_FACTION_ID,
+  MAX_WALL_LEVEL,
   PLAYER_FACTION_ID,
+  UNIT_TYPES,
+  cityAt,
+  hexNeighbours,
+  hexKey,
+  maxWallHp,
+  promotionFor,
+  rankInfo,
+  unitAt,
   unitType,
   unitsOf,
   type GameState,
@@ -43,7 +53,7 @@ import {
   type UnitTypeId,
 } from '@fabric-empires/engine';
 
-export type CheatCategory = 'treasury' | 'army' | 'war' | 'exam';
+export type CheatCategory = 'treasury' | 'army' | 'war' | 'world' | 'exam';
 
 /**
  * The chord that answers a question for you.
@@ -61,6 +71,14 @@ export interface CheatContext {
   readonly selectedUnitId: string | undefined;
   /** Open the Proctor's paper. Resolves when it is over. */
   readonly faceProctor: () => void;
+  /**
+   * Whatever was typed after the code, lower-cased and unspaced.
+   *
+   * Empty for every code that takes no argument, which is most of them. A
+   * code that wants one says so with `takesArgument`, because otherwise
+   * `provisionprofiler` would simply be an unknown code.
+   */
+  readonly argument: string;
 }
 
 export interface CheatOutcome {
@@ -82,6 +100,14 @@ export interface Cheat {
   readonly category: CheatCategory;
   /** Shown by the `help` code, so it has to read like a menu item. */
   readonly describe: string;
+  /**
+   * Whether text after the code belongs to it.
+   *
+   * ⚠️ Opt-in rather than automatic, so a typo is still an unknown code. If
+   * every code swallowed a suffix, `onelakes` would silently run `onelake` and
+   * the console would stop being able to tell anybody they had mistyped.
+   */
+  readonly takesArgument?: boolean;
   readonly apply: (ctx: CheatContext) => CheatOutcome;
 }
 
@@ -106,26 +132,17 @@ function grant(
   return { ...state, factions };
 }
 
-/** A free hex on or beside a hex, for putting a conjured unit down. */
+/**
+ * A free hex on or beside a hex, for putting a conjured unit down.
+ *
+ * ⚠️ Delegates to `nearestFreeSpot`, which searches outward in rings. The
+ * original looked only at the origin and its six neighbours, so `directlake`,
+ * `mirrored` and `provision` all reported "no room beside your capital" as
+ * soon as a capital had a few units around it, which is most of the time you
+ * would want to conjure another one.
+ */
 function freeSpotNear(state: GameState, origin: Hex): Hex | undefined {
-  const taken = new Set(
-    [...state.units.values()].map((u) => `${u.hex.q},${u.hex.r}`),
-  );
-  const candidates: Hex[] = [
-    origin,
-    { q: origin.q + 1, r: origin.r },
-    { q: origin.q - 1, r: origin.r },
-    { q: origin.q, r: origin.r + 1 },
-    { q: origin.q, r: origin.r - 1 },
-    { q: origin.q + 1, r: origin.r - 1 },
-    { q: origin.q - 1, r: origin.r + 1 },
-  ];
-  return candidates.find((h) => {
-    const key = `${h.q},${h.r}`;
-    if (taken.has(key)) return false;
-    const tile = state.map.tiles.get(key);
-    return tile !== undefined && tile.terrain !== 'onelake';
-  });
+  return nearestFreeSpot(state, origin);
 }
 
 /** Where the player's forces are, for spawning things near them. */
@@ -160,6 +177,57 @@ function conjure(
 }
 
 // The codes ---------------------------------------------------------------
+
+/** The player's nearest town, which is what most of the war codes act on. */
+function playerTown(state: GameState) {
+  return [...state.cities.values()].find((c) => c.factionId === PLAYER_FACTION_ID);
+}
+
+/** Free neighbours of a hex, in a stable order, that a unit could stand on. */
+function openNeighbours(state: GameState, at: Hex): Hex[] {
+  return hexNeighbours(at).filter((hex) => standable(state, hex));
+}
+
+/** Whether something could be placed here at all. */
+function standable(state: GameState, hex: Hex): boolean {
+  const tile = state.map.tiles.get(hexKey(hex));
+  if (!tile || tile.terrain === 'onelake' || tile.terrain === 'semanticPeaks') return false;
+  return !unitAt(state, hex) && !cityAt(state, hex);
+}
+
+/**
+ * The nearest empty tile, searching outward.
+ *
+ * ⚠️ **Rings, not just the six neighbours.** The one-ring version failed on
+ * exactly the board these codes exist for: measured on a real save at turn 12,
+ * three of six new codes reported "no room" because the town was already
+ * ringed by units. A test affordance that gives up when the map gets
+ * interesting is no affordance at all.
+ *
+ * Bounded, because an enclosed lake or a full map must end the search rather
+ * than spiral off the edge of the world for ever.
+ */
+function nearestFreeSpot(state: GameState, origin: Hex, maxRings = 6): Hex | undefined {
+  if (standable(state, origin)) return origin;
+  let frontier: Hex[] = [origin];
+  const seen = new Set<string>([hexKey(origin)]);
+
+  for (let ring = 0; ring < maxRings; ring += 1) {
+    const next: Hex[] = [];
+    for (const hex of frontier) {
+      for (const neighbour of hexNeighbours(hex)) {
+        const key = hexKey(neighbour);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        if (standable(state, neighbour)) return neighbour;
+        if (state.map.tiles.has(key)) next.push(neighbour);
+      }
+    }
+    if (next.length === 0) return undefined;
+    frontier = next;
+  }
+  return undefined;
+}
 
 export const CHEATS: readonly Cheat[] = Object.freeze([
   {
@@ -241,6 +309,232 @@ export const CHEATS: readonly Cheat[] = Object.freeze([
     },
   },
   {
+    code: 'provision',
+    category: 'army',
+    takesArgument: true,
+    describe: 'provision <unit>: muster any unit beside your capital. Bare code lists them.',
+    apply: ({ state, argument }) => {
+      // ⚠️ `UNIT_TYPES` is a Record keyed by id, not an array.
+      const types = Object.values(UNIT_TYPES).map((t) => t.id);
+      if (!argument) {
+        return { ok: false, message: `Provision what? ${types.join(', ')}` };
+      }
+      /*
+       * ⚠️ Matched against the id with punctuation and case stripped, because
+       * the console has already removed the spaces: a player typing
+       * "provision direct lake titan" arrives here as "directlaketitan", and
+       * refusing that while accepting "directLakeTitan" would be a riddle.
+       */
+      const wanted = types.find((id: UnitTypeId) => id.toLowerCase() === argument);
+      if (!wanted) {
+        return { ok: false, message: `No such unit: ${argument}. Try one of ${types.join(', ')}` };
+      }
+      const anchor = playerAnchor(state);
+      if (!anchor) return { ok: false, message: 'You have nowhere to muster.' };
+      const next = conjure(state, wanted, anchor);
+      return next
+        ? { ok: true, state: next, message: `${unitType(wanted).label} reports for duty.` }
+        : { ok: false, message: 'No room beside your capital.' };
+    },
+  },
+  {
+    code: 'noisyneighbour',
+    category: 'war',
+    describe: 'A hostile ring closes on your town, ready to storm it next turn.',
+    apply: ({ state }) => {
+      const town = playerTown(state);
+      if (!town) return { ok: false, message: 'You have no town to besiege.' };
+
+      const spots = openNeighbours(state, town.hex);
+      /*
+       * ⚠️ A full ring is not a failure. Somebody already besieging the town
+       * is the state this code exists to produce, so reporting "no room" there
+       * tells the player the code is broken at the moment it has nothing left
+       * to do. Only a ring with no hostiles AND no space is a real refusal.
+       */
+      const already = hexNeighbours(town.hex).filter((hex) => {
+        const sitting = unitAt(state, hex);
+        return sitting !== undefined && sitting.factionId !== PLAYER_FACTION_ID;
+      }).length;
+      if (spots.length === 0) {
+        return already > 0
+          ? { ok: true, message: `${town.name} is already invested by ${already}. End the turn.` }
+          : { ok: false, message: 'No room around your town.' };
+      }
+
+      const units = new Map(state.units);
+      let id = state.nextEntityId;
+      for (const hex of spots) {
+        const key = `siege-${id}`;
+        units.set(key, {
+          id: key,
+          typeId: 'pipelineRunner',
+          factionId: ANTAGONIST_FACTION_ID,
+          hex,
+          hp: 100,
+          /*
+           * ⚠️ Moves left, unlike the other spawn codes. A besieger with a
+           * spent turn just stands there, and the whole point of this code is
+           * to watch the assault land on the next End turn.
+           */
+          movesLeft: 1,
+          fortified: false,
+        });
+        id += 1;
+      }
+      return {
+        ok: true,
+        state: { ...state, units, nextEntityId: id },
+        message: `${spots.length} raiders invest ${town.name}. End the turn to be attacked.`,
+      };
+    },
+  },
+  {
+    code: 'firewall',
+    category: 'war',
+    describe: 'A walled rival town appears next door, to practise assaults on.',
+    apply: ({ state, selectedUnitId }) => {
+      const anchor = selectedUnitId ? state.units.get(selectedUnitId)?.hex : playerAnchor(state);
+      if (!anchor) return { ok: false, message: 'Select a unit, or found something first.' };
+
+      const spot = nearestFreeSpot(state, anchor);
+      if (!spot) return { ok: false, message: 'Nowhere within reach to build it.' };
+
+      const id = `fort-${state.nextEntityId}`;
+      const cities = new Map(state.cities);
+      /*
+       * ⚠️ Every field written out, not spread from an existing town.
+       * The first draft used `...(playerTown(state) ?? {})` as a base, which
+       * quietly inherits whatever that town happens to be building and breaks
+       * entirely for a player who has not founded one.
+       */
+      cities.set(id, {
+        id,
+        factionId: ANTAGONIST_FACTION_ID,
+        hex: spot,
+        name: 'Bastion',
+        kind: 'workspace',
+        hp: 200,
+        wallLevel: MAX_WALL_LEVEL,
+        wallHp: maxWallHp(MAX_WALL_LEVEL),
+        population: 4,
+        rank: 'siedlung',
+        growthStore: 0,
+        boundSkills: [],
+        unrest: 0,
+        ignoredReviews: 0,
+        reviewBonusUntilTurn: 0,
+        lastReviewTurn: -1,
+        productionProgress: 0,
+        lastRaidedTurn: -1,
+      } as never);
+      return {
+        ok: true,
+        state: { ...state, cities, nextEntityId: state.nextEntityId + 1 },
+        message: 'A walled Bastion stands next door. Attack it to see the tactics.',
+      };
+    },
+  },
+  {
+    code: 'spill',
+    category: 'war',
+    describe: 'Your town drops to half health, so you can see what damage looks like.',
+    apply: ({ state }) => {
+      const town = playerTown(state);
+      if (!town) return { ok: false, message: 'You have no town to damage.' };
+      const cities = new Map(state.cities);
+      cities.set(town.id, { ...town, hp: Math.max(1, Math.floor(town.hp / 2)) });
+      return {
+        ok: true,
+        state: { ...state, cities },
+        message: `${town.name} is battered. It will not mend on its own.`,
+      };
+    },
+  },
+  {
+    code: 'scaleup',
+    category: 'world',
+    describe: 'Your town gains the citizens for its next rank.',
+    apply: ({ state }) => {
+      const town = playerTown(state);
+      if (!town) return { ok: false, message: 'You have no town to grow.' };
+
+      /*
+       * ⚠️ Grants POPULATION, not the rank itself.
+       *
+       * Promotion also needs retained knowledge, and that lives on the other
+       * side of the D35 line in the spaced-repetition data. A code that set
+       * `rank` directly would step over the one gate this game exists to make
+       * you earn, and would leave a Township whose Library says nothing is
+       * known. This hands over the half that is a game resource and leaves the
+       * half that is learning alone.
+       */
+      const cities = new Map(state.cities);
+      cities.set(town.id, { ...town, population: town.population + 4 });
+      const next = promotionFor({ ...town, population: town.population + 4 }, () => 1);
+      return {
+        ok: true,
+        state: { ...state, cities },
+        message: next
+          ? `${town.name} has the citizens for ${rankInfo(next.id).label}.`
+          : `${town.name} grows by four citizens.`,
+      };
+    },
+  },
+  {
+    code: 'lineage',
+    category: 'world',
+    describe: 'Trace the whole map: every tile becomes explored.',
+    apply: ({ state }) => {
+      const explored = new Set(state.explored);
+      const before = explored.size;
+      for (const key of state.map.tiles.keys()) explored.add(key);
+      /*
+       * ⚠️ Explored, NOT visible, and the difference is the point. This lifts
+       * the black; it does not hand over a live feed of what is standing on
+       * the ground now. Towns still have to be walked past before they are
+       * remembered, which keeps the memory honest about what was actually
+       * seen.
+       */
+      return {
+        ok: true,
+        state: { ...state, explored },
+        message: `${explored.size - before} tiles traced. What stands on them is still yours to find.`,
+      };
+    },
+  },
+  {
+    code: 'shortcut',
+    category: 'treasury',
+    describe: 'A buried cache appears beside your Profiler, to dig up.',
+    apply: ({ state, selectedUnitId }) => {
+      /*
+       * ⚠️ Placed next to a PROFILER specifically, because only a Profiler can
+       * open one. Dropping it beside an Architect would look like the code had
+       * worked and then nothing would ever happen, which is the most annoying
+       * kind of test affordance.
+       */
+      const digger = selectedUnitId ? state.units.get(selectedUnitId) : undefined;
+      const profiler =
+        digger?.typeId === 'profiler'
+          ? digger
+          : unitsOf(state, PLAYER_FACTION_ID).find((u) => u.typeId === 'profiler');
+      if (!profiler) return { ok: false, message: 'You have no Profiler to dig with.' };
+
+      const spot = nearestFreeSpot(state, profiler.hex);
+      if (!spot) return { ok: false, message: 'Nowhere within reach to bury it.' };
+
+      const id = `treasure-${state.nextEntityId}`;
+      const treasures = new Map(state.treasures);
+      treasures.set(id, { id, hex: spot, resource: 'compute', amount: 60 });
+      return {
+        ok: true,
+        state: { ...state, treasures, nextEntityId: state.nextEntityId + 1 },
+        message: 'A cache is buried beside your Profiler. Walk onto it.',
+      };
+    },
+  },
+  {
     code: 'dropthetable',
     category: 'war',
     describe: 'Every rival unit is destroyed. Their villages still stand.',
@@ -307,6 +601,37 @@ export const CHEATS: readonly Cheat[] = Object.freeze([
 ]);
 
 export function findCheat(input: string): Cheat | undefined {
-  const code = input.trim().toLowerCase().replace(/\s+/g, '');
-  return CHEATS.find((c) => c.code === code);
+  return matchCheat(input)?.cheat;
 }
+
+export interface CheatMatch {
+  readonly cheat: Cheat;
+  /** Whatever followed the code. Empty unless the cheat takes an argument. */
+  readonly argument: string;
+}
+
+/**
+ * Resolve typed text to a code and its argument.
+ *
+ * ⚠️ Exact match first, then the longest matching prefix among codes that
+ * actually take an argument. Longest wins so that adding a code which happens
+ * to start with an existing one cannot silently capture it, and only
+ * argument-taking codes are considered so a typo stays a typo rather than
+ * becoming a near-miss that runs something.
+ */
+export function matchCheat(input: string): CheatMatch | undefined {
+  const code = input.trim().toLowerCase().replace(/\s+/g, '');
+  if (!code) return undefined;
+
+  const exact = CHEATS.find((c) => c.code === code);
+  if (exact) return { cheat: exact, argument: '' };
+
+  const prefixed = CHEATS.filter((c) => c.takesArgument && code.startsWith(c.code)).sort(
+    (a, b) => b.code.length - a.code.length,
+  )[0];
+  if (!prefixed) return undefined;
+  return { cheat: prefixed, argument: code.slice(prefixed.code.length) };
+}
+
+/** The width the help listing needs, so a long code cannot collide with its text. */
+export const CHEAT_CODE_WIDTH = Math.max(...CHEATS.map((c) => c.code.length), 3) + 2;

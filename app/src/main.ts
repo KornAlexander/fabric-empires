@@ -129,7 +129,7 @@ import { createRaidAlert } from './ui/raidAlert.js';
 import { createDuoModal } from './ui/duoModal.js';
 import { createAttract } from './ui/attract.js';
 import { createTreasureFilm } from './ui/treasureFilm.js';
-import { CHEATS, OKAY_CHEAT, findCheat } from './cheats.js';
+import { CHEATS, CHEAT_CODE_WIDTH, OKAY_CHEAT, matchCheat } from './cheats.js';
 import { approachShot, descendShot, orbitShot } from './three/cinematic.js';
 import { introShots } from './intro.js';
 import { createAnthem } from './audio.js';
@@ -397,7 +397,7 @@ function runCheat(raw: string): void {
   if (typed === 'help' || typed === '?') {
     cheats.say('Codes:');
     for (const cheat of CHEATS) {
-      cheats.say(`  ${cheat.code.padEnd(14)} ${cheat.describe}`);
+      cheats.say(`  ${cheat.code.padEnd(CHEAT_CODE_WIDTH)} ${cheat.describe}`);
     }
     /*
      * ⚠️ This used to end "None of them can make you ready. Only answering
@@ -406,20 +406,22 @@ function runCheat(raw: string): void {
      * have been the cheapest possible lie: nobody re-reads help text looking
      * for things that have quietly become false.
      */
-    cheats.say(`  ${'O+K'.padEnd(14)} Held together while a question is open: answers it.`);
+    cheats.say(`  ${'O+K'.padEnd(CHEAT_CODE_WIDTH)} Held together while a question is open: answers it.`);
     cheats.say('  The codes above cannot make you ready. O+K can, and says so on the end screen.');
     return;
   }
 
-  const cheat = findCheat(typed);
-  if (!cheat) {
+  const match = matchCheat(typed);
+  if (!match) {
     cheats.say(`No such code: ${typed}. Try help.`, 'bad');
     return;
   }
+  const cheat = match.cheat;
 
   const outcome = cheat.apply({
     state,
     selectedUnitId,
+    argument: match.argument,
     faceProctor: () => {
       cheats.hide();
       void faceTheProctor();

@@ -23,6 +23,7 @@ function context(overrides: Partial<CheatContext> = {}): CheatContext {
     state: createGameState('FABRIC'),
     selectedUnitId: undefined,
     faceProctor: () => {},
+    argument: '',
     ...overrides,
   };
 }

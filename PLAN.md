@@ -8395,4 +8395,84 @@ turns. The same arrangement before the fix took **zero** damage over four.
 
 ---
 
+## 96. Codes for reaching the parts of the game that are hard to reach
+
+Seven new console codes, so a rule can be looked at in the minute it takes to
+type rather than the forty turns it takes to play.
+
+### Why this is not indulgence
+
+⚠️ **Every rule this project has shipped broken was one nobody could reach.**
+Section 59 shipped the assault dialog without it ever opening in a browser,
+which is why `plantWalledCity` exists. Section 91 could not stage a besieged
+town and left a real defect open for weeks. Section 95 then found that defect,
+and it had been invisible because producing the situation took four turns of
+setup that nobody was going to do twice.
+
+A code is cheaper than a harness: it works in the shipped build, on a real
+save, for the person actually playing.
+
+| code | what it is for |
+| --- | --- |
+| `provision <unit>` | muster any unit, so a type can be tried without building it |
+| `noisyneighbour` | a hostile ring closes on your town, ready to storm it next turn |
+| `firewall` | a walled rival town next door, to practise assaults on |
+| `spill` | your town drops to half, so damage and the health bar are visible |
+| `scaleup` | four citizens, so the rank ladder can be walked |
+| `lineage` | every tile explored |
+| `shortcut` | a buried cache beside your Profiler |
+
+### Two of them stop short on purpose
+
+- ⚠️ **`scaleup` grants citizens, never the rank.** Promotion also needs
+  retained knowledge, which lives on the other side of the D35 line. Setting
+  `rank` would step over the one gate this game exists to make you earn and
+  leave a Township whose Library says nothing is known.
+- ⚠️ **`lineage` sets `explored`, not sight.** It lifts the black; it does not
+  hand over a live feed of what is standing there. Towns still have to be
+  walked past before they are remembered, so section 94's memory keeps telling
+  the truth about what was actually seen.
+
+Neither touches `mastery`, which is the rule the whole file is built on.
+
+### Arguments, without making typos into near-misses
+
+`provision profiler` needed the console to split a code from its argument, and
+the console strips spaces before matching. Prefix matching solves it, but only
+for codes that declare `takesArgument`: if every code swallowed a suffix,
+`onelakes` would quietly run `onelake` and nothing could ever tell the player
+they had mistyped. Longest prefix wins, so a future code beginning with an
+existing one cannot capture it.
+
+### ⚠️ The first version failed on exactly the board it was for
+
+Measured on a real save at turn 12: **three of six new codes returned "no
+room"**, because the town was already ringed by units. They looked only at the
+six adjacent hexes.
+
+`nearestFreeSpot` now searches outward in rings, bounded so an enclosed lake
+ends the search rather than spiralling off the map. ⚠️ The old one-ring finder
+was also behind `conjure`, so `directlake`, `mirrored` and `provision` had all
+been failing the same way for as long as they had existed.
+
+And `noisyneighbour` now treats a full ring as **success**: somebody already
+besieging the town is the state it exists to produce, so saying "no room" there
+reports the code as broken at the moment it has nothing left to do.
+
+The help listing's `padEnd` was a hard-coded 14 while the longest code was 12.
+`noisyneighbour` is 14, which would have printed with no gap before its
+description. The width is derived from the codes now.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D671 | Seven codes for the situations that take turns to reach | Every rule shipped broken here was one nobody could get to quickly |
+| D672 | ⚠️ **`scaleup` grants citizens, not the rank** | Rank needs retained knowledge, which is the one gate that must stay earned |
+| D673 | ⚠️ **`lineage` explores, never reveals occupants** | Otherwise the town memory stops recording what was actually seen |
+| D674 | Arguments only for codes that opt in | A code that swallows any suffix can never report a typo |
+| D675 | ⚠️ **Spawn searches outward in rings, not one ring** | The one-ring version failed on the crowded boards these codes exist for, and had been failing for `directlake` and `mirrored` all along |
+| D676 | A full ring is success for `noisyneighbour` | The town being already invested is the outcome, not an error |
+| D677 | The help column width is derived from the codes | A hard-coded 14 was already one character short of the new longest code |
+
+---
+
 *Last updated: 26 August 2026*
