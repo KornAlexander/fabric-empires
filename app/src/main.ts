@@ -39,6 +39,8 @@ import {
   productionCost,
   isWallTarget,
   maxWallHp,
+  SETTLE_QUESTIONS,
+  settlingBonus,
   memoryOf,
   vacateSeat,
   takeSeat,
@@ -2179,9 +2181,87 @@ function isAdjacent(a: Hex, b: Hex): boolean {
   return (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2 === 1;
 }
 
-function doFound(): void {
+/**
+ * Pick the topics a founding asks about.
+ *
+ * ⚠️ **Due topics first, and that is the whole point of asking here.** Founding
+ * is a natural pause in a turn, so it is the cheapest moment in the game to
+ * make somebody retrieve something they learned twenty turns ago. Asking about
+ * whatever is currently being researched would be easier and would test the
+ * thing already freshest in mind, which is the one thing spaced repetition says
+ * not to do.
+ *
+ * Falls back to current research and then to the graph, so a brand new empire
+ * with nothing due still gets three questions rather than silently getting a
+ * free city.
+ */
+function settleTopics(count: number): string[] {
+  const picked: string[] = [];
+  const add = (id: string | undefined): void => {
+    if (id && !picked.includes(id) && picked.length < count) picked.push(id);
+  };
+
+  for (const id of provider.dueTopics(Date.now())) add(id);
+  add(state.research.current);
+  for (const node of state.topics.nodes) add(node.id);
+  return picked;
+}
+
+/**
+ * Found a city, which is three questions and then a town.
+ *
+ * ⚠️ **The site is validated BEFORE anything is asked.** Asking three questions
+ * and then saying "too close to another city" would waste the one thing the
+ * game is actually spending: the player's attention.
+ *
+ * ⚠️ **Walking out cancels the founding; getting it wrong does not.** Those are
+ * different failures. Closing the modal is a decision not to do this now, and
+ * the Architect should still be standing there afterwards. Answering badly is a
+ * decision to build anyway, and it costs the head start rather than the town,
+ * because `settlingBonus` never goes below zero.
+ */
+async function doFound(): Promise<void> {
   if (!selectedUnitId) return;
-  const result = foundCity(state, selectedUnitId);
+  if (modal.isOpen()) return;
+
+  /*
+   * A dry run purely to check the site. `foundCity` is pure, so the state it
+   * returns here is discarded and the real call happens below with the score.
+   * Duplicating its checks in the app is the alternative, and a second copy of
+   * "can you settle here" is a second copy that can disagree.
+   */
+  const check = foundCity(state, selectedUnitId);
+  if (!check.ok) {
+    log(check.reason, 'bad');
+    return;
+  }
+
+  const architect = selectedUnitId;
+  const topics = settleTopics(SETTLE_QUESTIONS);
+  log(t('Site surveyed. Answer three, and build well.'));
+
+  let total = 0;
+  for (const topicId of topics) {
+    const outcome = await provider.present({
+      kind: 'settle',
+      topicId,
+      tier: 1,
+      timeLimitMs: timeLimit(RESEARCH_TIME_MS),
+    });
+    if (outcome.abandoned) {
+      log(t('The Architect puts the plans away. Nothing is built.'));
+      return;
+    }
+    total += outcome.score;
+  }
+  const score = topics.length > 0 ? total / topics.length : 0;
+
+  /*
+   * ⚠️ Re-checked, because three questions is long enough for the world to
+   * have moved. The modal blocks the map, but a raid resolving underneath it
+   * could have taken the ground or killed the Architect.
+   */
+  const result = foundCity(state, architect, { challengeScore: score });
   if (!result.ok) {
     log(result.reason, 'bad');
     return;
@@ -2189,9 +2269,33 @@ function doFound(): void {
   state = result.state;
   const city = [...state.cities.values()].at(-1);
   log(t('Founded {city}.', { city: city?.name ?? t('a city') }), 'good');
+
+  const bonus = settlingBonus(score);
   if (city) {
+    if (bonus >= 2) {
+      log(
+        t('Your judgement holds. The weather turns fair and {city} is already growing.', {
+          city: city.name,
+        }),
+        'good',
+      );
+    } else if (bonus === 1) {
+      log(
+        t('Sound ground, sound plans. {city} starts with a second household.', {
+          city: city.name,
+        }),
+        'good',
+      );
+    } else {
+      log(
+        t('The plans were guesswork. {city} starts from nothing, as most towns do.', {
+          city: city.name,
+        }),
+      );
+    }
     effects.pulse(city.hex, '#8fd694', 3);
     effects.floatingText(city.hex, city.name, '#cfe6ff', 1.2);
+    if (bonus > 0) effects.floatingText(city.hex, `+${bonus}`, '#8fd694', 1.3);
     void playOnce(
       orbitShot({
         id: 'first-city',
@@ -4128,7 +4232,7 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();
     stepUnit(1);
   } else if (e.key === 'b') {
-    doFound();
+    void doFound();
   } else if (e.key === 'p') {
     doRaid();
   } else if (e.key === 'h') {
@@ -4160,7 +4264,7 @@ el.endTurn.addEventListener('click', doEndTurn);
 el.openLibrary.addEventListener('click', () => library.toggle());
 el.openSeats.addEventListener('click', () => void openSeats());
 el.faceProctor.addEventListener('click', () => void faceTheProctor());
-el.actFound.addEventListener('click', doFound);
+el.actFound.addEventListener('click', () => void doFound());
 el.actRaid.addEventListener('click', doRaid);
 el.actFortify.addEventListener('click', doFortify);
 el.actSkip.addEventListener('click', doSkip);

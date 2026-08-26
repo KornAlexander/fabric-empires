@@ -113,6 +113,25 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
   '{n} turns': '{n} Runden',
 
   /*
+   * Founding a city, which now asks three questions first.
+   *
+   * "Gründung" is the noun a player would use for the founding of a town, and
+   * it reads as the occasion rather than the act, which is what the header of
+   * the question modal wants.
+   */
+  Founding: 'Gründung',
+  'Site surveyed. Answer three, and build well.':
+    'Der Platz ist vermessen. Beantworte drei Fragen und bau gut.',
+  'The Architect puts the plans away. Nothing is built.':
+    'Der Architekt legt die Pläne weg. Es wird nichts gebaut.',
+  'Your judgement holds. The weather turns fair and {city} is already growing.':
+    'Dein Urteil hält stand. Das Wetter wird freundlich, und {city} wächst schon.',
+  'Sound ground, sound plans. {city} starts with a second household.':
+    'Guter Boden, gute Pläne. {city} beginnt mit einem zweiten Haushalt.',
+  'The plans were guesswork. {city} starts from nothing, as most towns do.':
+    'Die Pläne waren geraten. {city} beginnt bei null, wie die meisten Städte.',
+
+  /*
    * The empire table.
    *
    * ⚠️ Called "Empires" and not "Seats", even though the engine calls them

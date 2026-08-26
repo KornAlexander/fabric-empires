@@ -8934,6 +8934,91 @@ the state being genuinely untouched rather than merely claimed to be.
 | D719 | Kept separate from `revealingForOpening` | The opening lifts less on purpose; sharing a flag would show all seven camps in the intro |
 | D720 | The scene is handed `undefined`, not every hex | Identical on screen, and one of them is a per-entity lookup every frame |
 
+## 101. Founding a city asks three questions
+
+Founding was the one important decision the game asked nothing about. Section 93
+gave it advice, so a player could see which site was good, and then the act
+itself was a button press. It is also the decision a player makes fewest times
+and lives with longest, which makes it the best moment in a turn to ask somebody
+to retrieve something.
+
+So an Architect now answers three before the town goes up, and a good showing
+founds a bigger one: two extra citizens for getting all three right, one for a
+decent run.
+
+### ⚠️ Bonus only, and this is the argument
+
+Every other challenge in the game swings both ways. `settlingBonus` deliberately
+does not, and never returns less than zero. Two reasons, both of which come back
+to what the tool is for.
+
+**Founding is how a game starts and how a losing player climbs back.** A rule
+that made a wrong answer worse than never being asked would punish exactly the
+person who most needs to be revising, and the reliable way to dodge that
+punishment would be to stop founding cities, which is to say to stop playing.
+
+**The size of a capital is permanent.** A combat modifier is spent on one blow.
+A city founded small stays small for thirty turns. Compounding a bad answer that
+far forward is not a difficulty setting, it is a grudge.
+
+The tension lives in what is forgone instead: answer badly and you simply do not
+get the head start. That is a real cost without being a trap.
+
+### The two failures are different
+
+⚠️ **Walking out cancels the founding; getting it wrong does not.** Closing the
+modal is a decision not to do this now, and the Architect is still standing
+there afterwards. Answering badly is a decision to build anyway, and it costs
+the head start rather than the town.
+
+⚠️ **The site is checked BEFORE anything is asked, and again after.** Asking
+three questions and then reporting "too close to another city" would waste the
+only thing this feature actually spends, which is attention. It is re-checked
+afterwards because three questions is long enough for the world to move: the
+modal blocks the map, but a raid resolving underneath it could have taken the
+ground or killed the Architect.
+
+### What it asks about
+
+Topics that have fallen **due** come first, then current research, then the
+graph. Asking about whatever is being researched right now would be easier to
+write and would test the thing already freshest in mind, which is the one thing
+spaced repetition says not to do.
+
+⚠️ Population rather than a stored growth surplus, because population is the
+number on screen. A hidden head start toward the next citizen is the same
+arithmetic and looks identical to no reward at all, which is the failure mode
+for anything handed out for answering.
+
+⚠️ The rank is **not** promoted to match. Rank needs retained knowledge as well
+as citizens, and granting it here would give away on turn three what the rest of
+the game asks a player to earn.
+
+⚠️ `SETTLE_QUESTIONS` and `settlingBonus` live in `actions.ts` rather than in
+`settle.ts`, where they read like they belong, because `settle.ts` already
+imports `cityKindFor` from `actions.ts` and importing back would close the
+cycle.
+
+### Verified on the deployed build
+
+Three questions asked, on **three distinct topics**
+(`dp600-q-1-1`, `-2-1`, `-3-1`), all answered correctly, and the city panel then
+read **"Siedlung, Einw. 3"**: founded at three citizens instead of one, still
+rank Siedlung. The log said, in German, that the judgement held, the weather
+turned fair, and the town was already growing.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D721 | Founding asks three questions, not one | It is the decision made fewest times and lived with longest; one question is a toll, three is a moment |
+| D722 | ⚠️ **The bonus never goes below zero** | Punishing a wrong answer here would punish the player who most needs to revise, and the way to dodge it would be to stop playing |
+| D723 | Abandoning cancels the founding; a wrong answer does not | They are different decisions, and only one of them means "not now" |
+| D724 | The site is validated before the questions, and again after | Otherwise three questions are spent to be told the ground was never legal, and the world can move while the modal is up |
+| D725 | Due topics are asked first | Asking about current research tests what is already freshest in mind |
+| D726 | The reward is population, not a hidden growth surplus | The same arithmetic, but one of them is visible and the other looks like no reward |
+| D727 | ⚠️ **Citizens do not buy rank** | Rank needs retained knowledge; granting it would give away what the rest of the game asks a player to earn |
+| D728 | A non-finite score is treated as no answer | NaN sails through the comparisons and founds a city of size NaN, which is not a crash and is worse |
+| D729 | `settle` joins the challenge kinds, with its own modal label | The fall-through would have labelled a founding "Battle", and the raw identifier trap is already recorded |
+
 ---
 
 *Last updated: 27 August 2026*
