@@ -8733,6 +8733,140 @@ machine is holding.
 | D713 | `activeFactionId` moves with the seat in the APP, not in `takeSeat` | That coupling is only correct while one person is at the table; rotation is the multi-human answer |
 | D714 | Networked play is documented, not built | It provisions a database, and the simultaneous-question rendezvous is a build of its own |
 
+## 99. DRAFT: the three exams a Solution Engineer actually has to pass
+
+⚠️ **This section is a PLAN, not a record. Nothing in it has been built.**
+Every other section describes something that shipped; this one describes work
+that has not started, so it carries no decision numbers. They get allocated when
+it is executed, not before, because a decision log that contains intentions
+stops being usable as a record of what was decided.
+
+### Why these three, and the awkward fact underneath
+
+These are the three certifications that matter for the author's role: two that
+are required of a data-focused solution engineer, and one cross-discipline AI
+exam that turns up on several neighbouring role tracks.
+
+⚠️ **The specific requirement matrix is deliberately not written down here.**
+Which exams an employer requires of which internal role is that employer's
+information, this repository is headed for public, and `verify_publishable.py`
+cannot catch it: its own closing note says it "cannot know that a sentence
+should not be said out loud". The exam names, titles and outlines below are all
+published on Microsoft Learn and are quoted freely; the internal pick list is
+not, and is not needed to justify the work.
+
+⚠️ **The shipped campaign teaches an exam that is not among them.** The game
+ships DP-600, and DP-600 is not one of the three. So the tool currently revises
+a certification that is not required, while the ones that are have no campaign
+at all. That is the real argument for this work, and it is worth stating plainly
+because "add more exams" sounds like scope creep until you notice that the one
+already there is the optional one.
+
+DP-600 stays. It is a good campaign, the outline is still published, and Fabric
+analytics knowledge is the day job regardless of what any pick list says.
+
+### What was verified, and when
+
+All three exist and are current. Checked against the published study guides
+rather than from memory, because two of the three were unknown to me and an
+invented outline is precisely the failure this tool exists to avoid:
+
+| Exam | Title | Skills measured as of |
+| --- | --- | --- |
+| DP-700 | Implementing Data Engineering Solutions Using Microsoft Fabric | 21 July 2026 |
+| DP-800 | Developing AI-Enabled Database Solutions (SQL AI Developer Associate) | 12 March 2026 |
+| AI-103 | Developing AI Apps and Agents on Azure | 16 April 2026 |
+
+⚠️ DP-203 is retired and DP-700 is its replacement. Anything written against
+DP-203 is dead content.
+
+### What a campaign costs
+
+`Campaign` in `learn/src/campaign.ts` needs four things, and D35 still holds:
+**no engine change at all**. The outline is transcribed verbatim from the
+published skills-measured list, because the tech tree exists so that studying
+the tree is studying the outline; paraphrasing it quietly makes it a different
+syllabus.
+
+1. `content/<exam>/outline.json`: branches, clusters, skills, with the published
+   weightings.
+2. One antagonist per cluster, each named for the **misconception** its cluster
+   teaches you to stop making. The Silo Horde is not a generic monster; somebody
+   who beats it should be able to say what a silo is.
+3. `content/<exam>/questions/src/<cluster>.json`, then the built bank.
+4. An exam shape: length, pass mark, Proctor threshold, seconds per question.
+
+### ⚠️ Two problems that have to be solved BEFORE any of this is worth starting
+
+**The cluster count breaks the faction balance.** DP-600 has seven clusters and
+therefore seven factions, and seven is a tuned number: the comment on the
+starting roster says seven factions of three units would be twenty-one raiders
+converging on a starting pair, which is why each gets two. The new outlines are
+bigger:
+
+| Exam | Branches | Clusters, and therefore factions |
+| --- | --- | --- |
+| DP-600 (shipped) | 3 | 7 |
+| DP-700 | 3 | 10 |
+| DP-800 | 3 | 11 |
+| AI-103 | 5 | 14 |
+
+Fourteen factions is double the tuned pressure and twice the camps on one
+landmass. `chooseAntagonistCamps` will not fail, because it relaxes spacing
+rather than running out, so the failure mode is not an error: it is a crowded
+map and an unwinnable opening, discovered by playing. Three ways out, and this
+needs deciding before the content is written because it changes what the outline
+files have to contain:
+
+- **Group clusters into fewer factions.** One faction per branch, or per pair of
+  clusters. Cheapest, and it costs the property that beating a faction means
+  taking one nameable branch of knowledge.
+- **Let a faction hold several clusters.** An engine change: `topicCluster`
+  becomes a list. Keeps one faction per idea, breaks the "quizzes on its own
+  cluster" simplicity.
+- **Scale the starting roster to the faction count.** Keeps the mapping, and
+  needs the opening rebalanced and actually played.
+
+**The question bank cannot be generated into the shipped content.** This is the
+rule in `learn/src/generate.ts` and it is the right one:
+
+> A confidently wrong question is worse than no question, because somebody
+> revises the wrong fact and carries it into the exam room.
+
+Generated courses are deliberately kept out of the shipped bank. DP-600 ships
+123 hand-authored questions across seven clusters. Three more exams at that
+density is roughly 450 questions, on subjects where a plausible wrong answer is
+easy to write and expensive to believe. So the bank is the long pole, not the
+outline, and **a campaign with an outline and no bank is the honest intermediate
+state**: `role: 'questions'` campaigns are already exempt from the world
+requirements, and a `world` campaign with a thin bank is worse than no campaign
+because it looks finished.
+
+### Proposed sequencing
+
+1. **DP-700 first.** Closest sibling to DP-600, same product, same vocabulary,
+   and it is the mandatory one. It is also the best test of whether the campaign
+   seam really is subject-agnostic, because if anything is still DP-600-shaped
+   it will show up here first.
+2. **DP-800 second.** Furthest from the existing content (T-SQL, security,
+   CI/CD, embeddings), so it is the honest test of the seam.
+3. **AI-103 last**, and only after the faction-count question is settled, since
+   it is the one with fourteen clusters.
+
+Each one: outline transcribed and checked against the published guide, factions
+named, then the bank built cluster by cluster through the existing review and
+import path rather than written straight into `content/`.
+
+### Open questions, to answer before starting
+
+| Question | Why it blocks |
+| --- | --- |
+| One faction per cluster, per branch, or a scaled roster? | Decides the shape of every outline file, so it cannot be retrofitted cheaply |
+| Does a campaign ship with an empty bank, or not ship until it has one? | Decides whether these are `world` or `questions` campaigns |
+| Who authors and checks the answers? | The tool's whole value is that a question is right; generated content cannot go in the shipped bank |
+| Does DP-420 get a campaign too? | It is the published alternative to DP-800 for the same slot, so it is the other half of a real choice |
+| Is a fundamentals-level AI campaign worth it? | Cheap to add and the least useful to somebody already sitting the associate exams |
+
 ---
 
-*Last updated: 26 August 2026*
+*Last updated: 27 August 2026*
