@@ -188,6 +188,33 @@ export function cityKind(kind: CityKind): CityKindInfo {
   return CITY_KINDS[kind];
 }
 
+/**
+ * A cache buried on the map, opened by answering a question.
+ *
+ * Its own record rather than a flag on the tile, for the reason ruins are:
+ * the tile is map data that never changes after generation, and a treasure is
+ * a thing that gets used up during a game.
+ *
+ * ⚠️ **`amount` shrinks rather than the chest vanishing on a wrong answer.**
+ * The obvious rules are both worse. Emptying it makes one missed question
+ * permanent, which is a harsh thing for a study tool to do at the exact moment
+ * somebody has just discovered they do not know something. Leaving it whole
+ * makes retrying free: step off, step back, and guess until it opens, which
+ * turns the question into an obstacle to click through rather than a question.
+ *
+ * Halving on each failure allows the retry and prices it. The chest is removed
+ * once what is left is not worth carrying, so grinding converges to an empty
+ * hole in three or four attempts instead of running for ever.
+ */
+export interface Treasure {
+  readonly id: string;
+  readonly hex: Hex;
+  /** Which resource is inside. One kind per chest, so the log can be short. */
+  readonly resource: ResourceId;
+  /** What is still in it. Falls on every failed attempt. */
+  readonly amount: number;
+}
+
 export function emptyResources(): Resources {
   return Object.freeze({ data: 0, compute: 0, cu: 0, trust: 0 });
 }

@@ -293,7 +293,10 @@ describe('saves', () => {
   });
 
   it('is at the version this change claims', () => {
-    expect(SAVE_VERSION).toBe(8);
+    // 9 since chests were buried on the map. The bump matters because the
+    // migration for it is a decision rather than a default: an old empire
+    // gets an empty field, not a freshly stocked one.
+    expect(SAVE_VERSION).toBe(9);
   });
 });
 

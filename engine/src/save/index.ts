@@ -11,13 +11,13 @@
  */
 
 import { generateMap, type MapOptions } from '../map/index.js';
-import type { City, Faction, Ruin, Unit } from '../entities/index.js';
+import type { City, Faction, Ruin, Treasure, Unit } from '../entities/index.js';
 import { CITY_RANKS, FIRST_RANK, type CityRank } from '../entities/rank.js';
 import { GENERIC_TOPIC_GRAPH, type TopicGraph } from '../challenge/index.js';
 import { EMPTY_RESEARCH, type ResearchState } from '../rules/research.js';
 import type { Difficulty, GameState } from '../state/index.js';
 
-export const SAVE_VERSION = 8;
+export const SAVE_VERSION = 9;
 
 export interface SaveFile {
   readonly version: number;
@@ -29,6 +29,16 @@ export interface SaveFile {
   readonly units: readonly Unit[];
   readonly cities: readonly City[];
   readonly ruins: readonly Ruin[];
+  /**
+   * Chests still unopened.
+   *
+   * ⚠️ Saved rather than regenerated from the seed, even though placement IS
+   * a pure function of the seed. Regenerating would restock every chest the
+   * player has already emptied on every load, which is both a duplication bug
+   * and an infinite resource supply. The seed decides where they start; the
+   * save decides what is left.
+   */
+  readonly treasures?: readonly Treasure[];
   /**
    * Research progress travels with the save; the topic GRAPH does not.
    * The graph belongs to the challenge provider, so a load takes it from
@@ -59,6 +69,7 @@ export function toSaveFile(state: GameState): SaveFile {
     units: [...state.units.values()],
     cities: [...state.cities.values()],
     ruins: [...state.ruins.values()],
+    treasures: [...state.treasures.values()],
     research: state.research,
     activeFactionId: state.activeFactionId,
     nextEntityId: state.nextEntityId,
@@ -214,6 +225,25 @@ const MIGRATIONS: Readonly<Record<number, (save: SaveFile) => SaveFile>> =
         wallHp: 0,
       })),
     }),
+
+    /**
+     * 8 -> 9: there are chests buried on the map.
+     *
+     * ⚠️ **An existing empire gets none, and that is the only stable answer.**
+     * Burying a fresh field would put a chest under a city founded twenty
+     * turns ago, and would do it again on every load, because nothing in an
+     * old save records which chests had been opened. Placement is a pure
+     * function of the seed, so "regenerate them" and "restock them" are the
+     * same operation.
+     *
+     * The cost is that a game in progress never sees the feature. That is a
+     * fair price for a save that means the same thing every time it is opened.
+     */
+    8: (save) => ({
+      ...save,
+      version: 9,
+      treasures: [],
+    }),
   });
 
 /** The best rank a population would justify if knowledge were not asked for. */
@@ -275,6 +305,16 @@ export function fromSaveFile(
     units: new Map(migrated.units.map((u) => [u.id, u])),
     cities: new Map(migrated.cities.map((c) => [c.id, c])),
     ruins: new Map((migrated.ruins ?? []).map((r) => [r.id, r])),
+    /*
+     * ⚠️ **An older save gets NO treasures, not freshly buried ones.**
+     *
+     * The tempting migration is to run `placeTreasures` for saves that predate
+     * the feature, so an existing empire gets to enjoy it. That would bury a
+     * chest under a city somebody founded twenty turns ago, and would do it
+     * again on every load, because nothing in an old save records which ones
+     * were opened. An empty field is the only answer that is stable.
+     */
+    treasures: new Map((migrated.treasures ?? []).map((t) => [t.id, t])),
     topics,
     research: migrated.research ?? EMPTY_RESEARCH,
     activeFactionId: migrated.activeFactionId,

@@ -111,6 +111,27 @@ from the shipped, owned one. See `tools/media/record-intro.mjs`.
 Everything in the trailer other than the music is the game rendering itself
 live: no shot was staged, composited or drawn by hand.
 
+### The buried-cache films
+
+Two four-second clips play when a Profiler digs up a cache: one as it is found,
+one as it opens. Unlike everything else on the screen, **these are not the game
+rendering itself** and they are not drawn by hand either.
+
+- **Generated with Azure OpenAI (Sora 2).** Prompts and the runner are in
+  `tools/treasure-clips.py`, which is committed; the clips are not.
+- **Owned.** Azure OpenAI output belongs to the customer, so the licence
+  problem that keeps the teaser out of git does not apply here. They are
+  ignored for **size** instead, which is D59's rule and the same footing as the
+  score. Masters sit in `media/treasure-scenes/`.
+- **Silent.** Sora returns an ambient music bed with every clip. The track is
+  stripped before the file is published, because the game's own score is
+  playing underneath.
+- ⚠️ **Nothing in either clip is real.** No real place, no real object, no
+  archive footage. They are photoreal by prompt, which is exactly why this
+  paragraph exists: a viewer cannot tell from the pixels.
+- A clone without them plays both beats as no-ops. The cache is still found and
+  still paid out.
+
 ## Generated questions
 
 The capacity edition can ask a model to draft questions for a topic nobody

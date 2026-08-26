@@ -69,6 +69,15 @@ export interface Scene3DView {
    * taken without reading anything.
    */
   readonly settleSites?: readonly Hex[] | undefined;
+  /**
+   * Buried caches the player has already uncovered ground over.
+   *
+   * ⚠️ **Filtered by the caller, not here.** The scene knows about fog but not
+   * about exploration history: a tile can be fogged now and remembered from
+   * ten turns ago, and a cache found back then should stay on the map. Passing
+   * the list already filtered keeps that judgement in one place.
+   */
+  readonly treasures?: readonly Hex[] | undefined;
   readonly hover?: Hex | undefined;
   /** World-space display offset for a unit that is mid-animation. */
   readonly unitOffset?: ((unitId: string) => { x: number; z: number } | undefined) | undefined;
@@ -303,6 +312,85 @@ function beaconSprite(): CanvasTexture {
   beaconTexture = new CanvasTexture(canvas);
   beaconTexture.colorSpace = SRGBColorSpace;
   return beaconTexture;
+}
+
+/**
+ * Gold, and not the amber the raid float already uses.
+ *
+ * ⚠️ Warm colours are crowded on this map: the attack wash, the "RAIDED" float
+ * and the corruption tint are all in the orange half. This sits higher and
+ * more saturated so a cache does not read as a threat, which is the one
+ * misreading that would actually cost the player something.
+ */
+const TREASURE_COLOUR = '#ffd166';
+
+/**
+ * Bigger than a rank digit, smaller than the settle pin.
+ *
+ * The pin marks one recommendation and should dominate; a cache is a fact and
+ * there may be several on screen at once.
+ */
+const CHEST_PIXELS = 26;
+
+let chestTexture: CanvasTexture | undefined;
+
+/**
+ * A chest, drawn once: a lid, a body, a band and a lock.
+ *
+ * ⚠️ Deliberately a silhouette rather than a detailed little box. At 26 screen
+ * pixels, which is what `sizeAttenuation: false` pins it to at every zoom, the
+ * detail would be sub-pixel mush; what survives at that size is the outline
+ * and the dark keyhole, so those are the only things drawn.
+ */
+function chestSprite(): CanvasTexture {
+  if (chestTexture) return chestTexture;
+
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+
+  const outline = 'rgba(28, 18, 6, 0.92)';
+  const left = 8;
+  const right = size - 8;
+  const lidTop = 16;
+  const seam = 32;
+  const base = size - 10;
+
+  // Body.
+  ctx.fillStyle = TREASURE_COLOUR;
+  ctx.strokeStyle = outline;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.rect(left, seam, right - left, base - seam);
+  ctx.fill();
+  ctx.stroke();
+
+  // Lid: a half-round, so the shape is not just a rectangle at a glance.
+  ctx.beginPath();
+  ctx.moveTo(left, seam);
+  ctx.lineTo(left, lidTop + 6);
+  ctx.quadraticCurveTo(size / 2, lidTop - 12, right, lidTop + 6);
+  ctx.lineTo(right, seam);
+  ctx.closePath();
+  ctx.fillStyle = '#f0b445';
+  ctx.fill();
+  ctx.stroke();
+
+  // The seam and the lock, which are what carry the shape when it is small.
+  ctx.strokeStyle = outline;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(left, seam);
+  ctx.lineTo(right, seam);
+  ctx.stroke();
+  ctx.fillStyle = outline;
+  ctx.fillRect(size / 2 - 5, seam - 5, 10, 14);
+
+  chestTexture = new CanvasTexture(canvas);
+  chestTexture.colorSpace = SRGBColorSpace;
+  return chestTexture;
 }
 
 
@@ -859,6 +947,20 @@ export function createScene3D(
           addSprite(hex, rankTexture(index + 1), RANK_PIXELS, 0.55);
           if (index === 0) addSprite(hex, beaconSprite(), BEACON_PIXELS, 1.9, 1.5);
         });
+      }
+      /*
+       * Buried caches: a warm ring and a chest.
+       *
+       * ⚠️ Drawn after the settle rings on purpose. The two can land on the
+       * same hex (a cache does not care that the site is good farmland), and
+       * the gold has to win: a settle ring is advice the player can ignore,
+       * a cache is a thing that is actually there.
+       */
+      if (view.treasures) {
+        for (const hex of view.treasures) {
+          addRing(hex, TREASURE_COLOUR, 0.5, 0.052);
+          addSprite(hex, chestSprite(), CHEST_PIXELS, 0.9);
+        }
       }
       if (view.hover && state.map.tiles.has(hexKey(view.hover))) {
         addPatch(view.hover, HOVER_COLOUR, 0.1, 0.05);

@@ -165,7 +165,9 @@ export function createQuestionModal(): QuestionModal {
           ? t('Research')
           : request.kind === 'unrest'
             ? t('Unrest')
-            : t('Battle');
+            : request.kind === 'treasure'
+              ? t('Treasure')
+              : t('Battle');
     const skill = el('span', 'fe-skill');
     skill.textContent = question.sourceSkillBullet;
     const timerLabel = el('span', 'fe-timer');

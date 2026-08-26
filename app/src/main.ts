@@ -73,15 +73,19 @@ import {
   terrain,
   tileYields,
   topicById,
+  treasureAt,
   unitAt,
   unitType,
   unitsOf,
+  claimTreasure,
   type AiEvent,
   type ChallengeOutcome,
   type ChallengeRequest,
   type GameState,
   type Hex,
   type ReachableTile,
+  type ResourceId,
+  type Treasure,
   type Unit,
   type UnitTypeId,
 } from '@fabric-empires/engine';
@@ -123,6 +127,7 @@ import { createCheatConsole } from './ui/cheatConsole.js';
 import { createRaidAlert } from './ui/raidAlert.js';
 import { createDuoModal } from './ui/duoModal.js';
 import { createAttract } from './ui/attract.js';
+import { createTreasureFilm } from './ui/treasureFilm.js';
 import { CHEATS, OKAY_CHEAT, findCheat } from './cheats.js';
 import { approachShot, descendShot, orbitShot } from './three/cinematic.js';
 import { introShots } from './intro.js';
@@ -338,6 +343,7 @@ function timeLimit(base: number): number {
  * frame and must not be owned by something that is allowed to be lazy.
  */
 const effects = createEffects();
+const treasureFilm = createTreasureFilm();
 const banner = createBattleBanner();
 const choice = createChoiceModal();
 const raidAlert = createRaidAlert();
@@ -1559,7 +1565,18 @@ async function actOn(target: Hex): Promise<void> {
   state = moved.state;
   const landed = state.units.get(unit.id);
   if (landed && (landed.hex.q !== from.q || landed.hex.r !== from.r)) {
-    void walk(unit.id, from, moved.path ?? [landed.hex], beforeExplored);
+    const route = moved.path ?? [landed.hex];
+    /*
+     * ⚠️ The dig waits for the walk, and is chained rather than awaited.
+     *
+     * Awaiting here would freeze the interface for the length of the march
+     * before anything happened, which is the behaviour section 83 removed.
+     * Chaining keeps the walk fire-and-forget and still guarantees the
+     * question arrives after the unit has visibly got there: asking while the
+     * Profiler is halfway across the map would be asking about a tile it is
+     * not standing on yet.
+     */
+    void walk(unit.id, from, route, beforeExplored).then(() => digAlong(unit.id, route));
   }
   refreshSelection();
   dirty = true;
@@ -1618,6 +1635,132 @@ async function walk(
     walkReveal = undefined;
     refreshFog();
   }
+}
+
+/**
+ * Open a chest the Profiler walked over, if it found one.
+ *
+ * ⚠️ **The whole route is searched, not just the tile it stopped on.** Ordering
+ * a six-hex march that happens to cross a chest and being told nothing would
+ * read as the feature being broken, and the player has no way to know a chest
+ * was there: they are marching into fog. The first one on the route is dug up
+ * and the unit still ends where it was sent, so the order the player gave is
+ * never quietly rewritten.
+ *
+ * ⚠️ **Only the Profiler.** The scout's entire identity was a sight radius,
+ * which is a passive virtue: build one, park it on a hill, forget it. This is
+ * the one job that turns exploring into something the empire can spend.
+ */
+async function digAlong(unitId: string, route: readonly Hex[]): Promise<void> {
+  const unit = state.units.get(unitId);
+  if (!unit || unit.typeId !== 'profiler') return;
+  if (finished || modal.isOpen()) return;
+
+  let found: Treasure | undefined;
+  for (const step of route) {
+    const here = treasureAt(state.treasures, step);
+    if (here) {
+      found = here;
+      break;
+    }
+  }
+  if (!found) return;
+
+  const chest = found;
+  log(t('The Profiler turns up a buried cache.'), 'good');
+  scene.focus(chest.hex);
+  await treasureFilm.play('found');
+
+  /*
+   * ⚠️ A real question through the provider, not a coin flip.
+   *
+   * Which means the answer feeds the spaced-repetition schedule exactly as a
+   * battle or a research question does. That is the point: the chest exists to
+   * make the map ask something, and a reward for knowing is worth nothing if
+   * the knowing is not recorded.
+   */
+  const topic = state.research.current ?? state.topics.nodes[0]?.id;
+  if (!topic) return;
+  const outcome = await provider.present({
+    kind: 'treasure',
+    topicId: topic,
+    tier: 1,
+    timeLimitMs: timeLimit(RESEARCH_TIME_MS),
+  });
+
+  const claim = claimTreasure(chest, outcome.score >= 0);
+  const treasures = new Map(state.treasures);
+  if (claim.remaining) treasures.set(chest.id, claim.remaining);
+  else treasures.delete(chest.id);
+  state = { ...state, treasures };
+
+  if (claim.gained > 0) {
+    state = grantResource(state, claim.resource, claim.gained);
+    log(
+      t('The cache opens: {amount} {resource}.', {
+        amount: claim.gained,
+        resource: resourceLabel(claim.resource),
+      }),
+      'good',
+    );
+    effects.floatingText(chest.hex, `+${claim.gained}`, '#ffd166', 1.4);
+    await treasureFilm.play('opened');
+  } else if (claim.remaining) {
+    // Say what it cost, or the shrinking is invisible and reads as a bug.
+    log(
+      t('The lock holds. {amount} {resource} left inside.', {
+        amount: claim.remaining.amount,
+        resource: resourceLabel(claim.resource),
+      }),
+      'bad',
+    );
+  } else {
+    log(t('The lock holds, and the cache is picked clean.'), 'bad');
+  }
+
+  /*
+   * ⚠️ A failed dig ends the Profiler's turn, and that is the real cost.
+   *
+   * The halving alone is not a brake: the same unit could stand on the chest
+   * and answer again immediately, and again, so the optimal play would be to
+   * grind every cache until a right answer arrived and the question would be
+   * decorative. Spending the march makes a wrong answer cost tempo, which is
+   * the currency this game is actually short of, while never costing the
+   * chest itself. Retrying stays possible, as decided, just not free.
+   */
+  if (claim.gained === 0) {
+    const digger = state.units.get(unitId);
+    if (digger && digger.movesLeft > 0) {
+      const units = new Map(state.units);
+      units.set(unitId, { ...digger, movesLeft: 0 });
+      state = { ...state, units };
+    }
+  }
+
+  refreshHud();
+  refreshSelection();
+  dirty = true;
+}
+
+/** Add to the player's stores, without going through a whole turn. */
+function grantResource(current: GameState, resource: ResourceId, amount: number): GameState {
+  const factions = new Map(current.factions);
+  const player = factions.get(PLAYER_FACTION_ID);
+  if (!player) return current;
+  factions.set(PLAYER_FACTION_ID, {
+    ...player,
+    resources: { ...player.resources, [resource]: player.resources[resource] + amount },
+  });
+  return { ...current, factions };
+}
+
+/**
+ * ⚠️ Resource names are NOT translated: Data, Compute, CU and Trust are the
+ * product's own words and a German Fabric user says them in English, which is
+ * the same rule the unit names follow.
+ */
+function resourceLabel(resource: ResourceId): string {
+  return resource === 'cu' ? 'CU' : resource[0]!.toUpperCase() + resource.slice(1);
 }
 
 /**
@@ -3846,6 +3989,17 @@ function frame(now: number): void {
       reachable: reach,
       attackTargets,
       settleSites: settleSuggestions.map((s) => s.hex),
+      /*
+       * ⚠️ Filtered against `state.explored`, not against current sight.
+       *
+       * A cache the Profiler walked past three turns ago is still there and
+       * the player still knows it: gating on what is lit *now* would make
+       * chests blink out the moment the unit moved on, which reads as them
+       * being taken by someone else.
+       */
+      treasures: [...state.treasures.values()]
+        .filter((chest) => state.explored.has(hexKey(chest.hex)))
+        .map((chest) => chest.hex),
       hover,
       unitOffset: unitWorldOffset,
       unitOpacity: (id) => effects.opacityOf(id),
@@ -3976,6 +4130,22 @@ declare global {
       };
       cheatsUsed: () => string[];
       exploredCount: () => number;
+      /**
+       * Every buried cache still on the map, and whether it can be seen.
+       *
+       * Exists because a cache is otherwise unobservable from outside: it is
+       * hidden until explored, it is only triggered by one unit type, and a
+       * game can run for an hour without meeting one. A test that cannot find
+       * a cache cannot check that finding one works.
+       */
+      treasures: () => {
+        id: string;
+        q: number;
+        r: number;
+        resource: string;
+        amount: number;
+        explored: boolean;
+      }[];
       drownedLand: () => { land: number; below: number; share: number };
       /**
        * The live three.js objects.
@@ -4192,6 +4362,15 @@ window.__fabricEmpires = {
   }),
   cheatsUsed: () => [...state.cheatsUsed],
   exploredCount: () => state.explored.size,
+  treasures: () =>
+    [...state.treasures.values()].map((chest) => ({
+      id: chest.id,
+      q: chest.hex.q,
+      r: chest.hex.r,
+      resource: chest.resource,
+      amount: chest.amount,
+      explored: state.explored.has(hexKey(chest.hex)),
+    })),
   /*
    * How much of the land is drawn under the sea.
    *

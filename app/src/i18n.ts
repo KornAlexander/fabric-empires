@@ -45,6 +45,15 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
   Library: 'Bibliothek',
   'New game': 'Neues Spiel',
   Skip: 'Überspringen',
+  // Buried caches. "Fund" rather than "Schatz": the thing is a data cache left
+  // by whoever was here before, not pirate gold, and the film shows a strongbox.
+  Treasure: 'Fund',
+  'The Profiler turns up a buried cache.': 'Der Profiler stößt auf ein vergrabenes Depot.',
+  'The cache opens: {amount} {resource}.': 'Das Depot öffnet sich: {amount} {resource}.',
+  'The lock holds. {amount} {resource} left inside.':
+    'Das Schloss hält stand. {amount} {resource} bleiben darin.',
+  'The lock holds, and the cache is picked clean.':
+    'Das Schloss hält stand, und das Depot ist leergeräumt.',
   'Face the Proctor': 'Der Prüfung stellen',
   'Turn the sound off': 'Ton ausschalten',
   'Turn the sound on': 'Ton einschalten',

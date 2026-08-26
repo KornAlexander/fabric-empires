@@ -29,12 +29,15 @@ import {
   type CityKind,
   type Faction,
   type Ruin,
+  type Treasure,
   type Unit,
   type UnitTypeId,
 } from '../entities/index.js';
 import { GENERIC_TOPIC_GRAPH, type TopicGraph } from '../challenge/index.js';
 import { EMPTY_RESEARCH, autoSelectResearch, type ResearchState } from '../rules/research.js';
 import { rememberVisible } from '../rules/vision.js';
+import { placeTreasures } from '../rules/treasure.js';
+import { createRng } from '../rng/index.js';
 
 export type Difficulty = 'apprentice' | 'analyst' | 'architect';
 
@@ -55,6 +58,8 @@ export interface GameState {
   readonly cities: ReadonlyMap<string, City>;
   /** Where cities were razed. Inert, but remembered. */
   readonly ruins: ReadonlyMap<string, Ruin>;
+  /** Buried caches, opened by answering. Removed once emptied. */
+  readonly treasures: ReadonlyMap<string, Treasure>;
   /**
    * The tech tree, supplied by the challenge provider.
    *
@@ -567,6 +572,9 @@ export function createGameState(
     });
   }
 
+  const treasureField = placeTreasures(map, createRng(map.seed, 'treasure'), start, nextId);
+  nextId = treasureField.nextId;
+
   const world: GameState = {
     seed: map.seed,
     difficulty: options.difficulty ?? 'analyst',
@@ -577,6 +585,7 @@ export function createGameState(
     units,
     cities,
     ruins: new Map(),
+    treasures: treasureField.treasures,
     topics: options.topics ?? GENERIC_TOPIC_GRAPH,
     research: EMPTY_RESEARCH,
     activeFactionId: PLAYER_FACTION_ID,

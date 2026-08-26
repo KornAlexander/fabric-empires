@@ -7786,4 +7786,114 @@ Read off the deployed build:
 
 ---
 
+## 88. Buried caches
+
+A small number of land tiles hide a cache of one resource. Walk a Profiler over
+one and it asks a question; answer it and the cache is yours.
+
+### Why the map needed something to find
+
+The Profiler's entire identity was a sight radius, which is a *passive* virtue:
+build one, park it on a hill, forget it. Nothing on the map rewarded going to a
+particular place, so exploring was something you did once and then stopped
+thinking about. A cache is the first thing in this game that makes a tile worth
+walking to for its own sake, and it pays in the currency the early game is
+actually short of.
+
+It is also, and this is the point, another place the map asks a question. The
+answer goes through the same provider as a battle or a research question, so it
+feeds the spaced-repetition schedule identically. A reward for knowing is worth
+nothing if the knowing is not recorded.
+
+### A wrong answer shrinks the cache; it does not empty it
+
+Both obvious alternatives are worse:
+
+- **Take it away on a miss.** The one thing a study aid must never do is make a
+  wrong answer feel like a punishment for having tried. You explored, you found
+  something, you got it wrong, and now the thing is gone: that teaches
+  avoidance.
+- **Leave it untouched.** Then the question is a formality. Stand on it, answer
+  until one lands, collect the full amount. The knowledge check would be
+  decorative.
+
+So a miss halves what is left, and a cache worth less than
+`TREASURE_WORTH_CARRYING` is removed rather than left on the map as a chest
+worth four Data, which would be a promise the game cannot keep.
+
+⚠️ **The halving alone is not a brake, and it took a second look to see it.**
+Halving costs the player nothing they had; it only reduces a windfall. The
+optimal play was still to grind. The real cost is that **a failed dig ends the
+Profiler's turn**: a wrong answer buys a lost march, which is tempo, which is
+the thing the early game is short of. Retrying stays possible, exactly as
+intended. It is simply not free.
+
+### The whole route is searched, not just the destination
+
+A cache is invisible until its tile has been explored, and the Profiler is
+walking into fog. Ordering a six-hex march that happens to cross a cache and
+being told nothing would read as the feature being broken, at the precise
+moment it should have fired. The first cache on the route is dug up and the
+unit still ends where it was sent, so the order the player gave is never
+quietly rewritten.
+
+### Visible once explored, and gated on explored rather than on sight
+
+⚠️ The filter is `state.explored`, not current sight. A cache the Profiler
+walked past three turns ago is still there and the player still knows it.
+Gating on what is lit *now* would make caches blink out the moment the unit
+moved on, which reads as somebody else having taken them.
+
+### Placement lives in the save, not in the seed
+
+Everything else on this map is regenerated from the world seed, which is why a
+clone is a few megabytes. Caches cannot be: the moment one is opened the field
+diverges from what the seed describes, and a save that stored only the seed
+would resurrect every cache the player had already emptied. So the field ships
+in the save file, `SAVE_VERSION` goes to 9, and the migration from 8 gives an
+old empire an **empty** field rather than scattering fresh caches across a map
+its Profilers have already walked over.
+
+### Two films, and what they cost
+
+Finding and opening are separate beats and they are separate clips, generated
+with Sora 2 (`tools/treasure-clips.py`). ⚠️ They are **ignored by git for size,
+not licence**: Azure OpenAI output is ours, unlike the Suno cue that keeps the
+teaser out, but D59 says a clone stays a few megabytes and 4.9 MB for one
+optional flourish is not the place to break that. A clone without them plays
+both beats as no-ops; the cache is still found and still paid out.
+
+Three things the runner learned the expensive way, all now in the script:
+
+- The terminal status is **`completed`**, not `succeeded`. Waiting for
+  `succeeded` polls a finished job forever.
+- The content path is **`/content`**, not `/content/video`. The older shape
+  returns a flat 404 that reads exactly like an expired job.
+- A transient **500 while polling** used to kill the job client-side and throw
+  away a paid generation. 5xx now retries; 4xx still fails fast, because that
+  is a real mistake in the request and will never come good.
+
+### A bug the tests found before a player could
+
+`video.play()` is specified to return a promise and every current browser does,
+but the older signature returned `undefined` and jsdom still does. `.catch` on
+that throws a `TypeError` **synchronously out of `play()`**, which is worse
+than the rejection it was meant to handle: the beat never resolves and the turn
+hangs behind a cache that will not settle. Wrapped in `Promise.resolve`.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D624 | Only the Profiler digs | The scout unit's one virtue was passive. This is the job that turns exploring into something the empire can spend |
+| D625 | ⚠️ **A miss halves the cache rather than emptying it** | Removing it punishes having tried, which is the one thing a study aid must not do; leaving it untouched makes the question decorative |
+| D626 | ⚠️ **A failed dig also ends the Profiler's turn** | The halving costs the player nothing they had, so grinding was still optimal. Tempo is the real price, and the cache is never taken away |
+| D627 | A cache below `TREASURE_WORTH_CARRYING` is removed | A chest worth four Data is a promise the map cannot keep |
+| D628 | The whole walked route is searched, not the destination | The player is marching into fog and cannot see the cache; missing one it crossed reads as the feature being broken |
+| D629 | ⚠️ **Visibility gated on `explored`, not on current sight** | Otherwise caches blink out when the unit moves on, which reads as somebody else taking them |
+| D630 | ⚠️ **The cache field lives in the save, not in the seed** | Opening one diverges from the seed. A seed-only save would resurrect every cache already emptied |
+| D631 | Migration from save 8 gives an empty field | Scattering fresh caches over a map whose Profilers have already walked it would be a reward for loading |
+| D632 | The clips are git-ignored for **size**, not licence | Azure OpenAI output is ours, so this is D59's rule rather than the teaser's licence problem. Both beats no-op without them |
+| D633 | The clips are stripped of audio, and the element is muted too | Sora returns a music bed with every clip, and the game's own score is already playing |
+
+---
+
 *Last updated: 26 August 2026*

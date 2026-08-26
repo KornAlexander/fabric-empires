@@ -14,3 +14,4 @@ export * from './settle.js';
 export * from './walls.js';
 export * from './assault.js';
 export * from './defence.js';
+export * from './treasure.js';
