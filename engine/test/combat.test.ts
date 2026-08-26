@@ -613,3 +613,69 @@ describe('topic graph validation', () => {
     expect(known.size).toBe(GENERIC_TOPIC_GRAPH.nodes.length);
   });
 });
+
+describe('attacking a unit that has dug in', () => {
+  /*
+   * ⚠️ **A second lever, and not the same as the defence bonus.**
+   *
+   * Raising the defender's strength only reduces what the defender takes.
+   * Lowering the ATTACKER's strength does that too AND raises what the
+   * attacker takes back, because the counterblow divides the same two numbers
+   * the other way round. Measured on even matchups, against the dug-in bonus
+   * alone: damage dealt went from -38% to -52%, and damage taken from +64% to
+   * +112%.
+   */
+  function fight(fortified: boolean) {
+    const { state, a, b } = duelGround();
+    const withAttacker = place(state, 'att', 'pipelineRunner', a, 'silo-horde');
+    const ready = place(withAttacker, 'def', 'profiler', b, PLAYER_FACTION_ID, { fortified });
+    return previewAttack({ ...ready, activeFactionId: 'silo-horde' }, 'att', b)!;
+  }
+
+  it('blunts the blow, on the ATTACKER rather than the defender', () => {
+    const open = fight(false);
+    const dug = fight(true);
+    expect(dug.attacker.dugInPenalty).toBeGreaterThan(0);
+    expect(open.attacker.dugInPenalty).toBe(0);
+    expect(dug.attacker.effective).toBeLessThan(open.attacker.effective);
+  });
+
+  it('⚠️ makes the counterblow hurt more, not just the blow hurt less', () => {
+    // The whole reason this is not simply a larger FORTIFY_DEFENCE_BONUS.
+    const open = fight(false);
+    const dug = fight(true);
+    expect(dug.expectedDamageToDefender).toBeLessThan(open.expectedDamageToDefender);
+    expect(dug.expectedDamageToAttacker).toBeGreaterThan(open.expectedDamageToAttacker);
+  });
+
+  it('⚠️ leaves weight still winning, so digging in is not the answer to everything', () => {
+    // A proper soldier must still be able to break a dug-in scout, or the only
+    // move in the game becomes fortify and wait.
+    const dug = fight(true);
+    expect(dug.expectedDamageToDefender).toBeGreaterThan(dug.expectedDamageToAttacker);
+  });
+
+  it('⚠️ fights the odds it showed', () => {
+    /*
+     * The penalty is folded into `attacker.effective` precisely so that
+     * `resolveAttack`, which recomputes damage from that field, cannot use a
+     * different number. This file has already caught that split twice.
+     */
+    const { state, a, b } = duelGround();
+    const withAttacker = place(state, 'att', 'pipelineRunner', a, 'silo-horde');
+    const ready = place(withAttacker, 'def', 'profiler', b, PLAYER_FACTION_ID, {
+      fortified: true,
+    });
+    const fighting = { ...ready, activeFactionId: 'silo-horde' };
+    const preview = previewAttack(fighting, 'att', b)!;
+    // The roll is pinned to 1 so the only thing that can differ between the
+    // two numbers is the arithmetic, which is what is under test.
+    const outcome = resolveAttack(fighting, 'att', b, {
+      rng: { ...createRng('dug', 'in'), float: () => 1 },
+    });
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.result.log.damageToDefender).toBe(preview.expectedDamageToDefender);
+    expect(outcome.result.log.damageToAttacker).toBe(preview.expectedDamageToAttacker);
+  });
+});

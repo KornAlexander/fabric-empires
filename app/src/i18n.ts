@@ -83,6 +83,9 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
   // Taking cover in one of your own cities. "Deckung" is the ordinary German
   // word a player would use for it, military or not.
   'in cover: {city}': 'in Deckung: {city}',
+  // Mending while dug in. "Erholt sich" is what a player would say about a
+  // unit getting its strength back, and it carries the sense of resting.
+  'mending +{hp} HP a turn': 'erholt sich +{hp} TP pro Runde',
   '{n} turn': '{n} Runde',
   '{n} turns': '{n} Runden',
   'reachable this turn': 'diese Runde erreichbar',

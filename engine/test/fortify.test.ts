@@ -222,3 +222,85 @@ describe('⚠️ the deadlock that was', () => {
     expect(find(dug, unit.id).fortified).toBe(true);
   });
 });
+
+describe('mending while dug in', () => {
+  /*
+   * ⚠️ **Nothing in the game healed a unit before this.** Cities repaired
+   * walls and grew hit points back through rank; a wounded unit stayed wounded
+   * for the rest of the game. That compounds, because `hpFactor` scales
+   * strength by health, so one bad fight permanently devalued a unit and the
+   * only cure was to lose it and build another.
+   */
+
+  /** The same soldier, hurt, so there is something to mend. */
+  function wounded(hp: number): { state: GameState; unit: Unit } {
+    const { state, unit } = withSoldier();
+    const units = new Map(state.units);
+    units.set(unit.id, { ...unit, hp });
+    return { state: { ...state, units }, unit };
+  }
+
+  it('gives a fortified unit some of its health back each turn', () => {
+    const { state, unit } = wounded(40);
+    const after = nextTurn(done(fortifyUnit(state, unit.id)));
+    expect(find(after, unit.id).hp).toBeGreaterThan(40);
+  });
+
+  it('⚠️ heals nothing at all when the unit has not dug in', () => {
+    /*
+     * The cost that makes the rule a decision. A unit that stops to recover is
+     * a unit that is not moving, not scouting and not holding a line
+     * elsewhere; free healing would remove the choice entirely.
+     */
+    const { state, unit } = wounded(40);
+    expect(find(nextTurn(state), unit.id).hp).toBe(40);
+  });
+
+  it('never exceeds the unit type\u2019s own maximum', () => {
+    const soldier = withSoldier();
+    const max = unitType(soldier.unit.typeId).maxHp;
+    const { state, unit } = wounded(max - 1);
+    let running = done(fortifyUnit(state, unit.id));
+    for (let i = 0; i < 4; i++) running = nextTurn(running);
+    expect(find(running, unit.id).hp).toBe(max);
+  });
+
+  it('mends in a useful number of turns, not instantly and not never', () => {
+    /*
+     * The rate stated as behaviour rather than as a constant, so retuning
+     * `FORTIFY_HEAL_SHARE` has to be a deliberate answer to this question:
+     * how long should a wounded unit be out of the fight?
+     */
+    const { state, unit } = wounded(1);
+    let running = done(fortifyUnit(state, unit.id));
+    let turns = 0;
+    while (find(running, unit.id).hp < unitType(unit.typeId).maxHp && turns < 40) {
+      running = nextTurn(running);
+      turns += 1;
+    }
+    expect(turns).toBeGreaterThanOrEqual(5);
+    expect(turns).toBeLessThanOrEqual(12);
+  });
+
+  it('heals a big unit and a small one in the same number of turns', () => {
+    /*
+     * The reason the rate is a share of `maxHp` rather than a flat number: a
+     * Direct Lake Titan must not take five times as long to recover as a
+     * Profiler simply for being larger.
+     */
+    const turnsToMend = (typeId: Unit['typeId']): number => {
+      const { state, unit } = withSoldier();
+      const type = unitType(typeId);
+      const units = new Map(state.units);
+      units.set(unit.id, { ...unit, typeId, hp: 1 });
+      let running = done(fortifyUnit({ ...state, units }, unit.id));
+      let turns = 0;
+      while (find(running, unit.id).hp < type.maxHp && turns < 60) {
+        running = nextTurn(running);
+        turns += 1;
+      }
+      return turns;
+    };
+    expect(turnsToMend('profiler')).toBe(turnsToMend('directLakeTitan'));
+  });
+});

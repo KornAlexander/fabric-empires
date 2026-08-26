@@ -320,6 +320,7 @@ Every decision below was made explicitly. Do not silently revisit one; if a deci
 | D583–D590 | The advice was correct, drawn, and invisible | Recorded in full in section 82 |
 | D591–D600 | The ground opened after the fact | Recorded in full in section 83 |
 | D601–D606 | Taking cover made the city easier to take | Recorded in full in section 84 |
+| D607–D613 | Digging in was worth forty percent and nothing else | Recorded in full in section 85 |
 
 ### 28. Cheat codes
 
@@ -7549,6 +7550,96 @@ which now includes the cover, so the preview needed no new text.
 | D604 | ⚠️ **Siege bonus keys on `againstWalls`, not on `targetKind`** | Gated on "the target is a city", a siege engine lost its entire purpose the moment anyone stepped inside |
 | D605 | `againstWalls` is decided in the preview and read back by the resolution | The file already warned that a factor in one and not the other splits the odds shown from the odds fought |
 | D606 | The unit panel states the cover | It costs nothing, has no button, and is otherwise invisible. A bonus nobody can see is a bonus nobody uses |
+
+---
+
+## 85. Digging in was worth forty percent and nothing else
+
+Alexander: *"if I fortify the unit than the HP shall slowly grow back up. also
+fority shall be a small bonus for fighting. other attacker is a bit less
+strong"*.
+
+Two requests, and the first one uncovered something larger.
+
+### Nothing healed a unit. Ever.
+
+Cities repaired their walls and grew their hit points back through rank. A
+wounded unit stayed wounded for the rest of the game, and there was no rule
+anywhere that put a point back on one.
+
+⚠️ **That compounds, because `hpFactor` scales strength by health.** One bad
+fight did not merely leave a unit hurt, it permanently devalued it, and the
+only cure available was to lose it and build another. A game that teaches
+"your damaged things are worth less for ever, so throw them away" is teaching
+something nobody chose to teach.
+
+A dug-in unit now recovers `FORTIFY_HEAL_SHARE` of its own maximum each turn,
+in the refresh phase. Expressed as a share rather than a flat number so a
+Direct Lake Titan does not take five times as long to mend as a Profiler, which
+is pinned by a test that heals one of each and compares the turn counts.
+
+Attached to fortifying rather than granted freely, so mending costs something
+real: a unit that stops to recover is not moving, not scouting and not holding
+a line somewhere else.
+
+### The second lever, and why it is not just a bigger first one
+
+Fortifying already paid `FORTIFY_DEFENCE_BONUS`, 40 percent on defence. The ask
+was for the attacker to be *a bit less strong*, which sounds like the same
+thing said differently. It is not.
+
+Raising the defender's strength only reduces the damage the defender takes.
+Lowering the **attacker's** strength does that too, and it also raises what the
+attacker takes back, because the counterblow divides the same two numbers the
+other way round. Charging a prepared position should hurt the person charging,
+not merely fail to hurt the person waiting.
+
+Measured on even matchups, isolating the new penalty from the bonus that was
+already there:
+
+| | damage dealt to the defender | damage the attacker takes back |
+| --- | --- | --- |
+| dug in, defence bonus only | −38% | +64% |
+| dug in, and the new penalty | **−52%** | **+112%** |
+
+The check that it has not gone too far is that weight still wins: a Pipeline
+Runner attacking a fortified Profiler deals 40 and takes 22, so a proper
+soldier can still break a dug-in scout. Without that, the only move in the game
+becomes fortify and wait.
+
+⚠️ **The penalty is folded into `attacker.effective` rather than carried
+alongside it.** `resolveAttack` recomputes damage from that field, so anything
+expressed as a separate multiplier has to be remembered twice. That has already
+gone wrong twice in this file: the tactic split preview from resolution once,
+and `againstWalls` nearly did it again last section. A number baked into
+`effective` cannot be forgotten by the second caller, because there is nothing
+left to forget.
+
+### A comment I had to take back
+
+⚠️ I wrote the constant's docblock before measuring, and it claimed *"at 0.30 a
+dug-in Profiler beat a Pipeline Runner that attacked it"*. That reads like a
+measurement and was an invention: I had run nothing. The numbers in the table
+above are what the probe actually returned, and the docblock now says those
+instead. A fabricated measurement in a comment is worse than no comment, because
+the next person has no reason to doubt it.
+
+### Saying so
+
+Mending happens once per turn, between turns, so without a word for it the
+player would watch a number go up and have no way to attribute it. The unit
+panel now reads `mending +12 HP a turn` while it applies, and only while it
+applies: at full health that line would be a promise the game is not keeping.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D607 | ⚠️ **Fortifying is the only way a unit heals, and before this nothing was** | A wounded unit was permanently devalued by `hpFactor`, and the only cure was to lose it |
+| D608 | The rate is a share of `maxHp`, not a flat number | A Titan must not take five times as long to mend as a Profiler for being larger |
+| D609 | Healing is paid for with the turn that fortifying already costs | Free healing removes the decision. Stopping to mend must mean not scouting and not holding a line |
+| D610 | ⚠️ **The attacker penalty is a separate lever from the defence bonus** | A bonus only softens the blow; a penalty also stiffens the reply. Charging a prepared position should cost the charger |
+| D611 | It is folded into `attacker.effective`, not kept as its own factor | `resolveAttack` recomputes from that field. Two places to remember is how this file has already drifted twice |
+| D612 | Weight still wins against a dug-in scout, and that is the tuning check | Otherwise the answer to every question is fortify and wait |
+| D613 | ⚠️ **The docblock's measurement was invented and had to be replaced** | It read like evidence. A fabricated number in a comment is worse than silence, because nobody thinks to doubt it |
 
 ---
 

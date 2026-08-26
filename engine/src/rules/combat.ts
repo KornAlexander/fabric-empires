@@ -30,6 +30,47 @@ export const CHALLENGE_STRENGTH_SWING = 18;
 export const FORTIFY_DEFENCE_BONUS = 0.4;
 
 /**
+ * How much weaker an attack is when it lands on a unit that has dug in.
+ *
+ * ⚠️ **A different lever from `FORTIFY_DEFENCE_BONUS`, on purpose.** Raising
+ * the defender's strength only reduces the damage the defender takes. Lowering
+ * the ATTACKER's strength does that too, and it also raises what the attacker
+ * takes back, because the counterblow divides the same two numbers the other
+ * way round. Charging a prepared position should hurt the person charging, not
+ * merely fail to hurt the person waiting.
+ *
+ * Measured on even matchups, against the dug-in bonus alone:
+ *
+ * | | damage dealt to the defender | damage the attacker takes back |
+ * | --- | --- | --- |
+ * | dug in, defence bonus only | −38% | +64% |
+ * | dug in, and this penalty too | **−52%** | **+112%** |
+ *
+ * Small on purpose. Fortifying already pays 40 percent on defence and costs
+ * only the remainder of one turn, so this is meant to tip an exchange rather
+ * than decide it. The check that it has not gone too far is that a proper
+ * soldier can still break a dug-in scout: a Pipeline Runner attacking a
+ * fortified Profiler deals 40 and takes 22, so weight still wins.
+ */
+export const FORTIFY_ATTACK_PENALTY = 0.15;
+
+/**
+ * What share of its full hit points a dug-in unit recovers each turn.
+ *
+ * ⚠️ **Nothing in the game healed a unit before this.** Cities repaired their
+ * walls and grew their own hit points back through rank, but a wounded unit
+ * stayed wounded for the rest of the game. Since `hpFactor` scales strength by
+ * health, one bad fight permanently devalued a unit, and the only cure was to
+ * lose it and build another. That is a strange thing to teach.
+ *
+ * Expressed as a share of `maxHp` rather than a flat number, so a Direct Lake
+ * Titan does not take five times as long to recover as a Profiler does. At
+ * 0.12 a unit on its last legs is fit again in eight quiet turns, which is
+ * long enough that retreating to heal is a real cost.
+ */
+export const FORTIFY_HEAL_SHARE = 0.12;
+
+/**
  * What a unit gains by standing inside a friendly city.
  *
  * ⚠️ **Taking cover in a city used to do nothing whatsoever.** A unit could
@@ -72,6 +113,15 @@ export interface CombatSide {
   readonly fortifyBonus: number;
   /** The settlement and its walls, when this unit is defending inside one. */
   readonly garrisonBonus: number;
+  /**
+   * How much this side's blow is blunted by a defender that has dug in.
+   *
+   * ⚠️ Only ever non-zero on the ATTACKER. It is a property of what is being
+   * hit rather than of who is hitting, which is why it cannot be computed by
+   * `unitCombatSide`: that function is handed one unit and never learns what
+   * is on the other tile.
+   */
+  readonly dugInPenalty: number;
   readonly techBonus: number;
   readonly challengeModifier: number;
   readonly effective: number;
@@ -240,6 +290,9 @@ export function unitCombatSide(
     terrainBonus,
     fortifyBonus,
     garrisonBonus,
+    // Filled in by `previewAttack`, which is the only place that knows both
+    // sides of the fight.
+    dugInPenalty: 0,
     techBonus,
     challengeModifier: modifier,
     // A negative effective strength is meaningless and would invert the
@@ -283,6 +336,8 @@ export function cityCombatSide(
     // The number exists on both sides so callers never have to ask which kind
     // of defender they are looking at before reading a field.
     garrisonBonus: 0,
+    // A city never attacks, so this is never anything else.
+    dugInPenalty: 0,
     techBonus: 0,
     challengeModifier: modifier,
     effective: Math.max(
@@ -424,10 +479,36 @@ export function previewAttack(
   const defendingUnit = unitAt(state, target);
   const targetKind: CombatTargetKind = defendingUnit ? 'unit' : 'city';
 
-  const attackerSide = unitCombatSide(state, attacker, {
+  const openAttack = unitCombatSide(state, attacker, {
     ...options,
     attacking: true,
   });
+
+  /*
+   * ⚠️ **The penalty is folded into the attacker's effective strength, not
+   * carried alongside it as another multiplier.**
+   *
+   * `resolveAttack` recomputes the damage from `preview.attacker.effective`,
+   * so anything expressed as a separate factor has to be remembered in two
+   * places. That has gone wrong twice already in this file: the tactic split
+   * the preview from the resolution once, and `againstWalls` nearly did it
+   * again. A number baked into `effective` cannot be forgotten by the second
+   * caller, because there is nothing left for it to forget.
+   *
+   * Charging a prepared position also costs the attacker more, and that falls
+   * out for free: the counterblow divides the same two numbers the other way
+   * round, so a weaker attacker takes a heavier answer.
+   */
+  const dugIn = defendingUnit?.fortified === true;
+  const attackerSide: CombatSide = dugIn
+    ? {
+        ...openAttack,
+        dugInPenalty: FORTIFY_ATTACK_PENALTY,
+        // The same floor `unitCombatSide` applies: a non-positive strength
+        // would invert the damage curve rather than weaken the blow.
+        effective: Math.max(1, openAttack.effective * (1 - FORTIFY_ATTACK_PENALTY)),
+      }
+    : openAttack;
 
   let defenderSide: CombatSide;
   if (defendingUnit) {

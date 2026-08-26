@@ -12,6 +12,7 @@
  */
 
 import { unitType, type Faction } from '../entities/index.js';
+import { FORTIFY_HEAL_SHARE } from '../rules/combat.js';
 import { addResources, empireIncome, growthThreshold } from '../rules/yields.js';
 import { autoSelectResearch, fundResearch, researchReady } from '../rules/research.js';
 import { reviewOpportunities, reviewPhase, type ReviewOpportunity } from '../rules/review.js';
@@ -198,13 +199,32 @@ function upkeepPhase(state: GameState, factionId: string): TurnResult {
   };
 }
 
-/** REFRESH: give every unit of the faction its movement back. */
+/** REFRESH: give every unit of the faction its movement back, and let the dug-in mend. */
 function refreshPhase(state: GameState, factionId: string): GameState {
   const units = new Map(state.units);
   for (const [id, unit] of units) {
     if (unit.factionId !== factionId) continue;
+    const type = unitType(unit.typeId);
+    /*
+     * ⚠️ **Digging in is now the only way a unit gets its health back, and
+     * before this there was no way at all.**
+     *
+     * Cities repaired their walls and grew their hit points back through rank;
+     * a wounded unit simply stayed wounded for the rest of the game. That
+     * compounds, because `hpFactor` scales strength by health: one bad fight
+     * permanently devalued a unit and the only cure was to lose it and build
+     * another.
+     *
+     * Attached to fortifying rather than granted freely, so mending costs
+     * something real. A unit that stops to recover is a unit that is not
+     * moving, not scouting and not holding a line somewhere else.
+     */
+    const healed = unit.fortified
+      ? Math.min(type.maxHp, unit.hp + Math.round(type.maxHp * FORTIFY_HEAL_SHARE))
+      : unit.hp;
     units.set(id, {
       ...unit,
+      hp: healed,
       /*
        * ⚠️ **Every unit, including the fortified ones, and that is the fix
        * for a deadlock rather than a preference.**
@@ -225,7 +245,7 @@ function refreshPhase(state: GameState, factionId: string): GameState {
        * Nothing else reads a fortified unit's movement: the defence bonus in
        * `combat.ts` keys off the flag alone.
        */
-      movesLeft: unitType(unit.typeId).movement,
+      movesLeft: type.movement,
     });
   }
   return { ...state, units };

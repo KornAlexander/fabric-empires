@@ -44,6 +44,7 @@ import {
   type ProductionTarget,
   PRODUCTION_CAP_PER_TURN,
   endTurn,
+  FORTIFY_HEAL_SHARE,
   fortifyUnit,
   wakeUnit,
   foundCity,
@@ -1062,11 +1063,27 @@ function refreshSelection(): void {
    */
   const shelter = cityAt(state, unit.hex);
   const inCover = shelter?.factionId === unit.factionId;
+  /*
+   * ⚠️ Mending is stated, and only while it is actually happening.
+   *
+   * Digging in is now the only way a unit recovers, and a rule that acts once
+   * per turn between turns is invisible unless something says so: the player
+   * would see a number go up and have no way to attribute it. Suppressed at
+   * full health, where "+12 HP a turn" would be a promise the game is not
+   * currently keeping.
+   */
+  const mending = unit.fortified && unit.hp < type.maxHp;
+
   el.selDetail.textContent =
     `${unit.hp}/${type.maxHp} ${t('HP')}  ` +
     `${unit.movesLeft}/${type.movement} ${t('moves')}  ` +
     `${t('strength')} ${type.strength}` +
     (unit.fortified ? `  (${t('fortified')})` : '') +
+    (mending
+      ? `  (${t('mending +{hp} HP a turn', {
+          hp: Math.round(type.maxHp * FORTIFY_HEAL_SHARE),
+        })})`
+      : '') +
     (inCover ? `  (${t('in cover: {city}', { city: shelter.name })})` : '');
 
   /*
