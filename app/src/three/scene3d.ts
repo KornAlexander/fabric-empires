@@ -38,6 +38,7 @@ import {
   type GameState,
   type Hex,
   type ReachableTile,
+  type SeenCity,
 } from '@fabric-empires/engine';
 import { createWorld, HIGH_QUALITY, type World, type WorldQuality } from './world.js';
 import {
@@ -95,6 +96,19 @@ export interface Scene3DView {
    * Undefined means no fog, which is what every test and the map editor use.
    */
   readonly visibleHexes?: ReadonlySet<string> | undefined;
+  /**
+   * Towns the VIEWER remembers, as they looked when last seen.
+   *
+   * ⚠️ **Handed in rather than read off the state, for the same reason
+   * `treasures` is.** Memory is per seat now, and the scene has no idea which
+   * seat is looking at it. Reading a faction id out of the state here would
+   * make the renderer decide whose fog it is drawing, which is exactly the
+   * judgement that belongs in one place in the caller.
+   *
+   * Undefined means no remembered towns, which is what the map editor and
+   * every scene test use.
+   */
+  readonly seenCities?: ReadonlyMap<string, SeenCity> | undefined;
 }
 
 export interface Scene3D {
@@ -1065,7 +1079,7 @@ export function createScene3D(
        * the town would occupy the same ground and z-fight.
        */
       const liveGhosts = new Set<string>();
-      for (const [key, seen] of state.seenCities) {
+      for (const [key, seen] of view.seenCities ?? []) {
         if (canSee(seen.hex, seen.factionId)) continue;
         liveGhosts.add(key);
 

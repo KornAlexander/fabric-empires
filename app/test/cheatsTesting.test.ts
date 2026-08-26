@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  memoryOf,
   ANTAGONIST_FACTION_ID,
   PLAYER_FACTION_ID,
   createGameState,
@@ -27,6 +28,7 @@ import {
 function context(overrides: Partial<CheatContext> = {}): CheatContext {
   return {
     state: createGameState('FABRIC'),
+    seat: PLAYER_FACTION_ID,
     selectedUnitId: undefined,
     faceProctor: () => {},
     argument: '',
@@ -184,8 +186,10 @@ describe('the world codes', () => {
     const ctx = context();
     const out = run('lineage', ctx);
     expect(out.ok).toBe(true);
-    expect(out.state!.explored.size).toBe(ctx.state.map.tiles.size);
-    expect(out.state!.seenCities.size).toBe(ctx.state.seenCities.size);
+    expect(memoryOf(out.state!, PLAYER_FACTION_ID).explored.size).toBe(ctx.state.map.tiles.size);
+    expect(memoryOf(out.state!, PLAYER_FACTION_ID).seenCities.size).toBe(
+      memoryOf(ctx.state, PLAYER_FACTION_ID).seenCities.size,
+    );
   });
 
   it('shortcut buries a cache beside a Profiler', () => {

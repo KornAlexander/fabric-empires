@@ -61,10 +61,27 @@ export const CITY_KINDS: Readonly<Record<CityKind, CityKindInfo>> = Object.freez
 
 export type Resources = Readonly<Record<ResourceId, number>>;
 
+/**
+ * Who is playing a faction.
+ *
+ * ⚠️ **This replaced a boolean called `isPlayer`, and the rename is the whole
+ * seat model.** Every rule that read that flag was really asking one of two
+ * questions, "should the AI move this empire" and "does this empire accumulate
+ * map memory", and both have the same answer for a second human as they do for
+ * the first. So multiplayer is not a new subsystem bolted alongside the rules;
+ * it is the same flag stopping being singular.
+ *
+ * A faction is a **seat**. `'ai'` means the seat is unassigned and the machine
+ * is keeping it warm, which is why a game can be joined in progress at all: an
+ * empire is already there, already fighting, and taking it over is a change of
+ * driver rather than a spawn.
+ */
+export type SeatControl = 'human' | 'ai';
+
 export interface Faction {
   readonly id: string;
   readonly label: string;
-  readonly isPlayer: boolean;
+  readonly control: SeatControl;
   /** Hex colour used for banners and borders. */
   readonly colour: string;
   readonly resources: Resources;
@@ -255,6 +272,33 @@ export interface SeenCity {
 export function emptyResources(): Resources {
   return Object.freeze({ data: 0, compute: 0, cu: 0, trust: 0 });
 }
+
+/**
+ * What one empire knows about the map.
+ *
+ * ⚠️ **Held per faction, which the single-player build deliberately did not
+ * do.** The old comment on `GameState.explored` argued that a set per faction
+ * would leave six of the seven permanently empty, and that was correct while
+ * exactly one seat was human. It stops being correct the moment a second
+ * person sits down: two humans sharing one memory would hand each of them the
+ * other's scouting, and on one machine it would hand them the other's map.
+ *
+ * Still only populated for seats a human holds. An AI faction does not use fog
+ * (section 21.3), so giving it a memory would cost real allocation per turn to
+ * store something nothing ever reads.
+ */
+export interface FactionMemory {
+  /** Hex keys this empire has ever uncovered. */
+  readonly explored: ReadonlySet<string>;
+  /** Towns it has found, as they looked when last seen, keyed by hex. */
+  readonly seenCities: ReadonlyMap<string, SeenCity>;
+}
+
+/** A seat that has never looked at anything. Shared, and safe because frozen. */
+export const NO_MEMORY: FactionMemory = Object.freeze({
+  explored: Object.freeze(new Set<string>()) as ReadonlySet<string>,
+  seenCities: Object.freeze(new Map<string, SeenCity>()) as ReadonlyMap<string, SeenCity>,
+});
 
 export * from './units.js';
 export * from './rank.js';

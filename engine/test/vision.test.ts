@@ -12,6 +12,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  memoryOf,
   CITY_SIGHT,
   PLAYER_FACTION_ID,
   createGameState,
@@ -68,8 +69,8 @@ describe('a new game starts dark', () => {
     for (const seed of ['FABRIC', 'DP600', 'HORDE']) {
       const state = createGameState(seed);
       // A sliver of a 6,211 tile map, not most of it.
-      expect(state.explored.size, seed).toBeGreaterThan(0);
-      expect(state.explored.size / state.map.tiles.size, seed).toBeLessThan(0.02);
+      expect(memoryOf(state, PLAYER_FACTION_ID).explored.size, seed).toBeGreaterThan(0);
+      expect(memoryOf(state, PLAYER_FACTION_ID).explored.size / state.map.tiles.size, seed).toBeLessThan(0.02);
     }
   });
 
@@ -80,7 +81,7 @@ describe('a new game starts dark', () => {
      */
     const state = createGameState('FABRIC');
     const seen = [...state.cities.values()].filter((c) =>
-      state.explored.has(hexKey(c.hex)),
+      memoryOf(state, PLAYER_FACTION_ID).explored.has(hexKey(c.hex)),
     );
     expect(seen).toHaveLength(0);
   });
@@ -88,7 +89,7 @@ describe('a new game starts dark', () => {
   it('shows the ground the player is standing on', () => {
     const state = createGameState('FABRIC');
     for (const unit of unitsOf(state, PLAYER_FACTION_ID)) {
-      expect(state.explored.has(hexKey(unit.hex))).toBe(true);
+      expect(memoryOf(state, PLAYER_FACTION_ID).explored.has(hexKey(unit.hex))).toBe(true);
     }
   });
 });
@@ -139,7 +140,7 @@ describe('memory grows and never shrinks', () => {
       const besideTheRoute = path.some((step) => hexDistance(step, tile.hex) <= sight);
       if (!besideTheRoute) continue;
       expect(
-        moved.state.explored.has(key),
+        memoryOf(moved.state, PLAYER_FACTION_ID).explored.has(key),
         `${key} sits beside ground the unit walked through`,
       ).toBe(true);
       if (hexDistance(target, tile.hex) > sight) provesTheCorridor += 1;
@@ -162,7 +163,7 @@ describe('memory grows and never shrinks', () => {
     if (!moved.ok) return;
 
     // Explored is memory, not current sight: the tile stays known.
-    expect(moved.state.explored.has(start)).toBe(true);
+    expect(memoryOf(moved.state, PLAYER_FACTION_ID).explored.has(start)).toBe(true);
   });
 
   it('lights up a city\u2019s surroundings the moment it is founded', () => {
@@ -176,7 +177,7 @@ describe('memory grows and never shrinks', () => {
     const withSight = rememberVisible(founded.state, PLAYER_FACTION_ID);
     const city = [...withSight.cities.values()][0]!;
     let far = 0;
-    for (const key of withSight.explored) {
+    for (const key of memoryOf(withSight, PLAYER_FACTION_ID).explored) {
       const [q, r] = key.split(',').map(Number) as [number, number];
       far = Math.max(far, hexDistance(city.hex, { q, r }));
     }
@@ -185,11 +186,11 @@ describe('memory grows and never shrinks', () => {
 
   it('never forgets, over many turns', () => {
     let state = createGameState('FABRIC');
-    let seen = state.explored.size;
+    let seen = memoryOf(state, PLAYER_FACTION_ID).explored.size;
     for (let i = 0; i < 8; i++) {
       state = endTurn(state).state;
-      expect(state.explored.size, `turn ${state.turn}`).toBeGreaterThanOrEqual(seen);
-      seen = state.explored.size;
+      expect(memoryOf(state, PLAYER_FACTION_ID).explored.size, `turn ${state.turn}`).toBeGreaterThanOrEqual(seen);
+      seen = memoryOf(state, PLAYER_FACTION_ID).explored.size;
     }
   });
 });
@@ -200,16 +201,16 @@ describe('saving what you know', () => {
     state = endTurn(state).state;
 
     const restored = deserialise(serialise(state), state.topics);
-    expect(restored.explored.size).toBe(state.explored.size);
-    for (const key of state.explored) {
-      expect(restored.explored.has(key), key).toBe(true);
+    expect(memoryOf(restored, PLAYER_FACTION_ID).explored.size).toBe(memoryOf(state, PLAYER_FACTION_ID).explored.size);
+    for (const key of memoryOf(state, PLAYER_FACTION_ID).explored) {
+      expect(memoryOf(restored, PLAYER_FACTION_ID).explored.has(key), key).toBe(true);
     }
   });
 
   it('does not quietly reveal the map through a reload', () => {
     const state = createGameState('FABRIC');
     const restored = deserialise(serialise(state), state.topics);
-    expect(restored.explored.size).toBeLessThan(restored.map.tiles.size);
+    expect(memoryOf(restored, PLAYER_FACTION_ID).explored.size).toBeLessThan(restored.map.tiles.size);
   });
 });
 
@@ -234,6 +235,6 @@ describe('⚠️ the antagonists are deliberately not fogged', () => {
 
     expect(fought, 'nobody ever arrived').toBe(true);
     // And they did it while most of the world was still dark to the player.
-    expect(state.explored.size / state.map.tiles.size).toBeLessThan(0.9);
+    expect(memoryOf(state, PLAYER_FACTION_ID).explored.size / state.map.tiles.size).toBeLessThan(0.9);
   });
 });

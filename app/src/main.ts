@@ -39,6 +39,9 @@ import {
   productionCost,
   isWallTarget,
   maxWallHp,
+  memoryOf,
+  vacateSeat,
+  takeSeat,
   maxCityHp,
   wallWork,
   WALL_TARGET,
@@ -175,6 +178,7 @@ function worldCampaign(): Campaign {
   return chosen?.role === 'world' ? chosen : DP600_CAMPAIGN;
 }
 import { loadGame, localSlot, saveGame } from './persist.js';
+import { seatTable, type SeatOffer } from './seats.js';
 import { createBattleBanner, type BattleSide } from './ui/battleBanner.js';
 
 /**
@@ -421,6 +425,7 @@ function runCheat(raw: string): void {
 
   const outcome = cheat.apply({
     state,
+    seat: mySeat,
     selectedUnitId,
     argument: match.argument,
     faceProctor: () => {
@@ -964,6 +969,7 @@ const el = {
   trust: document.querySelector<HTMLElement>('#res-trust')!,
   endTurn: document.querySelector<HTMLButtonElement>('#end-turn')!,
   openLibrary: document.querySelector<HTMLButtonElement>('#open-library')!,
+  openSeats: document.querySelector<HTMLButtonElement>('#open-seats')!,
   seedInput: document.querySelector<HTMLInputElement>('#seed-input')!,
   seedGo: document.querySelector<HTMLButtonElement>('#seed-go')!,
   tileName: document.querySelector<HTMLElement>('#tile-name')!,
@@ -1184,6 +1190,19 @@ applyStaticTranslations();
 paintLangToggle();
 
 let state: GameState = createGameState('FABRIC', { topics: provider.topics() });
+/**
+ * Which seat this browser is playing.
+ *
+ * ⚠️ **A variable rather than `PLAYER_FACTION_ID`, because it can change.**
+ * Every empire is a seat, and taking a vacant one means the answers to "my
+ * units", "my towns", "my fog" all move to a different faction id. Reading the
+ * constant instead would keep drawing the empire you used to be, which shows up
+ * as a map full of units you cannot order about.
+ *
+ * It still STARTS as the player faction: a fresh game seats you in the empire
+ * that was built for you.
+ */
+let mySeat: string = PLAYER_FACTION_ID;
 /** Where the empire is kept between visits. See `persist.ts`. */
 const slot = localSlot();
 let selectedUnitId: string | undefined;
@@ -1423,7 +1442,7 @@ function doRaid(): void {
 
 /** Jump to the next unit still awaiting orders, the way a 4X should. */
 function selectNextIdle(): void {
-  const idle = unitsOf(state, PLAYER_FACTION_ID).filter(
+  const idle = unitsOf(state, mySeat).filter(
     (u) => u.movesLeft > 0 && !u.fortified,
   );
   if (idle.length === 0) {
@@ -1445,7 +1464,7 @@ function selectNextIdle(): void {
  * anything moved, and the arrows would stop being a way to walk your line.
  */
 function ownUnits(): readonly Unit[] {
-  return unitsOf(state, PLAYER_FACTION_ID);
+  return unitsOf(state, mySeat);
 }
 
 /**
@@ -1488,8 +1507,8 @@ function stepUnit(delta: number): void {
  */
 function defends(hex: Hex): boolean {
   const unit = unitAt(state, hex);
-  if (unit) return unit.factionId === PLAYER_FACTION_ID;
-  return cityAt(state, hex)?.factionId === PLAYER_FACTION_ID;
+  if (unit) return unit.factionId === mySeat;
+  return cityAt(state, hex)?.factionId === mySeat;
 }
 
 /**
@@ -1662,7 +1681,7 @@ async function actOn(target: Hex): Promise<void> {
   }
 
   const from = unit.hex;
-  const beforeExplored = state.explored;
+  const beforeExplored = memoryOf(state, mySeat).explored;
   const moved = moveUnit(state, unit.id, target);
   if (!moved.ok) {
     log(moved.reason, 'bad');
@@ -1726,7 +1745,7 @@ async function walk(
       if (!here) break;
       const units = new Map(state.units);
       units.set(unitId, { ...here, hex: step });
-      const sight = sightOf({ ...state, units }, PLAYER_FACTION_ID);
+      const sight = sightOf({ ...state, units }, mySeat);
       for (const key of sight) shown.add(key);
 
       walkReveal = { explored: shown, sight };
@@ -1851,9 +1870,9 @@ async function digAlong(unitId: string, route: readonly Hex[]): Promise<void> {
 /** Add to the player's stores, without going through a whole turn. */
 function grantResource(current: GameState, resource: ResourceId, amount: number): GameState {
   const factions = new Map(current.factions);
-  const player = factions.get(PLAYER_FACTION_ID);
+  const player = factions.get(mySeat);
   if (!player) return current;
-  factions.set(PLAYER_FACTION_ID, {
+  factions.set(mySeat, {
     ...player,
     resources: { ...player.resources, [resource]: player.resources[resource] + amount },
   });
@@ -2126,7 +2145,7 @@ function wait(ms: number): Promise<void> {
  */
 function playCityFallsShot(hex: Hex): Promise<void> {
   const city = cityAt(state, hex);
-  const mine = city?.factionId === PLAYER_FACTION_ID;
+  const mine = city?.factionId === mySeat;
   return playOnce(
     descendShot({
       id: 'city-falls',
@@ -2632,7 +2651,7 @@ async function doEndTurn(): Promise<void> {
   endScreen.show(report.outcome, {
     turn: report.turn,
     skills: `${state.research.known.length}/${state.topics.nodes.length}`,
-    cities: [...state.cities.values()].filter((c) => c.factionId === PLAYER_FACTION_ID).length,
+    cities: [...state.cities.values()].filter((c) => c.factionId === mySeat).length,
     cheats: state.cheatsUsed,
   });
 }
@@ -2747,7 +2766,7 @@ async function presentEnemyTurn(
     const defender = unitAt(state, target);
     const city = cityAt(state, target);
     const attackerColour = state.factions.get(featured.factionId)?.colour ?? '#b5533f';
-    const defenderColour = state.factions.get(PLAYER_FACTION_ID)?.colour ?? '#4a9fe0';
+    const defenderColour = state.factions.get(mySeat)?.colour ?? '#4a9fe0';
 
     if (from) {
       const onImpact = (): void => {
@@ -3038,8 +3057,8 @@ function describeTile(h: Hex | undefined): void {
    */
   const inSight =
     city !== undefined &&
-    (city.factionId === PLAYER_FACTION_ID || currentSight.has(hexKey(h)));
-  const remembered = inSight ? undefined : state.seenCities.get(hexKey(h));
+    (city.factionId === mySeat || currentSight.has(hexKey(h)));
+  const remembered = inSight ? undefined : memoryOf(state, mySeat).seenCities.get(hexKey(h));
 
   const who = city && inSight
     ? ` | ${city.name} (${state.factions.get(city.factionId)?.label ?? '?'})`
@@ -3095,7 +3114,7 @@ function describeTile(h: Hex | undefined): void {
  * stale progress bar on screen.
  */
 function refreshCities(): void {
-  const mine = [...state.cities.values()].filter((c) => c.factionId === PLAYER_FACTION_ID);
+  const mine = [...state.cities.values()].filter((c) => c.factionId === mySeat);
   el.cities.hidden = mine.length === 0;
   if (mine.length === 0) return;
 
@@ -3348,7 +3367,7 @@ function refreshReadiness(): void {
     );
     // Straight down onto the capital, because the exam is not coming for a
     // unit or a border: it is coming for the whole empire's account of itself.
-    const capital = [...state.cities.values()].find((c) => c.factionId === PLAYER_FACTION_ID);
+    const capital = [...state.cities.values()].find((c) => c.factionId === mySeat);
     if (capital) {
       void playOnce(
         descendShot({
@@ -3485,7 +3504,7 @@ async function faceTheProctor(): Promise<void> {
     {
       turn: state.turn,
       skills: `${state.research.known.length}/${state.topics.nodes.length}`,
-      cities: [...state.cities.values()].filter((c) => c.factionId === PLAYER_FACTION_ID).length,
+      cities: [...state.cities.values()].filter((c) => c.factionId === mySeat).length,
       cheats: state.cheatsUsed,
     },
   );
@@ -3524,8 +3543,8 @@ function refreshThreats(): void {
   }
 
   const mine = [
-    ...unitsOf(state, PLAYER_FACTION_ID).map((u) => u.hex),
-    ...[...state.cities.values()].filter((c) => c.factionId === PLAYER_FACTION_ID).map((c) => c.hex),
+    ...unitsOf(state, mySeat).map((u) => u.hex),
+    ...[...state.cities.values()].filter((c) => c.factionId === mySeat).map((c) => c.hex),
   ];
   const limit = aggroRadius(state.turn);
 
@@ -3594,7 +3613,7 @@ function refreshThreats(): void {
 }
 
 function refreshHud(): void {
-  const resources = state.factions.get(PLAYER_FACTION_ID)!.resources;
+  const resources = state.factions.get(mySeat)!.resources;
   el.turn.textContent = t('Turn {n}', { n: state.turn });
   el.compute.textContent = String(resources.compute);
   el.cu.textContent = String(resources.cu);
@@ -3813,7 +3832,7 @@ async function playOpening(): Promise<void> {
 
 /** Where the player's people are standing, on the ground, or nothing. */
 function homeOfPlayer(): Vector3 | undefined {
-  const mine = unitsOf(state, PLAYER_FACTION_ID);
+  const mine = unitsOf(state, mySeat);
   const first = mine[0];
   return first ? scene.groundAt(first.hex) : undefined;
 }
@@ -3852,7 +3871,7 @@ function adopt(next: GameState, message: string): void {
   el.log.replaceChildren();
   log(message);
 
-  const first = unitsOf(state, PLAYER_FACTION_ID).find((u) => u.typeId === 'architect');
+  const first = unitsOf(state, mySeat).find((u) => u.typeId === 'architect');
   scene.loadMap(state.map);
   if (first) {
     scene.focus(first.hex, true);
@@ -3949,6 +3968,81 @@ canvas.addEventListener('pointerup', endDrag);
 canvas.addEventListener('pointercancel', endDrag);
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
+/**
+ * The seat table: leave the empire you are playing and take one nobody is.
+ *
+ * ⚠️ **The empire you leave is handed to the machine, not frozen.** A seat that
+ * simply stopped would be a dead empire on the board taking no turns, which is
+ * neither a rival nor a ruin. The AI picking it up means the thing you walked
+ * away from carries on without you, and can be walked back into later.
+ *
+ * ⚠️ **`activeFactionId` moves with the seat.** `endTurn` reads it to decide
+ * whose turn just ended, so leaving it behind would end the turn of the empire
+ * you no longer play and then hand your new one to the AI loop. That coupling
+ * is only correct because exactly one person is at this table; a game with
+ * several humans rotates the active seat instead, which is why `takeSeat` in
+ * the engine deliberately does not touch it.
+ */
+async function openSeats(): Promise<void> {
+  if (modal.isOpen() || choice.open()) return;
+  // The board is a turn behind while a raid plays out; switching mid-resolve
+  // would move the camera to an empire that is still being fought over.
+  if (resolvingTurn) return;
+
+  const table = seatTable(state, mySeat);
+  if (table.offers.length === 0) {
+    log(t('Every empire on the board is being played.'));
+    return;
+  }
+
+  const STAY = 'stay';
+  const picked = await choice.ask(table.title, table.body, [
+    ...table.offers.map((offer: SeatOffer) => ({
+      id: offer.id,
+      label: offer.label,
+      detail: offer.detail,
+    })),
+    {
+      id: STAY,
+      label: t('Stay where you are'),
+      detail: t('Keep the empire you are playing.'),
+      primary: true,
+    },
+  ]);
+  if (picked === STAY) return;
+
+  const left = state.factions.get(mySeat)?.label ?? mySeat;
+  const joined = state.factions.get(picked)?.label ?? picked;
+
+  state = takeSeat(vacateSeat(state, mySeat), picked);
+  state = { ...state, activeFactionId: picked };
+  mySeat = picked;
+
+  /*
+   * ⚠️ Everything selected belonged to the empire you just left. A stale
+   * selection would leave the panel offering orders for a unit that is now
+   * somebody else's, and the first click would look like the game ignoring it.
+   */
+  selectedUnitId = undefined;
+  reach = undefined;
+  attackTargets = undefined;
+  settleSuggestions = [];
+
+  log(t('You leave {left} to the machine and take {joined}.', { left, joined }), 'good');
+  log(t('You know nothing of this map. Scout it.'));
+  dirty = true;
+  refreshHud();
+  /*
+   * Saved immediately rather than at the end of the turn.
+   *
+   * ⚠️ Changing seats is not an action inside a turn, it is a change of who
+   * is playing. A reload between here and the next end of turn would otherwise
+   * put the player back in the empire they just walked away from, with the
+   * board already showing the consequences of leaving it.
+   */
+  saveGame(slot, state);
+}
+
 window.addEventListener('keydown', (e) => {
   const target = e.target as HTMLElement | null;
   if (target?.tagName === 'INPUT') return;
@@ -4033,6 +4127,8 @@ window.addEventListener('keydown', (e) => {
     doSkip();
   } else if (e.key === 'c') {
     void doCouncil();
+  } else if (e.key === 'o') {
+    void openSeats();
   } else if (e.key === 'g') {
     gridVisible = !gridVisible;
     scene.setGridVisible(gridVisible);
@@ -4052,6 +4148,7 @@ window.addEventListener('orientationchange', () => {
 });
 el.endTurn.addEventListener('click', doEndTurn);
 el.openLibrary.addEventListener('click', () => library.toggle());
+el.openSeats.addEventListener('click', () => void openSeats());
 el.faceProctor.addEventListener('click', () => void faceTheProctor());
 el.actFound.addEventListener('click', doFound);
 el.actRaid.addEventListener('click', doRaid);
@@ -4142,7 +4239,7 @@ let walkReveal: { explored: ReadonlySet<string>; sight: ReadonlySet<string> } | 
 const STEP_MS = 240;
 
 function refreshFog(): void {
-  currentSight = sightOf(state, PLAYER_FACTION_ID);
+  currentSight = sightOf(state, mySeat);
 
   if (revealingForOpening) {
     fogSignature = 'opening';
@@ -4164,7 +4261,7 @@ function refreshFog(): void {
    * cleared when the walk finishes, and the fog then agrees with the rules
    * again.
    */
-  const explored = walkReveal?.explored ?? state.explored;
+  const explored = walkReveal?.explored ?? memoryOf(state, mySeat).explored;
   const sight = walkReveal?.sight ?? currentSight;
 
   const signature = `${explored.size}:${sight.size}:${state.seed}:${walkReveal ? 'w' : ''}`;
@@ -4209,7 +4306,7 @@ function refreshCorruption(): void {  const next = new Set<string>();
     // Any antagonist's ground is corrupted, not just the Silo Horde's. This
     // checked one hard-coded faction id and would have silently ignored the
     // other six the moment they took a city.
-    if (!city || city.factionId === PLAYER_FACTION_ID) continue;
+    if (!city || city.factionId === mySeat) continue;
     if (next.has(key)) continue;
     next.add(key);
     const hex = territoryHex(key);
@@ -4292,12 +4389,15 @@ function frame(now: number): void {
        * being taken by someone else.
        */
       treasures: [...state.treasures.values()]
-        .filter((chest) => state.explored.has(hexKey(chest.hex)))
+        .filter((chest) => memoryOf(state, mySeat).explored.has(hexKey(chest.hex)))
         .map((chest) => chest.hex),
       hover,
       unitOffset: unitWorldOffset,
       unitOpacity: (id) => effects.opacityOf(id),
       visibleHexes: currentSight,
+      // Whose ghosts to draw. Per seat, so taking a chair does not inherit the
+      // towns the previous occupant of this browser had found.
+      seenCities: memoryOf(state, mySeat).seenCities,
     });
     dirty = false;
     refreshHud();
@@ -4352,6 +4452,13 @@ declare global {
       factionUnits: (
         factionId: string,
       ) => { id: string; typeId: string; q: number; r: number; hp: number }[];
+      seat: () => string;
+      seats: () => {
+        title: string;
+        body: string;
+        offers: { id: string; label: string; detail: string }[];
+      };
+      sitIn: (factionId: string) => { left: string; now: string };
       cityCount: () => number;
       cities: () => {
         id: string;
@@ -4542,8 +4649,8 @@ window.__fabricEmpires = {
       wallHp: c.wallHp,
     })),
   playerCityCount: () =>
-    [...state.cities.values()].filter((c) => c.factionId === PLAYER_FACTION_ID).length,
-  resources: () => ({ ...state.factions.get(PLAYER_FACTION_ID)!.resources }),
+    [...state.cities.values()].filter((c) => c.factionId === mySeat).length,
+  resources: () => ({ ...state.factions.get(mySeat)!.resources }),
   selected: () => selectedUnitId,
   /**
    * One unit, flattened.
@@ -4616,6 +4723,37 @@ window.__fabricEmpires = {
       r: u.hex.r,
       hp: u.hp,
     })),
+  /*
+   * The empire table, and the seat this browser is playing.
+   *
+   * ⚠️ Exposed because the alternative is driving a modal to find out whether
+   * the fog actually changed hands, and "the panel said something" is not
+   * evidence that the memory moved. `seat()` plus `vision()` together are.
+   */
+  seat: () => mySeat,
+  seats: () => {
+    const table = seatTable(state, mySeat);
+    return {
+      title: table.title,
+      body: table.body,
+      offers: table.offers.map((o) => ({ id: o.id, label: o.label, detail: o.detail })),
+    };
+  },
+  /** Sit down in a vacant empire, exactly as the panel does. */
+  sitIn: (factionId: string) => {
+    const before = mySeat;
+    state = takeSeat(vacateSeat(state, mySeat), factionId);
+    state = { ...state, activeFactionId: factionId };
+    mySeat = factionId;
+    selectedUnitId = undefined;
+    reach = undefined;
+    attackTargets = undefined;
+    settleSuggestions = [];
+    dirty = true;
+    refreshHud();
+    saveGame(slot, state);
+    return { left: before, now: mySeat };
+  },
   saveNow: () => saveGame(slot, state),
   savedBytes: () => slot.read()?.length ?? 0,
   wipeSave: () => slot.clear(),
@@ -4649,8 +4787,8 @@ window.__fabricEmpires = {
     // take to fund a topic.
     recordHarnessGrant('grantCompute');
     const factions = new Map(state.factions);
-    const player = factions.get(PLAYER_FACTION_ID)!;
-    factions.set(PLAYER_FACTION_ID, {
+    const player = factions.get(mySeat)!;
+    factions.set(mySeat, {
       ...player,
       resources: { ...player.resources, compute: player.resources.compute + amount },
     });
@@ -4667,12 +4805,12 @@ window.__fabricEmpires = {
    */
   vision: () => ({
     total: state.map.tiles.size,
-    explored: state.explored.size,
+    explored: memoryOf(state, mySeat).explored.size,
     visible: currentSight.size,
-    hidden: state.map.tiles.size - state.explored.size,
+    hidden: state.map.tiles.size - memoryOf(state, mySeat).explored.size,
   }),
   cheatsUsed: () => [...state.cheatsUsed],
-  exploredCount: () => state.explored.size,
+  exploredCount: () => memoryOf(state, mySeat).explored.size,
   treasures: () =>
     [...state.treasures.values()].map((chest) => ({
       id: chest.id,
@@ -4680,10 +4818,10 @@ window.__fabricEmpires = {
       r: chest.hex.r,
       resource: chest.resource,
       amount: chest.amount,
-      explored: state.explored.has(hexKey(chest.hex)),
+      explored: memoryOf(state, mySeat).explored.has(hexKey(chest.hex)),
     })),
   seenCities: () =>
-    [...state.seenCities.values()].map((seen) => ({
+    [...memoryOf(state, mySeat).seenCities.values()].map((seen) => ({
       q: seen.hex.q,
       r: seen.hex.r,
       name: seen.name,
@@ -4810,7 +4948,7 @@ window.__fabricEmpires = {
    */
   setRank: (rank: string, population: number) => {
     recordHarnessGrant('setRank');
-    const city = [...state.cities.values()].find((c) => c.factionId === PLAYER_FACTION_ID);
+    const city = [...state.cities.values()].find((c) => c.factionId === mySeat);
     if (!city) return undefined;
     const cities = new Map(state.cities);
     cities.set(city.id, { ...city, rank: rank as CityRank, population });
@@ -4832,7 +4970,7 @@ window.__fabricEmpires = {
   showcase: (typeIds: string[], centre: Hex) => {
     recordHarnessGrant('showcase');
     const units = new Map(state.units);
-    for (const [id, u] of units) if (u.factionId === PLAYER_FACTION_ID) units.delete(id);
+    for (const [id, u] of units) if (u.factionId === mySeat) units.delete(id);
 
     const placed: string[] = [];
     let next = state.nextEntityId;
@@ -4844,7 +4982,7 @@ window.__fabricEmpires = {
       units.set(id, {
         id,
         typeId: typeId as Unit['typeId'],
-        factionId: PLAYER_FACTION_ID,
+        factionId: mySeat,
         hex,
         hp: 100,
         movesLeft: 2,
@@ -4908,8 +5046,8 @@ window.__fabricEmpires = {
     recordHarnessGrant('besiegeMyCity');
     const city = cityId
       ? state.cities.get(cityId)
-      : [...state.cities.values()].find((c) => c.factionId === PLAYER_FACTION_ID);
-    if (!city || city.factionId !== PLAYER_FACTION_ID) return undefined;
+      : [...state.cities.values()].find((c) => c.factionId === mySeat);
+    if (!city || city.factionId !== mySeat) return undefined;
 
     for (let d = 0; d < 6; d++) {
       const hex = hexNeighbour(city.hex, d);

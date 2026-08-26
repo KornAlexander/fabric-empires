@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  memoryOf,
   PLAYER_FACTION_ID,
   PRODUCTION_CAP_PER_TURN,
   SAVE_VERSION,
@@ -305,9 +306,25 @@ describe('saves', () => {
   it('upgrades a version 2 save rather than refusing it', () => {
     const state = withCapital();
     const save = JSON.parse(serialise(state));
+    /*
+     * ⚠️ **The new fields are STRIPPED, not just relabelled with an old
+     * version number.**
+     *
+     * Overwriting `version` on a current save was enough while every change
+     * was an added field. It stopped being enough when 10 -> 11 started
+     * REWRITING factions: a fixture that still carried `control` and `memory`
+     * would sail past that migration untouched and report it as working on
+     * exactly the day it broke. A version 2 save had `isPlayer` and no memory
+     * of any kind, so this one has to as well.
+     */
     const old = {
       ...save,
       version: 2,
+      memory: undefined,
+      factions: save.factions.map((f: Record<string, unknown>) => {
+        const { control, ...rest } = f;
+        return { ...rest, isPlayer: control === 'human' };
+      }),
       ruins: undefined,
       cities: save.cities.map((c: Record<string, unknown>) => {
         const { productionProgress, producing, lastRaidedTurn, ...rest } = c;
@@ -329,7 +346,7 @@ describe('saves', () => {
     // ⚠️ A save from before fog was played on a fully visible map, so the
     // player has already seen all of it. Blanking it would take back ground
     // they genuinely uncovered.
-    expect(loaded.explored.size).toBe(loaded.map.tiles.size);
+    expect(memoryOf(loaded, PLAYER_FACTION_ID).explored.size).toBe(loaded.map.tiles.size);
     /*
      * ⚠️ Rank is granted on population alone, knowingly generously. Checking
      * retained knowledge as well would be the honest rule, and it would demote
@@ -337,6 +354,6 @@ describe('saves', () => {
      * did not exist when the save was played.
      */
     expect(capital(loaded).rank).toBe('siedlung');
-    expect(SAVE_VERSION).toBe(10);
+    expect(SAVE_VERSION).toBe(11);
   });
 });

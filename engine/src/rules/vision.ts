@@ -18,16 +18,37 @@
  * besieging pressure on a learner, not an opponent in a fair match, and the
  * aggro leash is what keeps that fair rather than mutual blindness.
  *
- * ⚠️ **So only the player's memory is stored.** The plan (21.2) said "per
- * faction", which 21.3 then makes pointless: six of the seven would never read
- * theirs. One set, documented, rather than a map of sets that is empty for
- * everybody but one.
+ * ⚠️ **So memory is stored for the seats a HUMAN holds, and only those.** The
+ * plan (21.2) said "per faction", which 21.3 then made pointless while exactly
+ * one seat was human: six of the seven would never read theirs. Seats change
+ * that back. Two people sharing one memory would show each of them the other's
+ * scouting, so the store is a map again, still skipping the seats nobody is
+ * sitting in.
  */
 
 import { hexKey, hexSpiral, type Hex } from '../hex/index.js';
-import { unitType, type City, type SeenCity } from '../entities/index.js';
+import { unitType, NO_MEMORY, type City, type FactionMemory, type SeenCity } from '../entities/index.js';
 import { isBreached } from './walls.js';
 import type { GameState } from '../state/gameState.js';
+
+/**
+ * What this empire knows.
+ *
+ * ⚠️ Duplicated from `memoryOf` in `state/gameState.ts` rather than imported,
+ * because that module imports THIS one and taking the value would close the
+ * cycle. Same reasoning as the `isPlayer` note that used to sit below. The two
+ * are one line each and the test suite pins that they agree.
+ */
+function memory(state: GameState, factionId: string): FactionMemory {
+  return state.memory.get(factionId) ?? NO_MEMORY;
+}
+
+/** Put a faction's memory back, leaving every other seat's alone. */
+function withMemory(state: GameState, factionId: string, next: FactionMemory): GameState {
+  const memories = new Map(state.memory);
+  memories.set(factionId, next);
+  return { ...state, memory: memories };
+}
 
 /**
  * How far a city sees.
@@ -54,7 +75,7 @@ export function rememberAlong(
   state: GameState,
   steps: readonly Hex[],
   sight: number,
-  factionId?: string,
+  factionId: string,
 ): GameState {
   if (steps.length === 0) return state;
 
@@ -86,20 +107,25 @@ export function rememberAlong(
   for (const city of state.cities.values()) townHexes.add(hexKey(city.hex));
 
   /*
-   * ⚠️ **Only the human's marches fill the human's memory.**
+   * ⚠️ **Only a human's marches fill that human's memory.**
    *
-   * `moveUnit` is the same function the antagonists use, so without this the
-   * player's map would fill in with every town the seven AI factions happened
-   * to walk past. That is not a small leak: they roam the whole map, so it
-   * would hand the player the entire town list within a few turns while the
-   * ground around it stayed dark, which looks less like a feature than like
-   * the fog being broken.
+   * `moveUnit` is the same function the antagonists use, so without this a
+   * player's map would fill in with every town the AI factions happened to
+   * walk past. That is not a small leak: they roam the whole map, so it would
+   * hand over the entire town list within a few turns while the ground around
+   * it stayed dark, which looks less like a feature than like the fog being
+   * broken.
    *
-   * Decided from `isPlayer` on the faction rather than by importing
+   * Decided from `control` on the faction rather than by importing
    * `PLAYER_FACTION_ID`: that constant lives in the module which imports this
-   * one, and taking the value rather than the type would close the cycle.
+   * one, and taking the value rather than the type would close the cycle. It
+   * is also now the correct question, where the constant never was: the seat
+   * that matters is whichever human is marching, not the first one.
    */
-  const mine = factionId === undefined || state.factions.get(factionId)?.isPlayer === true;
+  const mine = state.factions.get(factionId)?.control === 'human';
+  if (!mine) return state;
+
+  const before = memory(state, factionId);
 
   let passed: Set<string> | undefined;
   for (const step of steps) {
@@ -107,18 +133,19 @@ export function rememberAlong(
       const key = hexKey(hex);
       // Off-map hexes are not secrets, they are nothing.
       if (!state.map.tiles.has(key)) continue;
-      if (mine && townHexes.has(key)) (passed ??= new Set()).add(key);
-      if (state.explored.has(key)) continue;
+      if (townHexes.has(key)) (passed ??= new Set()).add(key);
+      if (before.explored.has(key)) continue;
       (fresh ??= []).push(key);
     }
   }
 
-  const remembered = passed ? rememberCities(state, passed) : state;
+  const remembered = passed ? rememberCities(state, factionId, passed) : state;
   if (!fresh) return remembered;
 
-  const explored = new Set(remembered.explored);
+  const current = memory(remembered, factionId);
+  const explored = new Set(current.explored);
   for (const key of fresh) explored.add(key);
-  return { ...remembered, explored };
+  return withMemory(remembered, factionId, { ...current, explored });
 }
 
 /**
@@ -153,31 +180,34 @@ export function sightOf(state: GameState, factionId: string): Set<string> {
 }
 
 /**
- * Fold what the player can see now into what they have ever seen.
+ * Fold what a seat can see now into what it has ever seen.
  *
  * Returns the same state when nothing new was revealed, so a turn that
  * uncovered nothing does not churn a fresh Set for every listener downstream.
  */
 export function rememberVisible(state: GameState, factionId: string): GameState {
+  /*
+   * ⚠️ Memory is a HUMAN's, and this function runs for every faction in the
+   * turn pipeline. See the note in `rememberAlong`: without the guard the
+   * antagonists would each accumulate a map that nothing ever reads, and the
+   * cost of that is paid on every turn of every game.
+   */
+  if (state.factions.get(factionId)?.control !== 'human') return state;
+
   const visible = sightOf(state, factionId);
+  const before = memory(state, factionId);
   let added = 0;
   for (const key of visible) {
-    if (!state.explored.has(key)) added += 1;
+    if (!before.explored.has(key)) added += 1;
   }
 
-  /*
-   * ⚠️ Town memory is the HUMAN's, and this function runs for every faction.
-   * See the note in `rememberAlong`: without the guard the seven antagonists
-   * would fill the player's map in for them.
-   */
-  const withCities = state.factions.get(factionId)?.isPlayer
-    ? rememberCities(state, visible)
-    : state;
+  const withCities = rememberCities(state, factionId, visible);
   if (added === 0) return withCities;
 
-  const explored = new Set(withCities.explored);
+  const current = memory(withCities, factionId);
+  const explored = new Set(current.explored);
   for (const key of visible) explored.add(key);
-  return { ...withCities, explored };
+  return withMemory(withCities, factionId, { ...current, explored });
 }
 
 /**
@@ -198,7 +228,12 @@ export function rememberVisible(state: GameState, factionId: string): GameState 
  * Returns the same state when nothing changed, because this runs every turn
  * and most turns see no town at all.
  */
-export function rememberCities(state: GameState, visible: ReadonlySet<string>): GameState {
+export function rememberCities(
+  state: GameState,
+  factionId: string,
+  visible: ReadonlySet<string>,
+): GameState {
+  const before = memory(state, factionId);
   let next: Map<string, SeenCity> | undefined;
 
   const seenNow = new Map<string, City>();
@@ -207,7 +242,7 @@ export function rememberCities(state: GameState, visible: ReadonlySet<string>): 
   }
 
   for (const [key, city] of seenNow) {
-    const before = state.seenCities.get(key);
+    const was = before.seenCities.get(key);
     const picture: SeenCity = {
       hex: city.hex,
       name: city.name,
@@ -219,18 +254,18 @@ export function rememberCities(state: GameState, visible: ReadonlySet<string>): 
       breached: isBreached(city),
       turnSeen: state.turn,
     };
-    if (before && samePicture(before, picture)) continue;
-    (next ??= new Map(state.seenCities)).set(key, picture);
+    if (was && samePicture(was, picture)) continue;
+    (next ??= new Map(before.seenCities)).set(key, picture);
   }
 
   // Forget anything that is visibly no longer there.
-  for (const key of state.seenCities.keys()) {
+  for (const key of before.seenCities.keys()) {
     if (!visible.has(key) || seenNow.has(key)) continue;
-    (next ??= new Map(state.seenCities)).delete(key);
+    (next ??= new Map(before.seenCities)).delete(key);
   }
 
   if (!next) return state;
-  return { ...state, seenCities: next };
+  return withMemory(state, factionId, { ...before, seenCities: next });
 }
 
 /**
@@ -254,7 +289,7 @@ function samePicture(a: SeenCity, b: SeenCity): boolean {
   );
 }
 
-/** Whether the player has ever seen this hex. */
-export function isExplored(state: GameState, hex: Hex): boolean {
-  return state.explored.has(hexKey(hex));
+/** Whether this seat has ever seen this hex. */
+export function isExplored(state: GameState, factionId: string, hex: Hex): boolean {
+  return memory(state, factionId).explored.has(hexKey(hex));
 }

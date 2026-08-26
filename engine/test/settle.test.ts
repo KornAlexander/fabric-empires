@@ -10,6 +10,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+  memoryOf,
   GROWTH_WEIGHT,
   PLAYER_FACTION_ID,
   createGameState,
@@ -49,7 +50,12 @@ function paint(state: GameState, hex: Hex, terrain: TerrainId, river = false): G
 
 /** Explore everything, so the fog is not what is being tested. */
 function reveal(state: GameState): GameState {
-  return { ...state, explored: new Set(state.map.tiles.keys()) };
+  const memory = new Map(state.memory);
+  memory.set(PLAYER_FACTION_ID, {
+    ...memoryOf(state, PLAYER_FACTION_ID),
+    explored: new Set(state.map.tiles.keys()),
+  });
+  return { ...state, memory };
 }
 
 /** Repaint an entire work radius, so a site's yield is known and not guessed. */
@@ -187,7 +193,7 @@ describe('the proposals', () => {
     const state = fresh();
     const sites = settleSites(state, architect(state));
     for (const site of sites) {
-      expect(state.explored.has(hexKey(site.hex)), hexKey(site.hex)).toBe(true);
+      expect(memoryOf(state, PLAYER_FACTION_ID).explored.has(hexKey(site.hex)), hexKey(site.hex)).toBe(true);
     }
   });
 

@@ -12,13 +12,44 @@
 
 import { generateMap, type MapOptions } from '../map/index.js';
 import { hexKey } from '../hex/index.js';
-import type { City, Faction, Ruin, SeenCity, Treasure, Unit } from '../entities/index.js';
+import type { City, Faction, FactionMemory, Ruin, SeenCity, Treasure, Unit } from '../entities/index.js';
 import { CITY_RANKS, FIRST_RANK, type CityRank } from '../entities/rank.js';
 import { GENERIC_TOPIC_GRAPH, type TopicGraph } from '../challenge/index.js';
 import { EMPTY_RESEARCH, type ResearchState } from '../rules/research.js';
 import type { Difficulty, GameState } from '../state/index.js';
 
-export const SAVE_VERSION = 10;
+export const SAVE_VERSION = 11;
+
+/**
+ * One seat's memory, on the way to disk.
+ *
+ * ⚠️ Keyed by faction rather than being a bare pair of arrays, because there
+ * is now more than one of them and which seat a memory belongs to is the whole
+ * point. A save that stored them positionally would hand the wrong map to the
+ * wrong player the first time a seat was vacated.
+ */
+export interface SavedMemory {
+  readonly factionId: string;
+  /**
+   * Hex keys this seat has uncovered.
+   *
+   * An array because JSON has no Set. On a radius-45 map fully explored this
+   * is about 6,200 short strings, which is the largest thing in the file by
+   * some way and still small.
+   */
+  readonly explored: readonly string[];
+  /**
+   * Towns it has found, as they looked when last seen.
+   *
+   * ⚠️ **Cannot be rebuilt from anything else, unlike most of this file.**
+   * `explored` says which GROUND is remembered; it says nothing about what was
+   * standing on it, and the live `cities` list is the current truth rather
+   * than what the player was shown. A memory that is not saved is a memory
+   * the player loses every time they close the tab, which is the one thing
+   * this feature exists to prevent.
+   */
+  readonly seenCities: readonly SeenCity[];
+}
 
 export interface SaveFile {
   readonly version: number;
@@ -50,25 +81,21 @@ export interface SaveFile {
   readonly nextEntityId: number;
   readonly cheatsUsed: readonly string[];
   /**
-   * Hex keys the player has uncovered.
+   * What each seat knows, one entry per human-held faction.
    *
-   * An array because JSON has no Set, and the only transformation on the way
-   * out. On a radius-45 map fully explored this is about 6,200 short strings,
-   * which is the largest thing in the file by some way and still small.
+   * Optional so a version-10 save still parses while its migration runs.
    */
-  readonly explored: readonly string[];
+  readonly memory?: readonly SavedMemory[];
   /**
-   * Towns the player has found, as they looked when last seen.
+   * Hex keys the player uncovered, from version 10 and earlier.
    *
-   * ⚠️ **Cannot be rebuilt from anything else, unlike most of this file.**
-   * `explored` says which GROUND is remembered; it says nothing about what was
-   * standing on it, and the live `cities` list is the current truth rather
-   * than what the player was shown. A memory that is not saved is a memory
-   * the player loses every time they close the tab, which is the one thing
-   * this feature exists to prevent.
-   *
-   * Optional so a version-9 save still parses while its migration runs.
+   * ⚠️ Kept on the type purely so the 10 -> 11 migration can read it. Nothing
+   * writes it any more. Deleting it from the interface would mean the
+   * migration had to cast, and a cast is how a field quietly stops being read
+   * at all.
    */
+  readonly explored?: readonly string[];
+  /** Towns the player had found, from version 10 and earlier. See `explored`. */
   readonly seenCities?: readonly SeenCity[];
 }
 
@@ -88,8 +115,11 @@ export function toSaveFile(state: GameState): SaveFile {
     activeFactionId: state.activeFactionId,
     nextEntityId: state.nextEntityId,
     cheatsUsed: state.cheatsUsed,
-    explored: [...state.explored],
-    seenCities: [...state.seenCities.values()],
+    memory: [...state.memory].map(([factionId, seat]) => ({
+      factionId,
+      explored: [...seat.explored],
+      seenCities: [...seat.seenCities.values()],
+    })),
   };
 }
 
@@ -275,6 +305,44 @@ const MIGRATIONS: Readonly<Record<number, (save: SaveFile) => SaveFile>> =
       version: 10,
       seenCities: [],
     }),
+
+    /**
+     * 10 -> 11: seats. One player becomes a table of them.
+     *
+     * Two shape changes, and both are the same change seen from different
+     * ends. `Faction.isPlayer` becomes `control`, and the single `explored` /
+     * `seenCities` pair becomes a memory per seat.
+     *
+     * ⚠️ **The old memory goes to whichever faction was the player, found by
+     * reading the old flag rather than by assuming `PLAYER_FACTION_ID`.** A
+     * campaign is free to rename its factions, and handing a saved map to a
+     * hard-coded id would silently blank the fog of anyone whose empire was
+     * not called `player`. If no faction claims it, the memory is dropped
+     * rather than parked on an arbitrary seat.
+     */
+    10: (save) => {
+      type LegacyFaction = Omit<Faction, 'control'> & { readonly isPlayer?: boolean };
+      const legacy = save.factions as readonly LegacyFaction[];
+      const human = legacy.find((f) => f.isPlayer === true);
+      const factions: Faction[] = legacy.map(({ isPlayer, ...rest }) => ({
+        ...rest,
+        control: isPlayer === true ? 'human' : 'ai',
+      }));
+      return {
+        ...save,
+        version: 11,
+        factions,
+        memory: human
+          ? [
+              {
+                factionId: human.id,
+                explored: save.explored ?? [],
+                seenCities: save.seenCities ?? [],
+              },
+            ]
+          : [],
+      };
+    },
   });
 
 /** The best rank a population would justify if knowledge were not asked for. */
@@ -320,11 +388,25 @@ export function fromSaveFile(
    * An empty explored set on a save that has a turn behind it means the save
    * predates fog of war, so the whole map is remembered. A genuinely new game
    * never reaches here: `createGameState` seeds its own sight.
+   *
+   * ⚠️ Applied per seat, and only to a seat that has an entry at all. A seat
+   * with no entry is an AI faction, which does not use fog and must not be
+   * handed the map: doing that would put six thousand hex keys per antagonist
+   * into every save for something nothing reads.
    */
-  const explored =
-    (migrated.explored?.length ?? 0) > 0
-      ? new Set(migrated.explored)
-      : new Set(map.tiles.keys());
+  const memory = new Map<string, FactionMemory>(
+    (migrated.memory ?? []).map((seat) => [
+      seat.factionId,
+      {
+        explored:
+          seat.explored.length > 0 ? new Set(seat.explored) : new Set(map.tiles.keys()),
+        // ⚠️ `hexKey`, not an inline template. The format happens to be `q,r`
+        // today, and a second copy of it here is a silent way for a save to
+        // stop matching the map the moment that changes.
+        seenCities: new Map(seat.seenCities.map((c) => [hexKey(c.hex), c])),
+      },
+    ]),
+  );
 
   return {
     seed: migrated.seed,
@@ -346,16 +428,12 @@ export function fromSaveFile(
      * were opened. An empty field is the only answer that is stable.
      */
     treasures: new Map((migrated.treasures ?? []).map((t) => [t.id, t])),
-    // ⚠️ `hexKey`, not an inline template. The format happens to be `q,r`
-    // today, and a second copy of it here is a silent way for a save to stop
-    // matching the map the moment that changes.
-    seenCities: new Map((migrated.seenCities ?? []).map((c) => [hexKey(c.hex), c])),
     topics,
     research: migrated.research ?? EMPTY_RESEARCH,
     activeFactionId: migrated.activeFactionId,
     nextEntityId: migrated.nextEntityId,
     cheatsUsed: migrated.cheatsUsed ?? [],
-    explored,
+    memory,
   };
 }
 

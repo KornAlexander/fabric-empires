@@ -290,14 +290,20 @@ function inTurnOrder(ids: readonly string[]): string[] {
  *
  * There is no diplomacy model here and there should not be one. These are
  * seven misconceptions besieging a learner, not seven nations with interests.
- * The player is hostile to everyone; everyone is hostile to the player.
+ * Every human is hostile to everyone; the machine is hostile to every human.
+ *
+ * ⚠️ **Hostility follows the SEAT, not an id.** Once a person can take over
+ * an antagonist, "is this the player" stops being answerable by name. A human
+ * who sits down in the Silo Horde becomes a target for the remaining machines
+ * on the turn they sit down, which is the correct answer and falls out of
+ * asking about control rather than about identity.
  */
 function targetsFor(state: GameState, factionId: string): Hex[] {
   const acting = state.factions.get(factionId);
   const hostile = (ownerId: string): boolean => {
     if (ownerId === factionId) return false;
-    if (acting?.isPlayer) return true;
-    return state.factions.get(ownerId)?.isPlayer === true;
+    if (acting?.control === 'human') return true;
+    return state.factions.get(ownerId)?.control === 'human';
   };
 
   const out: Hex[] = [];
@@ -501,7 +507,7 @@ const GARRISON_UNIT: UnitTypeId = 'pipelineRunner';
  */
 export function garrisonPhase(state: GameState, factionId: string): AiTurnResult {
   const faction = state.factions.get(factionId);
-  if (!faction || faction.isPlayer) return { state, events: [] };
+  if (!faction || faction.control === 'human') return { state, events: [] };
 
   const cities = new Map(state.cities);
   const units = new Map(state.units);

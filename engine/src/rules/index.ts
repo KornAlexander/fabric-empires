@@ -15,3 +15,5 @@ export * from './walls.js';
 export * from './assault.js';
 export * from './defence.js';
 export * from './treasure.js';
+export * from './seats.js';
+export * from './duel.js';

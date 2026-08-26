@@ -112,7 +112,7 @@ describe('where it is shown', () => {
     const body = fn.slice(0, 5000);
     expect(body).toContain('maxCityHp(city)');
     expect(body).toContain('currentSight.has(hexKey(h))');
-    expect(body).toContain('city.factionId === PLAYER_FACTION_ID');
+    expect(body).toContain('city.factionId === mySeat');
   });
 
   it('⚠️ draws a map bar only when damaged, and only when visible', () => {

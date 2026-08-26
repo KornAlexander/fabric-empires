@@ -27,7 +27,7 @@ const SEED = 'ai-walls';
 
 /** An antagonist faction id that exists on every generated map. */
 function antagonist(state: GameState): string {
-  const other = [...state.factions.values()].find((f) => !f.isPlayer);
+  const other = [...state.factions.values()].find((f) => f.control === 'ai');
   if (!other) throw new Error('no antagonist faction');
   return other.id;
 }

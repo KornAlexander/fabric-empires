@@ -43,6 +43,7 @@ import {
   hexNeighbours,
   hexKey,
   maxWallHp,
+  memoryOf,
   promotionFor,
   rankInfo,
   unitAt,
@@ -67,6 +68,15 @@ export const OKAY_CHEAT = 'okay';
 
 export interface CheatContext {
   readonly state: GameState;
+  /**
+   * The seat the person typing is playing.
+   *
+   * ⚠️ Passed in rather than assumed to be the player faction. A code that
+   * traces the map or provisions a unit has to do it for whichever empire is
+   * being played, and after taking a vacant seat that is not the one the game
+   * started you in.
+   */
+  readonly seat: string;
   /** The unit the player has selected, if any. */
   readonly selectedUnitId: string | undefined;
   /** Open the Proctor's paper. Resolves when it is over. */
@@ -485,8 +495,9 @@ export const CHEATS: readonly Cheat[] = Object.freeze([
     code: 'lineage',
     category: 'world',
     describe: 'Trace the whole map: every tile becomes explored.',
-    apply: ({ state }) => {
-      const explored = new Set(state.explored);
+    apply: ({ state, seat }) => {
+      const seen = memoryOf(state, seat);
+      const explored = new Set(seen.explored);
       const before = explored.size;
       for (const key of state.map.tiles.keys()) explored.add(key);
       /*
@@ -498,7 +509,7 @@ export const CHEATS: readonly Cheat[] = Object.freeze([
        */
       return {
         ok: true,
-        state: { ...state, explored },
+        state: { ...state, memory: new Map(state.memory).set(seat, { ...seen, explored }) },
         message: `${explored.size - before} tiles traced. What stands on them is still yours to find.`,
       };
     },

@@ -805,14 +805,14 @@ export function resolveAttack(
   /*
    * Spoils of capture: the loser's syllabus.
    *
-   * ⚠️ Only for the player, because `state.research` is the player's and
-   * nobody else's. An antagonist taking a city must not quietly hand the
-   * player a topic, which is what a faction-blind version of this did.
+   * ⚠️ Only for a human, because `state.research` is a person's own progress
+   * and no antagonist has any. A machine taking a city must not quietly hand
+   * somebody a topic, which is what a faction-blind version of this did.
    */
   if (cityCaptured && cityFormerFactionId) {
     const captor = state.factions.get(attacker.factionId);
     const loser = state.factions.get(cityFormerFactionId);
-    if (captor?.isPlayer && loser) {
+    if (captor?.control === 'human' && loser) {
       const granted = grantFoothold(next, loser.topicCluster);
       next = granted.state;
       if (granted.topicId !== undefined) clusterOpened = granted.topicId;

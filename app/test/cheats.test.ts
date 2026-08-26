@@ -21,6 +21,7 @@ import { CHEATS, OKAY_CHEAT, findCheat, type CheatContext } from '../src/cheats.
 function context(overrides: Partial<CheatContext> = {}): CheatContext {
   return {
     state: createGameState('FABRIC'),
+    seat: PLAYER_FACTION_ID,
     selectedUnitId: undefined,
     faceProctor: () => {},
     argument: '',

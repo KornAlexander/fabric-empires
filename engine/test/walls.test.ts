@@ -293,10 +293,10 @@ describe('saves', () => {
   });
 
   it('is at the version this change claims', () => {
-    // 9 since chests were buried on the map. The bump matters because the
-    // migration for it is a decision rather than a default: an old empire
-    // gets an empty field, not a freshly stocked one.
-    expect(SAVE_VERSION).toBe(10);
+    // 11 since a game grew seats. The bump matters because the migration for
+    // it is a decision rather than a default: one player's map becomes one
+    // seat's map, found by reading the old flag rather than by assuming an id.
+    expect(SAVE_VERSION).toBe(11);
   });
 });
 

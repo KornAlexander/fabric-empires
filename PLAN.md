@@ -8587,6 +8587,152 @@ now sets its own budget the way `engine/test/worldSetup.test.ts` already did.
 | D691 | The staging tests read the source instead of running it | Running a renderer headlessly tests a mock, which is how section 95's bug survived |
 | D692 | `questions.test.ts` sets its own timeout | The suite was failing on a different file each run from scheduling noise, following the precedent in `worldSetup.test.ts` |
 
+## 98. Every empire is a seat, and the empty ones can be taken
+
+The game had one human and asked "is this the player" all over the rules. That
+is the right question with one student in it and the wrong one the moment a
+second person wants to play, so this section makes it "is anybody playing this".
+
+The change turned out to be smaller than it looked, because `Faction.isPlayer`
+was already doing the work. Every rule that read it was really asking one of two
+things, "should the machine move this empire" and "does this empire accumulate
+map memory", and both have the same answer for a second human as for the first.
+So the seat model is that flag **stopping being singular**: `control: 'human' |
+'ai'`, and the ten call sites that read the old boolean were already correct.
+
+`'ai'` means nobody is holding the seat and the machine is keeping it warm. That
+is what makes a game joinable at all: an empire that has been fighting for
+thirty turns has towns, an army and a position, and taking it over is a change
+of driver rather than a spawn.
+
+### The fog had to be split, and it was the only large part
+
+`GameState.explored` was one set, with a comment explaining that a set per
+faction would leave six of the seven permanently empty. That reasoning was
+sound and it expires exactly when a second person sits down: two humans sharing
+one memory hands each of them the other's scouting, silently, with nothing on
+screen to say it happened. On one machine it hands your opponent your map.
+
+So memory is per faction again (`FactionMemory`, holding `explored` and
+`seenCities`), and still stored **only for seats a human holds**. An AI faction
+does not use fog at all, so an entry for one would be paid for on every turn of
+every game and read by nothing.
+
+⚠️ **A joiner starts blind.** They inherit the empire, not the scouting. There
+is no memory to hand over even in principle, because the machine that held the
+chair was never using fog; synthesising one from its omniscience would gift a
+joiner the whole map, which is both a cheat and the exact inverse of what the
+fog is for. Leaving a seat drops the memory for the same reason in reverse:
+kept, it would let somebody look, leave, and hand the next occupant their
+scouting, and it would carry several thousand hex keys in every save for a
+person no longer in the game.
+
+### Choosing a seat is a decision, so the screen has to make it one
+
+`standings` scores every empire and, crucially, reports a **share of the board**
+and a one-word band. Raw counts do not answer the question being asked: four
+towns is a strong empire in one game and a finished one in another, and a joiner
+is choosing *between* seats. So every offer is measured against the leader, and
+the leader itself is not compared to itself, because "34% of the board, against
+34% for you" is arithmetically true and reads as a bug.
+
+Army strength is counted as health times strength, not as a headcount. Six units
+at a tenth each is not an army, and somebody who picked that seat off a unit
+count would sit down into a rout with no warning.
+
+⚠️ Bands are cut against an **even** share rather than against the leader.
+Against the leader, a game with one runaway winner would label every other
+empire "struggling", which is true of none of them except by comparison and
+tells a joiner nothing about which chair to pick.
+
+⚠️ **The player is "struggling" on turn one, and that is correct.** The player
+opens with an Architect and no town while every antagonist opens holding a
+village, so until that Architect founds something the player genuinely holds
+nothing. It is written down because it looks precisely like a scoring bug, and
+the instinct on seeing it is to weight the formula until it goes away.
+
+### What was already there, and was nearly duplicated
+
+The game **already had** a two-player mode: co-op, two people sharing one
+empire, each answering from their own course. Its rule is that both answers are
+**averaged**, deliberately, because taking the better of the two "would be
+kinder and would make them a spectator with a keyboard".
+
+That is the opposite of the rule a duel wants, and both are right for their own
+situation: co-op is two people playing one empire, a duel is two empires and one
+question. `resolveDuel` gives the modifier to the better answer and **zeroes the
+loser rather than penalising them**, so being outclassed costs you the advantage
+instead of handing your opponent a second one. Only one side is ever paid, which
+keeps the swing the same size as the single-player fight it replaces.
+
+⚠️ The new panel was very nearly called "Seats", which is what the setup screen
+already calls the number of PEOPLE playing. Two things sharing a word one screen
+apart is how somebody ends up hunting for the co-op switch in the empire list.
+
+### What is NOT built, and why
+
+Remote play over a network is designed here and deliberately not implemented.
+
+The live app is **static hosting only**: `data`, `storage` and `functions` are
+all off in `rayfin.yml`, and there is no backend on the deployed URL at all. The
+`api/coach` route only answers when somebody runs `serve:capacity` locally,
+which is why `probeEdition` exists and why an absent coach is treated as a
+feature being *absent* rather than *broken* (D37, D38).
+
+Turning on the Rayfin data service provisions a database. That is a
+hard-to-reverse infrastructure change, and it is not one to make on the way past
+while shipping a game feature. The shape it would take, when it is made:
+
+- **Transport**: the Rayfin data service (managed MSSQL behind Data API
+  Builder), polled. There is no realtime push, and the game is turn-based, so
+  one to two seconds is genuinely enough.
+- **Payload**: the save file. It already exists, is versioned, is compact, and
+  regenerates the map from a seed rather than shipping two thousand tiles.
+- **Authority**: client-authoritative. The engine is a pure function of state
+  and intent, so whoever's turn it is runs it and publishes the result. A
+  server-authoritative version means running the engine server-side, which is a
+  much bigger build to defend against people you invited to play with you.
+- **The duel is the hard part**, not the state sync. Both players must receive
+  the *same* question and answer it without seeing each other's, which is a
+  rendezvous over a store that only supports polling.
+
+Two further things are needed for several humans in ONE game, on a network or on
+one machine, and neither is done: **research is still a single shared
+`ResearchState`** (39 sites), and the turn does not rotate between human seats.
+Research being one person's progress is arguably correct for a study game, where
+it is what *you* have learned rather than what your empire owns, and that is
+exactly why switching seats carries it with you today. Two simultaneous humans
+would need it split.
+
+So what ships is the seat model, the join flow, and the duel rule: one person at
+a time, able to leave the empire they are playing and take any empire the
+machine is holding.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D693 | `Faction.isPlayer` becomes `control: 'human' \| 'ai'` | Every rule reading it was already asking a question that has the same answer for a second human |
+| D694 | A faction IS the seat; there is no parallel seat table | A fact maintained in two places drifts, and the first disagreement is a seat with no empire |
+| D695 | ⚠️ **Map memory is stored per faction again** | Two humans sharing one fog hands each of them the other's scouting, silently |
+| D696 | Only human-held seats get a memory | The machine does not use fog, so an entry per antagonist is paid every turn and read by nothing |
+| D697 | ⚠️ **A joiner starts blind** | There is no memory to inherit; synthesising one from the machine's omniscience gifts them the map |
+| D698 | Leaving a seat drops its memory | Otherwise the next occupant inherits your scouting, and every save carries a departed player's hex keys |
+| D699 | A vacated empire goes back to the machine, not into a freeze | A frozen seat is neither a rival nor a ruin, and everybody else waits on somebody who closed a tab |
+| D700 | Hostility is decided by control, not by faction id | Once a person can take over an antagonist, "is this the player" is no longer answerable by name |
+| D701 | Standings report a share of the board, not raw counts | Four towns is strong in one game and finished in another; a joiner is choosing between seats |
+| D702 | Army strength counts health, not headcount | Six units at a tenth each is a rout, and a unit count would not say so |
+| D703 | Bands are cut against an even share | Against the leader, one runaway winner makes everybody else "struggling" |
+| D704 | ⚠️ **The turn-one player really is struggling** | An Architect and no town is genuinely nothing; the number is right and looks like a bug |
+| D705 | The leader's row carries no comparison | "34% against 34% for you" is true and reads as broken |
+| D706 | A duel pays the better answer and zeroes the loser | Being outclassed should cost the advantage, not hand over a second one |
+| D707 | Only one side is ever paid | Paying both would double the quiz's influence over a fight |
+| D708 | A near-tie is a draw | Decided by a hundredth of a second, a duel reads as arbitrary rather than as knowing it better |
+| D709 | ⚠️ **A duel is NOT the co-op rule** | Co-op averages so neither player is a spectator; a duel is two empires and one question |
+| D710 | The panel is called Empires, not Seats | The setup screen already uses Seats for how many PEOPLE are playing |
+| D711 | Save version 11, and the old memory follows the old `isPlayer` flag | A campaign may rename its factions, and a hard-coded id would blank the fog of anyone not called `player` |
+| D712 | Legacy save fixtures strip the new fields instead of relabelling the version | 10 -> 11 rewrites factions, so a current save wearing an old number sails past the migration and reports it working the day it breaks |
+| D713 | `activeFactionId` moves with the seat in the APP, not in `takeSeat` | That coupling is only correct while one person is at the table; rotation is the multi-human answer |
+| D714 | Networked play is documented, not built | It provisions a database, and the simultaneous-question rendezvous is a build of its own |
+
 ---
 
 *Last updated: 26 August 2026*

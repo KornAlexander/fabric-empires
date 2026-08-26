@@ -92,7 +92,7 @@ describe('where a chest shows on the map', () => {
      * Profiler walked on, which reads as somebody else having taken them.
      */
     const view = main.slice(main.indexOf('treasures: [...state.treasures.values()]'));
-    expect(view.slice(0, 200)).toContain('state.explored.has(hexKey(chest.hex))');
+    expect(view.slice(0, 200)).toContain('memoryOf(state, mySeat).explored.has(hexKey(chest.hex))');
   });
 
   it('is drawn at a fixed pixel size, so it survives the zoom people plan at', () => {

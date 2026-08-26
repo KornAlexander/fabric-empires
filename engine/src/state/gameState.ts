@@ -25,11 +25,12 @@ import {
   emptyResources,
   unitType,
   cityKind,
+  NO_MEMORY,
   type City,
   type CityKind,
   type Faction,
+  type FactionMemory,
   type Ruin,
-  type SeenCity,
   type Treasure,
   type Unit,
   type UnitTypeId,
@@ -62,18 +63,30 @@ export interface GameState {
   /** Buried caches, opened by answering. Removed once emptied. */
   readonly treasures: ReadonlyMap<string, Treasure>;
   /**
-   * Towns the player has seen, as they looked when last seen. Keyed by hex.
-   *
-   * ⚠️ Snapshots, not references: see `SeenCity`. The map keeps showing what
-   * you found until you go back and look again, which is the point.
-   */
-  readonly seenCities: ReadonlyMap<string, SeenCity>;
-  /**
    * The tech tree, supplied by the challenge provider.
    *
    * Held on the state rather than threaded through every call, but never
    * serialised: it belongs to the provider, and a save rebuilds it on load.
    */
+  /**
+   * What each empire knows about the map, keyed by faction id.
+   *
+   * ⚠️ **This used to be one `explored` set and one `seenCities` map, both
+   * belonging to "the player".** That was right while there was exactly one
+   * human. With seats, a shared memory would show every human the union of
+   * everyone's scouting, which is not a small leak: on one machine it hands
+   * your opponent your map, and across a network it hands it to them without
+   * either of you doing anything.
+   *
+   * Only seats a human holds have an entry. The antagonists do not use fog
+   * (section 21.3), so an entry per AI faction would be paid for every turn
+   * and read by nothing. Use `memoryOf` rather than indexing this directly:
+   * a missing entry is normal, not a bug.
+   *
+   * The town snapshots are pictures, not references (see `SeenCity`). The map
+   * keeps showing what you found until you go back and look again.
+   */
+  readonly memory: ReadonlyMap<string, FactionMemory>;
   readonly topics: TopicGraph;
   readonly research: ResearchState;
   readonly activeFactionId: string;
@@ -93,13 +106,6 @@ export interface GameState {
    * nothing about the certification, the Proctor, or the Great Library.
    */
   readonly cheatsUsed: readonly string[];
-  /**
-   * Every hex the player has ever seen, by key.
-   *
-   * ⚠️ The player's only. The antagonists do not use fog (section 21.3), so
-   * storing a set per faction would leave six of the seven permanently empty.
-   */
-  readonly explored: ReadonlySet<string>;
 }
 
 export const PLAYER_FACTION_ID = 'player';
@@ -222,6 +228,41 @@ export function unitsOf(state: GameState, factionId: string): Unit[] {  return [
 
 export function citiesOf(state: GameState, factionId: string): City[] {
   return [...state.cities.values()].filter((c) => c.factionId === factionId);
+}
+
+// Seats -----------------------------------------------------------------
+
+/**
+ * What this empire knows about the map.
+ *
+ * ⚠️ Always returns a memory, never `undefined`. An AI seat has no entry by
+ * design, and every caller asking "has this faction seen that hex" wants the
+ * answer "no" rather than a crash. The empty one is frozen and shared, so the
+ * common case allocates nothing.
+ */
+export function memoryOf(state: GameState, factionId: string): FactionMemory {
+  return state.memory.get(factionId) ?? NO_MEMORY;
+}
+
+/** Whether a person is playing this faction, as opposed to the machine. */
+export function isHuman(state: GameState, factionId: string): boolean {
+  return state.factions.get(factionId)?.control === 'human';
+}
+
+/**
+ * The seats a person is playing, in roster order.
+ *
+ * Order is the faction map's, which is insertion order, so it is stable across
+ * a save and a load. Turn rotation depends on that: a seat order that changed
+ * between sessions would move whose turn it is.
+ */
+export function humanFactionIds(state: GameState): string[] {
+  return [...state.factions.values()].filter((f) => f.control === 'human').map((f) => f.id);
+}
+
+/** The seats nobody has taken, which are the ones a joiner may pick from. */
+export function vacantFactionIds(state: GameState): string[] {
+  return [...state.factions.values()].filter((f) => f.control === 'ai').map((f) => f.id);
 }
 
 // Start positions -------------------------------------------------------
@@ -462,7 +503,7 @@ export function createGameState(
   const player: Faction = {
     id: PLAYER_FACTION_ID,
     label: 'Your Empire',
-    isPlayer: true,
+    control: 'human',
     colour: '#4c8fd6',
     resources: emptyResources(),
     topicCluster: '',
@@ -532,7 +573,7 @@ export function createGameState(
       factions.set(definition.id, {
         id: definition.id,
         label: definition.label,
-        isPlayer: false,
+        control: 'ai',
         colour: definition.colour,
         resources: emptyResources(),
         topicCluster: definition.topicCluster,
@@ -594,13 +635,19 @@ export function createGameState(
     cities,
     ruins: new Map(),
     treasures: treasureField.treasures,
-    seenCities: new Map(),
     topics: options.topics ?? GENERIC_TOPIC_GRAPH,
     research: EMPTY_RESEARCH,
     activeFactionId: PLAYER_FACTION_ID,
     nextEntityId: nextId,
     cheatsUsed: [],
-    explored: new Set<string>(),
+    /*
+     * One entry, for the one seat a person is holding at turn one.
+     *
+     * A game that starts with several humans gets the rest from `takeSeat`,
+     * and a seat taken mid-game starts blind on purpose: you inherit the
+     * empire, not the scouting the machine did while it kept the chair warm.
+     */
+    memory: new Map<string, FactionMemory>([[PLAYER_FACTION_ID, NO_MEMORY]]),
   };
 
   /*

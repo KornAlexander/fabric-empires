@@ -184,9 +184,19 @@ describe('chests in the save', () => {
     const old = JSON.parse(serialise(state)) as Record<string, unknown>;
     old.version = 8;
     delete old.treasures;
+    /*
+     * ⚠️ The seat fields go too, or this is a current save wearing an old
+     * number. 10 -> 11 rewrites factions, and a fixture that skipped that
+     * migration would keep passing on the day it broke.
+     */
+    delete old.memory;
+    old.factions = (old.factions as readonly Record<string, unknown>[]).map((f) => {
+      const { control, ...rest } = f;
+      return { ...rest, isPlayer: control === 'human' };
+    });
 
     const loaded = deserialise(JSON.stringify(old));
     expect(loaded.treasures.size).toBe(0);
-    expect(SAVE_VERSION).toBe(10);
+    expect(SAVE_VERSION).toBe(11);
   });
 });

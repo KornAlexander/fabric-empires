@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  memoryOf,
   ANTAGONIST_FACTION_ID,
   PLAYER_FACTION_ID,
   createGameState,
@@ -55,7 +56,7 @@ describe('finding a town', () => {
     const hex = beside(base);
     const state = rememberVisible(withCity(base, { hex }), PLAYER_FACTION_ID);
 
-    const seen = state.seenCities.get(hexKey(hex));
+    const seen = memoryOf(state, PLAYER_FACTION_ID).seenCities.get(hexKey(hex));
     expect(seen).toBeDefined();
     expect(seen!.name).toBe('Farsight');
     expect(seen!.factionId).toBe(ANTAGONIST_FACTION_ID);
@@ -71,7 +72,7 @@ describe('finding a town', () => {
     const blind: GameState = { ...found, units: new Map() };
     const later = rememberVisible(blind, PLAYER_FACTION_ID);
 
-    expect(later.seenCities.get(hexKey(hex))).toBeDefined();
+    expect(memoryOf(later, PLAYER_FACTION_ID).seenCities.get(hexKey(hex))).toBeDefined();
   });
 
   it('⚠️ keeps the OLD picture when the town changes hands unseen', () => {
@@ -83,14 +84,14 @@ describe('finding a town', () => {
     const base = createGameState('FABRIC');
     const hex = beside(base);
     const found = rememberVisible(withCity(base, { hex, id: 'target' }), PLAYER_FACTION_ID);
-    expect(found.seenCities.get(hexKey(hex))!.factionId).toBe(ANTAGONIST_FACTION_ID);
+    expect(memoryOf(found, PLAYER_FACTION_ID).seenCities.get(hexKey(hex))!.factionId).toBe(ANTAGONIST_FACTION_ID);
 
     const cities = new Map(found.cities);
     cities.set('target', { ...cities.get('target')!, factionId: 'scan-wraiths' });
     const blind: GameState = { ...found, cities, units: new Map() };
     const later = rememberVisible(blind, PLAYER_FACTION_ID);
 
-    expect(later.seenCities.get(hexKey(hex))!.factionId).toBe(ANTAGONIST_FACTION_ID);
+    expect(memoryOf(later, PLAYER_FACTION_ID).seenCities.get(hexKey(hex))!.factionId).toBe(ANTAGONIST_FACTION_ID);
   });
 
   it('updates the picture when it is seen again', () => {
@@ -102,7 +103,7 @@ describe('finding a town', () => {
     cities.set('target', { ...cities.get('target')!, factionId: 'scan-wraiths' });
     const looked = rememberVisible({ ...found, cities }, PLAYER_FACTION_ID);
 
-    expect(looked.seenCities.get(hexKey(hex))!.factionId).toBe('scan-wraiths');
+    expect(memoryOf(looked, PLAYER_FACTION_ID).seenCities.get(hexKey(hex))!.factionId).toBe('scan-wraiths');
   });
 
   it('⚠️ forgets a town that is visibly no longer there', () => {
@@ -114,13 +115,13 @@ describe('finding a town', () => {
     const base = createGameState('FABRIC');
     const hex = beside(base);
     const found = rememberVisible(withCity(base, { hex, id: 'target' }), PLAYER_FACTION_ID);
-    expect(found.seenCities.has(hexKey(hex))).toBe(true);
+    expect(memoryOf(found, PLAYER_FACTION_ID).seenCities.has(hexKey(hex))).toBe(true);
 
     const cities = new Map(found.cities);
     cities.delete('target');
     const razed = rememberVisible({ ...found, cities }, PLAYER_FACTION_ID);
 
-    expect(razed.seenCities.has(hexKey(hex))).toBe(false);
+    expect(memoryOf(razed, PLAYER_FACTION_ID).seenCities.has(hexKey(hex))).toBe(false);
   });
 });
 
@@ -137,7 +138,7 @@ describe('whose memory it is', () => {
     const hex = { q: foe.hex.q + 1, r: foe.hex.r };
     const state = rememberVisible(withCity(base, { hex }), ANTAGONIST_FACTION_ID);
 
-    expect(state.seenCities.size).toBe(0);
+    expect(memoryOf(state, PLAYER_FACTION_ID).seenCities.size).toBe(0);
   });
 });
 
@@ -148,7 +149,7 @@ describe('the memory in the save', () => {
     const found = rememberVisible(withCity(base, { hex }), PLAYER_FACTION_ID);
 
     const loaded = deserialise(serialise(found));
-    const seen = loaded.seenCities.get(hexKey(hex));
+    const seen = memoryOf(loaded, PLAYER_FACTION_ID).seenCities.get(hexKey(hex));
     expect(seen).toBeDefined();
     expect(seen!.name).toBe('Farsight');
   });
@@ -158,7 +159,7 @@ describe('the memory in the save', () => {
     const hex = beside(base);
     const found = rememberVisible(withCity(base, { hex, hp: 137 }), PLAYER_FACTION_ID);
 
-    const seen = found.seenCities.get(hexKey(hex))! as unknown as Record<string, unknown>;
+    const seen = memoryOf(found, PLAYER_FACTION_ID).seenCities.get(hexKey(hex))! as unknown as Record<string, unknown>;
     expect(seen.hp).toBeUndefined();
     expect(seen.wallHp).toBeUndefined();
   });
@@ -172,11 +173,39 @@ describe('the memory in the save', () => {
      */
     const base = createGameState('FABRIC');
     const found = rememberVisible(withCity(base, { hex: beside(base) }), PLAYER_FACTION_ID);
-    const old = JSON.parse(serialise(found)) as Record<string, unknown>;
-    old.version = 9;
+
+    /*
+     * A version-9 save, built by taking the current one apart.
+     *
+     * ⚠️ The fixture is ASSERTED to be legacy-shaped below before anything is
+     * concluded from it. A hand-rolled \"old\" save that quietly still carries
+     * the new fields would pass this test by skipping the migration entirely,
+     * and would report the migration as working on the day it stopped.
+     */
+    const current = JSON.parse(serialise(found)) as Record<string, unknown>;
+    const memory = memoryOf(found, PLAYER_FACTION_ID);
+    const old: Record<string, unknown> = {
+      ...current,
+      version: 9,
+      explored: [...memory.explored],
+      factions: [...found.factions.values()].map(({ control, ...rest }) => ({
+        ...rest,
+        isPlayer: control === 'human',
+      })),
+    };
+    delete old.memory;
     delete old.seenCities;
 
+    expect(old.memory, 'the fixture must predate per-seat memory').toBeUndefined();
+    expect(
+      (old.factions as readonly { isPlayer?: boolean }[]).some((f) => f.isPlayer === true),
+      'the fixture must carry the old isPlayer flag',
+    ).toBe(true);
+    expect(memory.seenCities.size, 'and the town really was remembered before').toBeGreaterThan(0);
+
     const loaded = deserialise(JSON.stringify(old));
-    expect(loaded.seenCities.size).toBe(0);
+    expect(memoryOf(loaded, PLAYER_FACTION_ID).seenCities.size).toBe(0);
+    // The ground survives the migration even though the pictures do not.
+    expect(memoryOf(loaded, PLAYER_FACTION_ID).explored.size).toBe(memory.explored.size);
   });
 });

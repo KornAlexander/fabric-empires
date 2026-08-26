@@ -22,7 +22,7 @@ import { hexDistance, hexKey, hexSpiral, type Hex } from '../hex/index.js';
 import { terrain, tileYields } from '../map/index.js';
 import { CITY_KINDS, type City, type Unit } from '../entities/index.js';
 import { FIRST_RANK } from '../entities/rank.js';
-import { cityAt, tileAt, type GameState } from '../state/index.js';
+import { cityAt, memoryOf, tileAt, type GameState } from '../state/index.js';
 import { CITY_WORK_RADIUS, growthThreshold, workedTiles } from './yields.js';
 import { canFoundCity, isOccupied, reachable } from './movement.js';
 import { cityKindFor } from './actions.js';
@@ -211,6 +211,16 @@ export function settleSites(
   // candidate to answer it would be silly.
   const reach = reachable(state, unit);
 
+  /*
+   * ⚠️ The memory of whoever OWNS the unit, not of "the player".
+   *
+   * With seats, two people are choosing sites on the same board out of
+   * different maps. Reading a single shared memory here would offer each of
+   * them sites the other had scouted, which is the fog leaking through the
+   * one screen that is meant to respect it most.
+   */
+  const known = memoryOf(state, unit.factionId).explored;
+
   const sites: SettleSite[] = [];
   for (const hex of hexSpiral(unit.hex, SETTLE_SEARCH_RADIUS)) {
     const key = hexKey(hex);
@@ -222,7 +232,7 @@ export function settleSites(
      * them the shape of the map through the back door, and the fog is there
      * on purpose.
      */
-    if (!state.explored.has(key)) continue;
+    if (!known.has(key)) continue;
     // Somebody else standing there is somebody else's tile for now.
     if (isOccupied(state, hex, unit.id)) continue;
     // The same elbow-room rule founding itself applies.

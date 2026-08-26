@@ -52,7 +52,11 @@ describe('stepping through the army', () => {
     const own = main.slice(main.indexOf('function ownUnits('));
     // Insertion order of the Map. Sorting by position would reshuffle the
     // cycle every time anything moved.
-    expect(own.slice(0, 200)).toContain('unitsOf(state, PLAYER_FACTION_ID)');
+    //
+    // ⚠️ `mySeat`, not the player constant: after taking a vacant seat the
+    // army you step through is a different faction's, and reading the constant
+    // would cycle an empire you can no longer give orders to.
+    expect(own.slice(0, 200)).toContain('unitsOf(state, mySeat)');
     expect(own.slice(0, 200)).not.toContain('sort');
   });
 

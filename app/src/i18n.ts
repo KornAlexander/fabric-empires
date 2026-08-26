@@ -111,6 +111,46 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
   'Okay. The answer picked itself.': 'Okay. Die Antwort hat sich selbst gewählt.',
   '{n} turn': '{n} Runde',
   '{n} turns': '{n} Runden',
+
+  /*
+   * The empire table.
+   *
+   * ⚠️ Called "Empires" and not "Seats", even though the engine calls them
+   * seats, because the setup screen already uses "Seats" ("Plätze") for how
+   * many PEOPLE are playing. Two things called the same word one screen apart
+   * is how a player ends up looking for the co-op switch in here.
+   *
+   * The bands are deliberately plain words somebody would use about a game,
+   * not military register.
+   */
+  Empires: 'Reiche',
+  'The empires on the board, and which of them you may take (o)':
+    'Die Reiche auf dem Feld, und welche davon du übernehmen kannst (o)',
+  'The empires on this board': 'Die Reiche auf diesem Feld',
+  'Every empire is being played': 'Jedes Reich wird gespielt',
+  'Every empire on the board is being played.': 'Jedes Reich auf dem Feld wird gespielt.',
+  'Stay where you are': 'Bleib, wo du bist',
+  'Keep the empire you are playing.': 'Behalte das Reich, das du spielst.',
+  commanding: 'überlegen',
+  holding: 'behauptet sich',
+  struggling: 'in Bedrängnis',
+  'You are playing {empire}: {band}, {share} of the board. Taking another seat hands it back to the machine, and you start the new one blind.':
+    'Du spielst {empire}: {band}, {share} des Feldes. Nimmst du einen anderen Sitz, fällt dieses Reich zurück an die Maschine, und im neuen beginnst du blind.',
+  'You are not playing anybody yet.': 'Du spielst noch niemanden.',
+  '{n} town': '{n} Stadt',
+  '{n} towns': '{n} Städte',
+  '{n} unit': '{n} Einheit',
+  '{n} units': '{n} Einheiten',
+  '{n} citizen': '{n} Einwohner',
+  '{n} citizens': '{n} Einwohner',
+  '{holdings}. {share} of the board, and nobody holds more.':
+    '{holdings}. {share} des Feldes, und niemand hält mehr.',
+  '{holdings}. {share} of the board, against {best} for {leader}.':
+    '{holdings}. {share} des Feldes, gegen {best} für {leader}.',
+  'You leave {left} to the machine and take {joined}.':
+    'Du überlässt {left} der Maschine und übernimmst {joined}.',
+  'You know nothing of this map. Scout it.':
+    'Du kennst diese Karte nicht. Erkunde sie.',
   'reachable this turn': 'diese Runde erreichbar',
   'Show this site': 'Diesen Platz zeigen',
   'Nothing was being studied, so the council began {topic}. Choose another if you like.':
