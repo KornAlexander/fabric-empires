@@ -9261,6 +9261,90 @@ list honest. The audio folder is gitignored, so this is a content question.
 | D755 | The teaser fades its sound but drops its picture at once | A held frame behind the settings looks like a hang; a cut cue sounds like a fault |
 | D756 | ⚠️ **The missing tracks are reported, not guessed at** | A rename is obvious; inventing a title and mood for somebody else's music is not |
 
+## 105. Mobile, checked again after a week of new buttons
+
+The mobile layout from section 88 still holds: on a phone held upright the map
+keeps the top 56% and every panel drops into one scrolling column beneath it.
+Measured again at 390x844 and 360x640, both clean, no horizontal scroll.
+
+Three faults had crept in, and the largest of them was there from the start.
+
+### ⚠️ A phone turned sideways got the desktop HUD
+
+The mobile block was gated on `max-width: 760px`. That is the condition for a
+phone held **upright**, and it is false for the same phone held sideways: a
+390x844 handset becomes 844x390, sails past the test, and gets eight panels
+pinned to the corners of a 390px-tall window.
+
+Worse, the landscape rule below it set the map to 62vh on exactly those screens.
+So the board shrank to make room for a column that was never switched on. **The
+two rules disagreed about which layout was running, and the one that shrank the
+map won.**
+
+The condition is `max-width: 760px, (max-height: 520px) and (orientation:
+landscape)` now. The comma is an OR, and the 520 deliberately matches the
+landscape rule so there is no band where the column is on and the height
+override is off. Measured at 844x390 and 740x360: both now get the column, both
+clean.
+
+### ⚠️ Tap targets had a height but no width
+
+`#hud button { min-height: 44px }` had been there since the layout was written,
+so every icon button was the right height and the wrong shape. Measured at
+390px: the music toggle was **28px** wide and the two unit-stepper arrows were
+**24px**, against a 44px thumb. The steppers are the worst of them, because
+cycling the army is something a player does on nearly every turn, and a target a
+third narrower than the finger aiming at it is missed often enough to read as
+the game ignoring the tap.
+
+The course panel was worse and for a different reason: it is not inside `#hud`,
+so the rule never reached it at all, and the two buttons that download and
+upload a question template were 32px.
+
+### ⚠️ Width is the wrong question for a tap target
+
+A tablet in portrait is 768 to 834px wide, so it takes the desktop HUD, and that
+is right: there is room for it and a column would waste the screen. What was not
+right is that it also took the desktop's 34px buttons, and the hand holding a
+tablet has the same thumb as the one holding a phone.
+
+`pointer: coarse` asks the only question that actually matters, and it leaves a
+small laptop window alone, which no width rule could.
+
+⚠️ **Honest limit, and how it was closed halfway.** The browser used to measure
+everything here reports `pointer: fine`, so that rule cannot fire in the
+harness. Rewriting its condition to `all` in the live page proves what the
+declarations DO when the query matches: **21 undersized controls became 0**, with
+no overflow. The effect is measured; only the trigger is reasoned.
+
+### And one button that had walked off the edge
+
+The top bar is a fixed row that grows with its contents, and it gained the
+Empires button this week. Above 760px it did not wrap, so on a 768px tablet the
+fullscreen toggle ended at **x=797 against a 768px viewport**: clipped and
+unreachable. `flex-wrap` now applies at every width. It costs nothing on a wide
+screen, where it never triggers.
+
+### Measured after
+
+| Viewport | Undersized | Overflowing | Layout |
+| --- | --- | --- | --- |
+| 390x844 | 0 | 0 | column |
+| 360x640 | 0 | 0 | column |
+| 844x390 | 0 | 0 | column |
+| 740x360 | 0 | 0 | column |
+| 768x1024 | 0 with coarse forced | 0 | desktop |
+| 1320x800 | n/a, mouse | 0 | desktop |
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D757 | ⚠️ **The column triggers on a short landscape screen as well as a narrow one** | A phone turned sideways is 844px wide and was getting the desktop HUD |
+| D758 | The OR shares the landscape rule's 520px | Otherwise a band exists where the map shrinks for a column that is off |
+| D759 | Tap targets get a minimum WIDTH, not just a height | Only the height was set, so icon buttons were 24 to 28px wide against a 44px thumb |
+| D760 | The course panel is named explicitly | It sits outside `#hud`, so the HUD rule never reached its two buttons |
+| D761 | ⚠️ **Touch sizing keys off `pointer: coarse`, not width** | A tablet has room for the desktop layout and a thumb that needs 44px; width cannot express that |
+| D762 | The top bar wraps at every width | It grows with its contents, and the newest button had left the screen on a tablet |
+
 ---
 
 *Last updated: 27 August 2026*

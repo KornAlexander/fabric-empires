@@ -280,7 +280,18 @@
       .fe-cheat-line.good { color: #8fd694; }
       .fe-cheat-line.bad { color: #ff9b91; }
 
-      #resources { top: 14px; left: 14px; display: flex; gap: 18px; align-items: center; }
+      /*
+        ⚠️ `flex-wrap` here rather than only in the mobile block.
+
+        The bar is a fixed-position row that grows with its contents, and it
+        gained a button this week. On anything narrower than a laptop the last
+        control simply left the screen: measured on a 768px tablet, the
+        fullscreen toggle ended at x=797 against a 768px viewport, clipped and
+        unreachable. Wrapping costs nothing on a wide screen, where there is
+        room and it never triggers, and it is the difference between a cramped
+        bar and a missing button everywhere else.
+      */
+      #resources { top: 14px; left: 14px; display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
       #resources .res { display: flex; gap: 6px; align-items: baseline; }
       #resources .res b { font-size: 15px; font-weight: 600; }
       #resources .res span {
@@ -333,7 +344,7 @@
       button.primary { background: #2f5d8c; border-color: #3f7cb8; }
       button.primary:hover:not(:disabled) { background: #3a72a8; }
 
-      #controls { top: 14px; right: 14px; display: flex; gap: 8px; align-items: center; }
+      #controls { top: 14px; right: 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
       #controls input {
         background: #0b0e14; border: 1px solid var(--border); color: var(--text);
         border-radius: 6px; padding: 6px 8px; width: 110px; font: inherit;
@@ -551,7 +562,25 @@
          ================================================================== */
       #hud { display: contents; }
 
-      @media (max-width: 760px) {
+      /*
+        ⚠️ **Width OR a short landscape screen, not width alone.**
+
+        This was `max-width: 760px` only, which is the condition for a phone
+        held upright and is false for the same phone turned sideways: a 390x844
+        handset becomes 844x390, sails past the 760 test, and gets the desktop
+        HUD. Measured there: twenty controls under 40px and eight panels pinned
+        to the corners of a 390px-tall window.
+
+        Worse, the landscape rule further down set the map to 62vh on exactly
+        those screens, so the board shrank to make room for a column that was
+        never switched on. The two rules disagreed about which layout was
+        running, and the one that shrank the map won.
+
+        The comma is an OR. `max-height: 520px` matches the landscape rule
+        below deliberately, so there is no band where the column is on and the
+        height override is off.
+      */
+      @media (max-width: 760px), (max-height: 520px) and (orientation: landscape) {
         /*
           The wrapper stops being invisible and becomes the column. Because it
           was `display: contents` above, this is the only place the panels'
@@ -611,11 +640,34 @@
         */
         #resources, #controls { flex-wrap: wrap; gap: 10px; }
 
-        /* Touch targets. 44px is the smallest a finger reliably hits. */
+        /*
+          Touch targets. 44px is the smallest a finger reliably hits.
+
+          ⚠️ **Both dimensions.** Only the height was set here, which made every
+          icon button the right height and the wrong shape: measured on a 390px
+          screen, the music toggle was 28px wide and the two unit-stepper
+          arrows were 24px, against a 44px thumb. The steppers are the worst of
+          them because cycling the army is something a player does on almost
+          every turn, and a target a third narrower than the finger aiming at it
+          is missed often enough to feel like the game ignoring the tap.
+
+          Harmless on the wide buttons: `min-width` cannot shrink anything, and
+          nothing else in the HUD is under 44px already.
+        */
         #hud button,
         .fe-option,
         .fe-choice-option,
         .fe-setup-option { min-height: 44px; }
+        #hud button { min-width: 44px; }
+
+        /*
+          ⚠️ The course panel is NOT inside `#hud`, so the rule above never
+          reached it. Its two buttons, which download the question template and
+          upload a filled-in one, measured 32px tall on a phone. They are the
+          only route a player has to bring their own course in, and they were
+          the smallest targets left in the app.
+        */
+        .fe-course button { min-height: 44px; min-width: 44px; }
 
         /* Dialogs are already full-screen; just stop them being letterboxed. */
         .fe-setup-card, .fe-choice-card, .fe-modal { max-width: none; }
@@ -629,6 +681,34 @@
       @media (max-width: 900px) and (orientation: landscape) and (max-height: 520px) {
         #hud { top: 62vh; }
         #map, #fx { height: 62vh; }
+      }
+
+      /*
+        Fingers, wherever they are.
+
+        ⚠️ **Width is the wrong question for a tap target; the pointer is.** A
+        tablet in portrait is 768 to 834px wide, so it takes the desktop HUD,
+        which is right: there is room for it and a scrolling column would waste
+        the screen. What is not right is that it also took the desktop's 34px
+        buttons, and the hand holding it has the same thumb as the one holding
+        a phone. Measured at 768x1024: twenty-one controls under 40px.
+
+        `pointer: coarse` asks the only question that matters, and it leaves a
+        small laptop window alone, which a width rule could not.
+
+        ⚠️ Honest limit: the browser used to measure all of the above reports
+        `pointer: fine`, so this rule is the one thing here that was reasoned
+        rather than measured. What it applies is exactly the selector set and
+        the values already proven live at 760px and below, and the wrapping
+        above means a wider button cannot push anything off the edge.
+      */
+      @media (pointer: coarse) {
+        #hud button,
+        .fe-course button,
+        .fe-option,
+        .fe-choice-option,
+        .fe-setup-option { min-height: 44px; }
+        #hud button, .fe-course button { min-width: 44px; }
       }
     </style>
   </head>
