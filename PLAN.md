@@ -9942,6 +9942,51 @@ written next to it, because the failure mode here is not a crash: an app with
 | D819 | Right drag keeps a dedicated pan | Panning stays one gesture away for anyone who preferred it |
 | D820 | The binding is pinned by a source-reading test | It has flipped twice, and the wrong setting looks entirely healthy |
 
+## 113. W and S stop flying the view vector
+
+In free flight, W and S now translate along the **heading**, not along the look
+direction. Altitude has exactly one control, and it is Q and E.
+
+⚠️ **Flying the view vector is what a plane does, and this is not a plane.** On
+a map you are pitched down most of the time, because that is where the map is.
+So every attempt to move closer to something was also a dive towards it, and
+holding W from a survey height ended in the terrain. Correcting for that meant
+riding Q and E constantly to hold a height nobody had asked to leave, which
+turns a two-key gesture into a four-key one and makes the camera feel like it is
+fighting you.
+
+⚠️ **A and D needed no change, and the reason is worth writing down**: `right`
+comes from `crossVectors(forward, up)`, and a cross product with world up is
+horizontal whatever the pitch. Strafing was flat all along. Only the forward
+axis ever carried the climb, which is why the fault presented as "W dives"
+rather than "the camera drifts".
+
+⚠️ **Straight down is the case that breaks the obvious implementation.** Zeroing
+Y and normalising divides by approximately zero when the camera is looking at
+its own feet, and the position goes to NaN, from which nothing recovers, not
+even letting go of the key. Looking straight down at a map is completely
+ordinary. Where there is no horizontal component of the look direction, the
+direction the top of the screen points IS the heading, and that is the camera's
+own up vector flattened. Looking straight **up**, that same vector points behind
+you, so it is negated.
+
+⚠️ **The three new tests were confirmed to fail against the old behaviour**
+before being kept: pitched-down, pitched-up and straight-down all fail with
+`forward` in place of `flatForward`. A test that passes both ways is not a
+guard, and this repo has been caught by that shape of mistake more than once
+today.
+
+The true look direction is still what the heading readout and the strafe axis
+are built from, so `flatForward` is a separate vector rather than `forward`
+flattened in place.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D821 | W and S translate along the heading, not the look direction | On a map the camera is pitched down, so flying the view vector turns every approach into a dive |
+| D822 | Altitude belongs to Q and E alone | One control per axis; correcting an unwanted dive should not be a second job |
+| D823 | ⚠️ **A degenerate look direction falls back to screen-up** | Looking straight down would otherwise divide by zero and send the position to NaN |
+| D824 | The tests were proven to fail without the fix | A guard that passes either way guards nothing |
+
 ---
 
 *Last updated: 27 August 2026*
