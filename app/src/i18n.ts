@@ -122,6 +122,20 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
   Founding: 'Gründung',
 
   /*
+   * Marching orders.
+   *
+   * ⚠️ "Bricht auf" rather than "geht": a unit setting out on a journey of
+   * several turns is doing something more deliberate than walking, and the
+   * halt message has to sound like a warning rather than a failure, because
+   * stopping to look at what you just found is the correct behaviour.
+   */
+  '{unit} sets out. {n} turns away.': '{unit} bricht auf. {n} Runden entfernt.',
+  '{unit} arrives.': '{unit} ist angekommen.',
+  '{unit} halts: something is out there.': '{unit} hält an: da draußen ist etwas.',
+  '{unit} cannot get through and stops.': '{unit} kommt nicht durch und bleibt stehen.',
+  'a unit': 'eine Einheit',
+
+  /*
    * The map's own offers, which the player may refuse.
    *
    * ⚠️ The wording has to make the refusal sound free, because it is. A line

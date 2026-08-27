@@ -9345,6 +9345,110 @@ screen, where it never triggers.
 | D761 | ⚠️ **Touch sizing keys off `pointer: coarse`, not width** | A tablet has room for the desktop layout and a thumb that needs 44px; width cannot express that |
 | D762 | The top bar wraps at every width | It grows with its contents, and the newest button had left the screen on a tablet |
 
+## 106. Telling a unit where to be, and letting it walk there
+
+`findPath` has claimed since it was written that it existed "for multi-turn
+orders: the unit walks it a few tiles per turn". Nothing used it that way. Its
+only caller was the AI, which recomputed a route every turn because it had
+nowhere to keep one, and the player did not even have that: sending a Profiler
+across the map meant clicking the furthest lit hex, ending the turn, finding the
+unit and clicking again, for six turns. The Profiler is the unit whose entire
+job is to be somewhere else.
+
+Clicking a hex out of range is now an **order** rather than an error. The unit
+sets out, walks a turn's worth each turn, and stops when it arrives.
+
+### The drawing and the walking have to agree
+
+The dotted line is the route and the numbers are where the unit stands at the
+end of each turn. That is a promise, and the way to break it is quietly:
+
+⚠️ **`marchLegs` borrows `stepCost` and the same "minimum move" rule
+`reachable` uses**, where a unit with any movement left can always take one more
+step however expensive the ground. A second cost model in the preview would
+leave everything working and the unit simply arriving on a different turn than
+the map said, which nobody would notice for months.
+
+This is pinned by a test that walks the plan out turn by turn and asserts the
+arrival lands on the promised leg. ⚠️ **It failed the first time and the code was
+right**: the test refreshed movement to a hand-picked `2` while the preview
+budgets the unit's real allowance, so it reported six turns against a promise of
+four. The test was simulating a slower game than the one it was checking, which
+is the same class of mistake it exists to catch, made in the test.
+
+⚠️ **A leg can be empty, and collapsing it would be a lie.** A unit that has
+already spent its movement marches nowhere this turn, so its first leg is empty
+and the first place it actually reaches is two turns away. No marker is drawn on
+the tile it is already standing on, and the first arrival is numbered 2.
+
+### Stopping for something new
+
+⚠️ **The test is what is NEWLY in sight, not whether anything is.** Comparing
+the set of hostile ids visible before and after each step is what separates
+"there is a raider over that hill" from "there is a border I have been watching
+for ten turns". The second reading would refuse to take a single step and look
+like the order being ignored.
+
+Cities count as well as units. Cresting a ridge and finding a walled town is
+exactly what a march should stop for, and it is the more valuable discovery.
+
+⚠️ **One hex at a time, through `moveUnit`.** Three things depend on it: the fog
+opens along the route, the memory records towns passed en route, and the march
+can be interrupted mid-turn. A single jump to the end of the leg would get the
+first two right and the third wrong, and the third is the one this section is
+about.
+
+### Ordering and cancelling
+
+⚠️ A hand-driven move **cancels** the standing order. The player has just said
+where they want the unit, and resuming a march to somewhere else next turn would
+be the game overruling them.
+
+⚠️ Marches advance **after** the enemy phase and after the fortune, not before.
+A unit bogged down by a mire should stay bogged: `advanceMarch` reads
+`movesLeft`, so ordering it last is what makes the two agree instead of the
+march quietly undoing the mire.
+
+⚠️ `advanceMarches` walks units in **id order**. Units block each other, so which
+one goes first decides who gets the pass, and map iteration order is not
+something to leave a rule depending on when a seed is meant to replay (D39).
+
+### What the live look found
+
+The route draws only for the selected unit: measured on the deployed build,
+**4,153 lit pixels on the overlay canvas with the ordering unit selected and 0
+with any other**.
+
+⚠️ And a collision that only a screenshot could have shown: **the Architect gets
+two numbered overlays.** The settle advice numbers its five best sites and the
+march numbers its turns, in the same visual language, piling up around the unit
+where neither can be read. The march wins while an order stands, because it is
+an order the player gave and the sites are advice. They return when it is
+cancelled or fulfilled.
+
+⚠️ The overlay is the one thing in `effects` that does not fade itself, so
+`active()` had to learn about it. The frame loop clears that canvas every frame
+and only redraws when something is animating, which is correct for a damage
+number and wrong for a piece of interface: the route would have been painted on
+the frame it was ordered and erased on the next one.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D763 | An out-of-range click is an order, not an error | It already meant "go there"; the game just made the player repeat it every turn |
+| D764 | ⚠️ **The preview borrows the movement rules rather than restating them** | A second cost model leaves the unit arriving on a different turn than the map promised |
+| D765 | An empty first leg is kept | A unit that has already moved reaches its first tile on turn two, and saying "1" would be wrong |
+| D766 | ⚠️ **Only a NEWLY seen enemy stops the march** | Otherwise a scout on a known border refuses to move at all |
+| D767 | Towns interrupt as well as units | Finding a walled town is the more valuable discovery of the two |
+| D768 | The march steps one hex at a time through `moveUnit` | Fog, town memory and mid-turn interruption all depend on it |
+| D769 | A manual move cancels the order | Resuming next turn would be the game overruling the player |
+| D770 | Marches advance after the enemy phase and the fortune | So a mire that took the unit's movement is not quietly undone |
+| D771 | Units march in id order | They block each other, so the order decides who gets the pass |
+| D772 | The route is drawn for the selected unit only | Every unit's route at once is spaghetti over a map already carrying fog and threats |
+| D773 | ⚠️ **Settle advice yields to a march** | Both write numbers on hexes and the Architect gets both, so together neither is readable |
+| D774 | `effects.active()` counts a shown march | The canvas is cleared every frame, so the route would flicker off immediately |
+| D775 | The order is a bare target, not a cached path | A stored route goes stale the moment anything else moves |
+| D776 | No save migration | The field is optional, so an older save loads a unit with nothing to do, which is what it means |
+
 ---
 
 *Last updated: 27 August 2026*

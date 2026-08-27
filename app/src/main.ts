@@ -44,6 +44,10 @@ import {
   rollFortune,
   fortuneTaken,
   applyFortune,
+  advanceMarches,
+  clearMarch,
+  planMarch,
+  setMarch,
   memoryOf,
   vacateSeat,
   takeSeat,
@@ -119,7 +123,7 @@ import {
   topicsFor,
   type Campaign,
 } from '@fabric-empires/learn';
-import { createEffects } from './render/effects.js';
+import { createEffects, type MarchOverlay } from './render/effects.js';
 import { createScene3D } from './three/scene3d.js';
 import { playDuel } from './three/duel.js';
 import { playSiege } from './three/siege.js';
@@ -1257,10 +1261,43 @@ function log(message: string, tone: 'good' | 'bad' | 'plain' = 'plain'): void {
  * "reachable" eventually disagrees with the rules, and the player is the one
  * who finds out.
  */
+/**
+ * The route to draw for the selected unit, if it has one.
+ *
+ * ⚠️ Recomputed from the target every time rather than cached with the order.
+ * A stored path goes stale the moment anything else moves: a rival walks into
+ * the pass, the line still runs through them, and the numbers promise an
+ * arrival the unit will not make. Recomputing is an A* over a few dozen tiles.
+ *
+ * ⚠️ The turn numbers are the leg's INDEX, so a unit that has already spent its
+ * movement this turn is honestly labelled. Its first leg is empty, no marker is
+ * drawn on the tile it is standing on, and the first place it actually reaches
+ * is numbered 2, because that is when it gets there.
+ */
+function marchOverlay(): MarchOverlay | undefined {
+  const unit = selectedUnitId ? state.units.get(selectedUnitId) : undefined;
+  if (!unit?.order || unit.factionId !== mySeat) return undefined;
+  const plan = planMarch(state, unit, unit.order.target);
+  if (!plan) return undefined;
+  return {
+    path: plan.path,
+    stops: plan.legs
+      .map((leg, i) => ({ hex: leg.at, turn: i + 1 }))
+      .filter((s, i) => plan.legs[i]!.hexes.length > 0),
+  };
+}
+
 function refreshSelection(): void {
   reach = undefined;
   attackTargets = undefined;
   settleSuggestions = [];
+
+  /*
+   * The march overlay follows the selection, which is what the player asked
+   * for: a route drawn for every unit at once would be a plate of spaghetti on
+   * a map that is already carrying territory, fog and threat markers.
+   */
+  effects.setMarch(marchOverlay());
 
   /*
    * The stepper is refreshed before the early return, so it stays usable with
@@ -1314,7 +1351,16 @@ function refreshSelection(): void {
    * player who did not already know that Data is what makes a city grow
    * settled where they happened to be standing.
    */
-  settleSuggestions = settleSites(state, unit);
+  /*
+   * ⚠️ **Not while the unit is marching somewhere.** Both overlays write
+   * numbers on hexes, and an Architect is the one unit that gets both: the
+   * settle advice numbers its five best sites, the march numbers its turns.
+   * Seen together, as they were on the first live look, the two sets pile up
+   * around the unit and neither can be read. The march wins because it is an
+   * order the player gave; the sites are advice, and they come back the moment
+   * the order is cancelled or fulfilled.
+   */
+  settleSuggestions = unit.order ? [] : settleSites(state, unit);
   renderSettleList();
 
   // ⚠️ The unit's name is NOT translated: Pipeline Runner and Direct Lake
@@ -1709,10 +1755,39 @@ async function actOn(target: Hex): Promise<void> {
   const beforeExplored = memoryOf(state, mySeat).explored;
   const moved = moveUnit(state, unit.id, target);
   if (!moved.ok) {
+    /*
+     * Out of range this turn is an ORDER, not an error.
+     *
+     * ⚠️ This is the whole feature, and it hangs off the failure path on
+     * purpose. Clicking a distant hex already meant "go there"; the game just
+     * said no and made the player click again every turn, which is worst for
+     * the Profiler, whose entire job is to be somewhere else. Anything genuinely
+     * impossible, off the map, in the sea, has no path either and still reports
+     * the original reason.
+     */
+    const plan = planMarch(state, unit, target);
+    if (plan) {
+      state = setMarch(state, unit.id, target);
+      const turns = plan.legs.length;
+      log(
+        t('{unit} sets out. {n} turns away.', {
+          unit: t(unitType(unit.typeId).label),
+          n: String(turns),
+        }),
+      );
+      refreshSelection();
+      dirty = true;
+      return;
+    }
     log(moved.reason, 'bad');
     return;
   }
-  state = moved.state;
+  /*
+   * ⚠️ A hand-driven move cancels the standing order. The player has just said
+   * where they want this unit, and quietly resuming a march to somewhere else
+   * next turn would be the game overruling them.
+   */
+  state = clearMarch(moved.state, unit.id);
   const landed = state.units.get(unit.id);
   if (landed && (landed.hex.q !== from.q || landed.hex.r !== from.r)) {
     const route = moved.path ?? [landed.hex];
@@ -2869,6 +2944,37 @@ async function doEndTurn(): Promise<void> {
   // The map's own offer, if it made one. Voluntary, so it comes after the turn
   // has been reported rather than interrupting it.
   await offerFortune();
+
+  /*
+   * Standing orders, walked one turn's worth.
+   *
+   * ⚠️ After the enemy phase and the fortune, not before. A march that stepped
+   * first would walk into ground a raider is about to take, and a unit that
+   * has just been bogged down by a mire should stay bogged: `advanceMarch`
+   * reads `movesLeft`, so ordering it after the mire is what makes the two
+   * agree instead of the march quietly undoing it.
+   */
+  const marched = advanceMarches(state, mySeat);
+  if (marched.reports.length > 0) {
+    state = marched.state;
+    for (const report of marched.reports) {
+      const unit = state.units.get(report.unitId);
+      const who = unit ? t(unitType(unit.typeId).label) : t('a unit');
+      if (report.stop === 'spotted') {
+        log(t('{unit} halts: something is out there.', { unit: who }), 'bad');
+        if (report.spotted) {
+          effects.pulse(report.spotted, '#ff9b91', 3);
+          scene.focus(report.spotted);
+        }
+      } else if (report.stop === 'arrived') {
+        log(t('{unit} arrives.', { unit: who }), 'good');
+      } else if (report.stop === 'blocked') {
+        log(t('{unit} cannot get through and stops.', { unit: who }), 'bad');
+      }
+    }
+    refreshSelection();
+    dirty = true;
+  }
 
   /*
    * The autosave point.
