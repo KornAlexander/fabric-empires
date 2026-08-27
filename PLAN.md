@@ -9449,6 +9449,102 @@ the frame it was ordered and erased on the next one.
 | D775 | The order is a bare target, not a cached path | A stored route goes stale the moment anything else moves |
 | D776 | No save migration | The field is optional, so an older save loads a unit with nothing to do, which is what it means |
 
+## 107. Voice chat between players: researched, and deliberately not built
+
+The ask was voice in game, so players can talk to each other in multiplayer.
+This section is the research and the decision not to implement it. Nothing in
+the code changed.
+
+### The blocking fact is not difficulty, it is that the players are already talking
+
+**Multiplayer here is one screen.** `duoModal.ts` opens with "Two questions, one
+screen, two people", and it was built so a parent and a first grader can play
+the same empire at the same moment, each at their own level. Seat one answers
+with **1 2 3 4** and seat two answers with **a b c d**, which is the give-away:
+those are two hands on one keyboard.
+
+⚠️ **So the feature as literally requested would put a microphone between two
+people sitting shoulder to shoulder.** Every failure mode of voice chat, the
+echo, the feedback howl, the latency, the permission prompt, would be real, and
+the benefit would be zero, because the shortest path between those two players
+is air.
+
+Seats do not change this. `takeSeat` and `vacateSeat` move control of a faction
+between the machine and a person **inside one `GameState` in one browser tab**.
+A seat is a chair at this desk, not a chair somewhere else.
+
+### There is no network to carry a voice, and none is provisioned
+
+A search of every `.ts`, `.mts` and `.mjs` outside `node_modules` and `dist`
+returns **zero** matches for `RTCPeerConnection`, `WebSocket`, `socket.io`,
+`SignalR`, `EventSource`, `BroadcastChannel`, `getUserMedia` or `PeerJS`. That
+is not an oversight to be corrected in an afternoon; it is the shape of the
+product. State lives in `localStorage` and the game is a static site.
+
+`rayfin/rayfin.yml` settles it:
+
+```yaml
+data:      { enabled: false }
+storage:   { enabled: false }
+functions: { enabled: false }
+staticHosting: { enabled: true, folder: app/dist }
+```
+
+⚠️ **WebRTC is peer to peer for MEDIA and never for INTRODUCTIONS.** Two
+browsers cannot find each other without a rendezvous: somebody has to carry the
+offer, the answer and the ICE candidates between them. That is a server, and
+`functions: enabled: false` means this deployment has nowhere to run one. The
+static host cannot even be talked into it, because it answers an unknown path
+with `200` and `index.html` (see `audio.ts`), so it is not a thing that can hold
+state at all.
+
+⚠️ **And symmetric NAT would need a TURN relay**, which is a credentialled,
+metered, third-party service. The repo already has this exact argument written
+down for the coach: *"A static page cannot hold a secret."* That is why
+`tools/coach/server.mjs` exists as a dev-only process holding the Foundry key.
+Shipping TURN credentials in `app/dist` would put a paid relay in public,
+and `npm run publishable` exists to stop precisely that class of leak.
+
+### What it would actually take, in order
+
+Voice is the **last** item on this list, not the first:
+
+1. **Cross-device multiplayer at all.** A shared authoritative state, a way to
+   join, and a transport. Today there is one tab and one save.
+2. **A trust model the fog survives.** ⚠️ Peer to peer state sync means each
+   client holds the whole `GameState`, including the parts fog is hiding from
+   it. `seats.ts` already refuses to hand a joiner the AI's omniscience because
+   that "is both a cheat and the opposite of what the fog is for". Naive
+   networking hands every player the same gift, invisibly.
+3. **A signalling service**, which means turning on `functions` and owning a
+   deployed backend with a lifecycle, an auth story and a bill.
+4. **A TURN relay** with credentials that a static bundle cannot hold.
+5. **Consent and retention for captured audio.** ⚠️ This is a study tool whose
+   documented second seat is *a first grader*. Putting a live microphone in a
+   product used by children is not a feature, it is a different product with
+   different obligations. That decision is not one to make as a side effect of
+   a nice-to-have.
+
+Each of 1 to 4 is larger than any single section in this plan. Doing them to
+enable talking to somebody in the same room is the wrong order of work.
+
+### What was recorded instead
+
+Nothing was built, so nothing can rot. The research is here so that the next
+person who asks gets the four-line answer instead of repeating the search, and
+so that if cross-device multiplayer is ever built, the voice question is picked
+up from a known starting point rather than from scratch.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D777 | Voice chat between players is **not** implemented | The two players share one screen and one keyboard, so the feature solves a problem that does not exist |
+| D778 | ⚠️ **The blocker is recorded as architectural, not as effort** | "Too hard for now" invites a retry next month; "there is no network and no server" is a fact that stays true until something else changes |
+| D779 | No signalling server is added | `functions: enabled: false`; WebRTC cannot introduce two peers without one, and turning it on means owning a backend |
+| D780 | No TURN credentials will ever ship in `app/dist` | A static page cannot hold a secret, which is why the coach server exists at all |
+| D781 | Cross-device multiplayer is the prerequisite, and it is not scheduled | ⚠️ It would also have to solve fog-safe state sync, which peer-to-peer sync silently breaks |
+| D782 | Microphone capture is treated as a product decision, not a technical one | The documented second seat is a six-year-old |
+| D783 | The research is written down rather than discarded | The cost of this section is one page; the cost of re-deriving it is another afternoon |
+
 ---
 
 *Last updated: 27 August 2026*
