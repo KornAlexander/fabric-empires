@@ -9545,6 +9545,110 @@ up from a known starting point rather than from scratch.
 | D782 | Microphone capture is treated as a product decision, not a technical one | The documented second seat is a six-year-old |
 | D783 | The research is written down rather than discarded | The cost of this section is one page; the cost of re-deriving it is another afternoon |
 
+## 108. The teaser says what the game is, in gold
+
+The pre-setup teaser is a 69 second film: six Sora clips, `media/fabrica.mp3`
+underneath, captions burned in by libass. It had two faults that are really one
+fault, which is that it was written for somebody who already knew what the game
+was.
+
+### Twenty-four seconds of saying nothing
+
+⚠️ **Two of the six scenes carried no caption at all**, and that was a
+deliberate decision being reversed here. The original argument was about
+rhythm: a 69 second film needs room to breathe, and a caption on every shot
+reads as a slideshow. That is a sound instinct and it was answering the wrong
+question. The silent scenes were the harbour and the scriptorium, twenty-four
+seconds in which a viewer who had never heard of this project was told nothing
+at all. A teaser for an unknown game has to say what the game is before it can
+afford to be atmospheric.
+
+The breathing is kept in the gaps instead. No caption starts until its scene
+has been up for about a second and a half, and every one leaves before the cut.
+The rule that a caption must sit **inside** its own scene is unchanged.
+
+The script now names the product and states the mechanic:
+
+| scene | caption |
+| --- | --- |
+| walled city | Every empire is built on something somebody learned. |
+| harbour | This one is built on Microsoft Fabric. |
+| map room | Forty-one skills. Three domains. One exam. |
+| scriptorium | Every battle asks you a real question. |
+| tower | Answer well, and the map is yours. |
+| banners | FABRIC EMPIRES / Learn Fabric. Learn as a family. |
+
+⚠️ The mechanic line landed on the **scriptorium** deliberately. It is the one
+scene that is literally a room where people learn by writing, and it was one of
+the two carrying no text.
+
+### Gold on gold is not a colour choice, it is a contrast problem
+
+The captions were Georgia 32 in pure white. They are now Cinzel in `#E8C15C`.
+
+⚠️ **Every one of the six scenes is lit at golden hour**, which is the thing
+that makes gold captions hard rather than easy. White separated from that
+footage for nothing. Gold has to be given an edge to stand on, so the outline
+is fully opaque black and heavier than the white captions ever needed, and the
+face is bold.
+
+⚠️ **The first render proved the point and nearly hid it.** A detector counting
+golden pixels in the caption band reported 96,763 on the map-room scene, and
+19,933 on a frame with **no caption at all**. It was measuring candlelight. A
+gold-on-gold check cannot tell text from sunset, which is this repo's own
+warning about a fixture that produces the answer you expected, arriving in the
+tooling rather than the code. The frames had to be looked at.
+
+⚠️ **The title card was rendering at caption size**, because it was just
+another entry in the caption list. The payoff of the film was the least
+prominent text in it. It now takes an inline size and letter-spacing.
+
+### Details that will bite the next person
+
+⚠️ **ASS colours are `&HAABBGGRR`:** alpha first, then **blue, green, red**.
+Written as the RGB used everywhere else in this repo, the gold `#E8C15C` comes
+out as `#5CC1E8`, a pale blue, and it looks deliberate enough to survive a
+glance at the log.
+
+⚠️ **Alpha is inverted:** `00` is opaque, `FF` is invisible.
+
+⚠️ **The font is committed to `tools/`, not cached in `media/`.** `/media/` is
+ignored, so a font kept beside the clips is absent on a fresh clone; fontconfig
+would substitute another serif and the film would rebuild with no error and be
+a different film. Cinzel is SIL OFL, the licence travels beside it, and NOTICE
+names it.
+
+⚠️ **`fontsdir` cannot take an absolute Windows path**, because the drive-letter
+colon is a separator inside the filter graph. The font is copied next to the
+captions and ffmpeg is run with its cwd there, so both are plain relative
+names. This is the same trap the caption path already worked around.
+
+⚠️ **ffmpeg is now resolved and checked, not assumed.** The script called a
+bare `ffmpeg`, which was not on PATH here at all. It takes `$FFMPEG` or PATH,
+and asserts `enable-libass` **before** encoding: without libass the `subtitles`
+filter does not exist, and the failure would otherwise arrive at the end of a
+slow x264 pass. The `imageio-ffmpeg` binary in this repo's own virtualenv is
+exactly such a minimal build.
+
+⚠️ **The AI-generation disclosure was verified, not assumed**, because it
+shares screen time with the new title card. Comparing the label strip before
+and after it appears gives a mean absolute difference of 10.43 against 2.12 for
+a control strip on the opposite side of the same frame, so the change is text
+rather than scene motion.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D784 | Every scene carries a caption now | Twenty-four silent seconds told a new viewer nothing, which costs more than the rhythm gained |
+| D785 | The teaser names Microsoft Fabric outright | It was possible to watch the whole film and not learn what the game was about |
+| D786 | The mechanic line sits on the scriptorium | The one scene that is a room for learning, and one of the two that was silent |
+| D787 | Captions are gold Cinzel, not white Georgia | Asked for, and the inscriptional face matches a film full of stonework and charters |
+| D788 | ⚠️ **The outline is opaque and heavy** | The footage is golden hour throughout, so gold has far less natural contrast than white did |
+| D789 | The title card gets an inline size | As a plain caption entry it rendered at body size, making the payoff the quietest moment |
+| D790 | ⚠️ **Frames are checked, not pixel counts** | A gold detector scored 19,933 on a caption-free frame; it was counting candlelight |
+| D791 | The font is committed under `tools/` with its OFL | `/media/` is ignored, and a substituted serif changes the film without raising an error |
+| D792 | ffmpeg is resolved from `$FFMPEG` and checked for libass first | A minimal build fails only after a slow encode, and one ships in this repo's virtualenv |
+| D793 | The AI disclosure was re-verified after the change | It now overlaps the title card, and it is the one caption with a compliance reason to exist |
+
 ---
 
 *Last updated: 27 August 2026*
