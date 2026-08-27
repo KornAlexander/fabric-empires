@@ -9902,6 +9902,46 @@ than the test loosened.
 | D815 | ⚠️ **The public build records nothing** | No session to attribute rows to, and it would leak the tenant endpoint |
 | D816 | RLS for the app, SQL endpoint for the report | Two doors; `role` only accepts `'authenticated'`, so no admin role exists to declare |
 
+## 112. The map gets its standard mouse back
+
+Left drag orbits again, **Shift+drag pans**, right drag pans. That is the
+three.js default and what nearly every 3D tool does.
+
+⚠️ **This is a return, not a new idea.** It had been rebound to `LEFT: PAN` /
+`RIGHT: ROTATE` on the reasoning that a map is a thing you slide around. That is
+true of a flat map and wrong here: this is a 3D scene with hills that occlude,
+and the first move people reach for is turning it rather than sliding it.
+
+⚠️ **The rebinding also silently removed Shift+drag altogether**, which is the
+part that made it worth undoing rather than merely arguable. OrbitControls hands
+the pan gesture to ctrl/meta/shift **only when the button is bound to ROTATE**.
+With `LEFT: PAN` there was nothing left for Shift to switch to, so the one
+gesture that means "pan" almost everywhere meant nothing at all. Nothing in the
+line that does the rebinding says so; `flyControls.ts` had recorded Shift as
+contested between the two camera models all along, and that note was describing
+a binding the map no longer had.
+
+⚠️ **Selection was never involved.** Clicking a hex is detected in `main.ts`
+from a pointerdown/up pair with a 5 px slop, independently of OrbitControls, so
+the left button can rotate and select without the two fighting. The old comment
+claimed the opposite arrangement was needed for that reason, and it was not.
+
+Boost stays on Shift while flying. The two never overlap, because the drone only
+has the mouse once the latch is engaged.
+
+⚠️ **Guarded by reading the source**, the way D205 is. `createScene3D` needs a
+WebGL context so the binding cannot be asserted by constructing it, and this
+binding has now been changed twice. The test also asserts that the reasoning is
+written next to it, because the failure mode here is not a crash: an app with
+`LEFT: PAN` works perfectly and is simply missing a gesture.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D817 | The map returns to the standard orbit scheme | It is a 3D scene, and turning it is the move people reach for first |
+| D818 | ⚠️ **Shift+drag is the real reason** | OrbitControls only offers it when the button is bound to ROTATE; the rebinding removed it invisibly |
+| D819 | Right drag keeps a dedicated pan | Panning stays one gesture away for anyone who preferred it |
+| D820 | The binding is pinned by a source-reading test | It has flipped twice, and the wrong setting looks entirely healthy |
+
 ---
 
 *Last updated: 27 August 2026*
