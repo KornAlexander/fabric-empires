@@ -539,6 +539,14 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
   'Call off the march and decide again next turn (Esc)':
     'Den Marsch abbrechen und nächste Runde neu entscheiden (Esc)',
   '{unit} stands and awaits orders.': '{unit} hält an und wartet auf Befehle.',
+  // Folding panels, and the key list they sit next to.
+  Tile: 'Feld',
+  Log: 'Verlauf',
+  Keys: 'Tasten',
+  'drag to orbit, shift-drag to pan, wheel to zoom':
+    'ziehen dreht · Umschalt+ziehen verschiebt · Rad zoomt',
+  'enter is the next action, space follows the button':
+    'Enter nächste Aktion · Leertaste folgt dem Knopf · Strg+Leertaste beendet den Zug',
   // The turn button, which is now two buttons wearing one coat.
   'Next unit ({n})': 'Nächste Einheit ({n})',
   'Choose research': 'Forschung wählen',

@@ -10201,6 +10201,69 @@ answer to it rather than a different idea.
 | D848 | `opened` answers `found` musically | One phrase across two beats reads as one event, not two |
 | D849 | Audibility measured with `renderCue` | A test can prove a cue was composed and never that it makes a sound |
 
+## 118. The reference panels fold away
+
+On a 390x844 phone the HUD is one scrolling column under the map, and the
+mobile audit measured its scroll container at **1542 px of content in a 371 px
+window**. Everything was reachable and almost nothing was visible: four screens
+of scrolling to reach a button, on a device held in one hand.
+
+Six panels now fold: `tile`, `research`, `threats`, `cities`, `log` and `help`.
+Closed by default on the narrow layout, open on desktop, and the choice is
+remembered.
+
+Measured on the deployed shape: the column drops from **1560 px to 1097 px**,
+which is 30% shorter and takes the scroll from **4.2 screens to 3.0**.
+
+⚠️ **That is a real improvement and not the whole problem.** The remaining
+1097 px is mostly the three panels that do NOT fold, and folding those would
+cost more than it saves: `selection` is what the player acts through, and
+`resources`/`controls` are the one row worth having at a glance. Worth being
+honest that this is a third off rather than a solved layout.
+
+### Two ways this could have been built wrong
+
+⚠️ **Nothing here restructures the DOM.** The obvious implementation wraps each
+panel's contents in a body element and toggles that. It breaks `log`, whose
+entries are appended to the **panel**, and it breaks it silently: the log stops
+growing on screen while continuing to grow in memory. Collapsing is a CSS rule
+about children instead, so a panel that gains a child later is still correct,
+and a test appends an entry after setup to hold that.
+
+⚠️ **The visible heading is never copied.** `research` and `cities` rewrite
+their own `<h2>` from state, so a toggle carrying the title in its own label
+would be a second copy going stale the first time a topic changed, and would
+look right until then. The heading stays where it was; the toggle sits beside
+it. `help`, `tile` and `log` have no heading at all, so they are given a fixed
+one: a collapsed panel that is only a chevron is a puzzle.
+
+⚠️ **The default is decided once, not per toggle.** Re-reading the media query
+each time would mean rotating a phone into landscape silently reopening panels
+the player had closed.
+
+⚠️ **44 px of target without 44 px of ink.** Every control must clear 44 px, and
+a 44 px box in the corner of every panel would dominate a column of them, so a
+pseudo-element grows the hit area while the button stays 26 px. Measured at 44
+on the phone profile.
+
+### And a stale help panel, found on the way
+
+The key list still read **"drag to pan, wheel to zoom, space ends turn"**. All
+three had been made wrong by earlier sections: drag orbits (§112), Shift+drag
+pans, and Space now follows the button (§116). Instructions that lie are worse
+than none, because they are believed.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D850 | Six reference panels fold, closed by default on mobile | 1542 px of HUD in a 371 px window is four screens to reach a button |
+| D851 | `selection`, `resources` and `controls` never fold | One is how the player acts; the others are the glance row |
+| D852 | ⚠️ **Collapsing is a CSS rule about children, not a wrapper** | A wrapper silently stops catching the log entries appended to the panel |
+| D853 | ⚠️ **No heading is ever copied into the toggle** | Two panels rewrite their own title from state, so a copy goes stale |
+| D854 | Panels without a heading are given a fixed one | A collapsed panel that is only a chevron says nothing |
+| D855 | The narrow default is read once | Rotating the phone would otherwise reopen what the player closed |
+| D856 | The hit area is 44 px, the button is 26 px | The rule is about the target, and the ink would dominate a column |
+| D857 | The help panel was corrected | It described three bindings that three earlier sections had changed |
+
 ---
 
 *Last updated: 27 August 2026*

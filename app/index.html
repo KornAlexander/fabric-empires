@@ -772,6 +772,41 @@
       @media (prefers-reduced-motion: reduce) {
         #end-turn.ready { animation: none; outline: 2px solid #ffd166; }
       }
+      /*
+        Folding panels away.
+
+        ⚠️ The rule targets CHILDREN rather than a wrapper element, so a panel
+        that gains a child later still collapses correctly. `#log` appends its
+        entries straight into the panel; a wrapper would have quietly stopped
+        catching them.
+
+        The heading and the toggle survive a fold, so a closed panel still says
+        what it is. A collapsed panel that is only a chevron is a puzzle.
+      */
+      .panel.foldable { position: relative; }
+      .panel.foldable > h2 { padding-right: 30px; }
+      .panel.collapsed > *:not(h2):not(.panel-toggle) { display: none; }
+      .panel.collapsed { padding-bottom: 8px; }
+      .panel-toggle {
+        position: absolute; top: 4px; right: 4px;
+        width: 26px; height: 26px; padding: 0;
+        display: flex; align-items: center; justify-content: center;
+        font: inherit; font-size: 15px; line-height: 1; cursor: pointer;
+        color: var(--muted); background: transparent;
+        border: 1px solid var(--border); border-radius: 6px;
+      }
+      .panel-toggle:hover { color: var(--text); background: rgba(255, 255, 255, 0.06); }
+      /*
+        ⚠️ 44px of TARGET without 44px of ink. The mobile rule is that every
+        control clears 44 px, and a 44 px box in the corner of every panel would
+        dominate a column of them. The pseudo-element grows the hit area only.
+      */
+      @media (pointer: coarse) {
+        .panel-toggle::after {
+          content: ''; position: absolute; top: 50%; left: 50%;
+          width: 44px; height: 44px; transform: translate(-50%, -50%);
+        }
+      }
     </style>
   </head>
   <body>
@@ -858,7 +893,8 @@
 
     <div class="panel" id="help">
       <span data-i18n="click a unit to select, click to move or attack">click a unit to select &middot; click to move or attack</span><br />
-      <span data-i18n="drag to pan, wheel to zoom, space ends turn">drag to pan &middot; wheel to zoom &middot; space ends turn</span><br />
+      <span data-i18n="drag to orbit, shift-drag to pan, wheel to zoom">drag to orbit &middot; shift+drag to pan &middot; wheel to zoom</span><br />
+      <span data-i18n="enter is the next action, space follows the button">enter next action &middot; space follows the button &middot; ctrl+space ends turn</span><br />
       <span class="muted" data-i18n="` opens the console, type help">` opens the console &middot; type help</span>
     </div>
 

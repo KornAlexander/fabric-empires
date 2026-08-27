@@ -138,6 +138,7 @@ import { beginRun, flush, recordAttempt, recordRun, statsConfigured } from './st
 import { createCinematicOverlay } from './ui/cinematicOverlay.js';
 import { createChoiceModal } from './ui/choice.js';
 import { createSetupScreen, type ResumeOffer, type SetupResult } from './ui/setupScreen.js';
+import { createPanels } from './ui/panels.js';
 import { createCheatConsole } from './ui/cheatConsole.js';
 import { createRaidAlert } from './ui/raidAlert.js';
 import { createDuoModal } from './ui/duoModal.js';
@@ -1243,6 +1244,21 @@ onLangChange(() => {
 
 applyStaticTranslations();
 paintLangToggle();
+
+/*
+ * Fold the reference panels away.
+ *
+ * ⚠️ After `applyStaticTranslations`, because the module injects a heading for
+ * the panels that have none and reads the existing `<h2>` for its accessible
+ * label. Running first would label them in English on a German HUD and inject
+ * an untranslated heading.
+ *
+ * Closed by default only on the narrow layout: the mobile audit measured the
+ * HUD column at 1542 px of content in a 371 px window, which is four screens
+ * of scrolling to reach a button.
+ */
+const panels = createPanels({ t });
+panels.apply();
 
 let state: GameState = createGameState('FABRIC', { topics: provider.topics() });
 /**
