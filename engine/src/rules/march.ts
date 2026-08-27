@@ -147,6 +147,18 @@ export interface MarchResult {
   readonly stop: MarchStop;
   /** Where the thing that interrupted the march is, when one did. */
   readonly spotted?: Hex;
+  /**
+   * Every hex the unit actually stood on this turn, starting where it began.
+   *
+   * ⚠️ **Reported because a march is a move, and moves have consequences the
+   * engine does not own.** A hand-driven move already hands its route to the
+   * app, which is what lets a Profiler dig up a chest it walked over. A march
+   * reported only its start and end, so anything buried in between was walked
+   * straight past: the unit crossed the tile, the fog opened, and nothing
+   * happened. From the outside that reads as the chest being broken rather
+   * than as the march never having mentioned it.
+   */
+  readonly walked: readonly Hex[];
 }
 
 /**
@@ -167,22 +179,25 @@ export interface MarchResult {
 export function advanceMarch(state: GameState, unitId: string): MarchResult {
   let current = state;
   const start = current.units.get(unitId);
-  if (!start?.order) return { state, stop: 'arrived' };
+  if (!start?.order) return { state, stop: 'arrived', walked: [] };
 
+  // Starts where the unit stands, so the route is continuous even when the
+  // march manages no steps at all this turn.
+  const walked: Hex[] = [start.hex];
   let known = hostilesInSight(current, start.factionId);
 
   for (;;) {
     const unit = current.units.get(unitId);
-    if (!unit?.order) return { state: current, stop: 'arrived' };
+    if (!unit?.order) return { state: current, stop: 'arrived', walked };
     if (hexKey(unit.hex) === hexKey(unit.order.target)) {
-      return { state: clearMarch(current, unitId), stop: 'arrived' };
+      return { state: clearMarch(current, unitId), stop: 'arrived', walked };
     }
-    if (unit.movesLeft <= 0) return { state: current, stop: 'out-of-moves' };
+    if (unit.movesLeft <= 0) return { state: current, stop: 'out-of-moves', walked };
 
     const plan = planMarch(current, unit, unit.order.target);
-    if (!plan) return { state: clearMarch(current, unitId), stop: 'blocked' };
+    if (!plan) return { state: clearMarch(current, unitId), stop: 'blocked', walked };
     const next = plan.path[1];
-    if (!next) return { state: clearMarch(current, unitId), stop: 'blocked' };
+    if (!next) return { state: clearMarch(current, unitId), stop: 'blocked', walked };
 
     /*
      * ⚠️ Somebody standing in the way ends the march rather than routing round
@@ -190,25 +205,31 @@ export function advanceMarch(state: GameState, unitId: string): MarchResult {
      * the only way through is blocked, and quietly taking a ten hex detour is
      * not what the player drew a line for.
      */
-    if (unitAt(current, next)) return { state: clearMarch(current, unitId), stop: 'blocked' };
+    if (unitAt(current, next)) return { state: clearMarch(current, unitId), stop: 'blocked', walked };
 
     const moved = moveUnit(current, unitId, next);
-    if (!moved.ok) return { state: clearMarch(current, unitId), stop: 'blocked' };
+    if (!moved.ok) return { state: clearMarch(current, unitId), stop: 'blocked', walked };
     current = moved.state;
 
     const after = current.units.get(unitId);
-    if (!after) return { state: current, stop: 'blocked' };
+    if (!after) return { state: current, stop: 'blocked', walked };
+    walked.push(after.hex);
 
     const seen = hostilesInSight(current, after.factionId);
     for (const id of seen) {
       if (known.has(id)) continue;
       const where = current.units.get(id)?.hex ?? current.cities.get(id)?.hex;
-      return { state: clearMarch(current, unitId), stop: 'spotted', ...(where ? { spotted: where } : {}) };
+      return {
+        state: clearMarch(current, unitId),
+        stop: 'spotted',
+        walked,
+        ...(where ? { spotted: where } : {}),
+      };
     }
     known = seen;
 
     if (hexKey(after.hex) === hexKey(after.order?.target ?? after.hex)) {
-      return { state: clearMarch(current, unitId), stop: 'arrived' };
+      return { state: clearMarch(current, unitId), stop: 'arrived', walked };
     }
   }
 }
@@ -219,6 +240,8 @@ export interface MarchReport {
   readonly from: Hex;
   readonly to: Hex;
   readonly spotted?: Hex;
+  /** The route walked this turn. See {@link MarchResult.walked}. */
+  readonly walked: readonly Hex[];
 }
 
 /**
@@ -258,6 +281,7 @@ export function advanceMarches(
       stop: result.stop,
       from: before.hex,
       to: after.hex,
+      walked: result.walked,
       ...(result.spotted ? { spotted: result.spotted } : {}),
     });
   }

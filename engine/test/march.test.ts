@@ -157,6 +157,45 @@ describe('walking it', () => {
     }
   });
 
+  /**
+   * ⚠️ **The route walked has to be reported, not just the start and the end.**
+   *
+   * A hand-driven move hands its whole route to the app, which is what lets a
+   * Profiler dig up a chest it crossed. A march reported only where it began
+   * and where it stopped, so anything buried in between was walked straight
+   * past: the tile was crossed, the fog opened, and nothing happened. From
+   * outside that reads as the treasure being broken rather than as the march
+   * never having mentioned the middle of its own journey.
+   */
+  it('⚠️ reports every hex it stood on, not just where it stopped', () => {
+    const state = start();
+    const id = scout(state);
+    const before = state.units.get(id)!;
+    const target = farTarget(state, before.hex)!;
+
+    const result = advanceMarch(setMarch(state, id, target), id);
+    const after = result.state.units.get(id)!;
+
+    expect(hexKey(result.walked[0]!), 'starts where the unit stood').toBe(hexKey(before.hex));
+    expect(
+      hexKey(result.walked[result.walked.length - 1]!),
+      'ends where the unit stands now',
+    ).toBe(hexKey(after.hex));
+
+    // The whole point: a multi-step turn reports the steps between the ends.
+    if (hexKey(after.hex) !== hexKey(before.hex)) {
+      expect(result.walked.length, 'a move that went somewhere walked somewhere').toBeGreaterThan(1);
+    }
+
+    // Every entry is a real step, never a jump.
+    for (let i = 1; i < result.walked.length; i++) {
+      const a = result.walked[i - 1]!;
+      const b = result.walked[i]!;
+      const distance = (Math.abs(a.q - b.q) + Math.abs(a.r - b.r) + Math.abs(a.q + a.r - b.q - b.r)) / 2;
+      expect(distance, 'consecutive hexes must be neighbours').toBe(1);
+    }
+  });
+
   it('⚠️ arrives on the turn the preview promised', () => {
     /*
      * The whole point. Walk the plan out turn by turn, refreshing movement the

@@ -10030,6 +10030,60 @@ The bad one would have been two spellings of the same button in one interface.
 | D829 | ⚠️ **The overwrite is disclosed, not prevented** | One slot means Begin destroys a game in progress, and discovering that afterwards is worse than reading it |
 | D830 | Fixing the flow fixed the freeze | The screen is the cold-start cover; skipping it skipped the cover and not the work |
 
+## 115. A march digs, and a march can be called off
+
+Two faults in the multi-turn order from §106, both of the same shape: the march
+was a second way to move that did not do everything moving does.
+
+### Marching over a chest left it buried
+
+⚠️ **`digAlong` was only ever called from the hand-driven path.** Walking a
+Profiler onto a cache opened it; ordering the same Profiler to the same tile
+marched over the cache and said nothing. The tile was crossed, the fog opened,
+the memory updated, and the chest stayed in the ground.
+
+The reason it could not have worked is one line of interface: `MarchResult`
+reported `from` and `to` and nothing in between, while a manual move hands its
+whole route to the app. So the app had nothing to search even if it had thought
+to look. `walked` now carries every hex the unit stood on, and the end-of-turn
+handler digs along it exactly as `actOn` does.
+
+⚠️ **Sequential, not `Promise.all`.** `digAlong` plays a film and opens a
+question; two at once would race for one modal, and `digAlong` bails when a
+modal is already open, so the second chest would be silently lost rather than
+queued. The bug that would replace this one.
+
+⚠️ The route is asserted to be **continuous** in the test, each hex a neighbour
+of the last, because a route that skipped a step would look correct in every
+other respect and quietly walk over caches again.
+
+### An order had no off switch
+
+You could replace an order by giving another one, and cancel it as a side
+effect of moving the unit by hand, but there was no way to say "forget it, I
+will decide next turn". A route drawn by a misclick kept walking, and the dotted
+line stayed on the map describing a journey nobody wanted.
+
+⚠️ **Cancelling is not skipping, and conflating them would have been the easy
+mistake.** The unit keeps whatever movement it has left and can be sent
+elsewhere on the same turn. Spending the moves would charge the player for
+correcting a misclick.
+
+⚠️ **The button is hidden, not disabled, when there is no order.** Every other
+control in that row is something a unit can always be asked to do and is greyed
+out when it cannot. This one only exists while an order does, and a permanently
+greyed button teaches nobody what it is for.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D831 | `MarchResult` reports the whole route walked | The app cannot act on a journey it is only told the ends of |
+| D832 | ⚠️ **A march digs along its route, like a hand-driven move** | The two were asymmetric, and from outside it read as the treasure being broken |
+| D833 | Chests are opened one at a time | They share one modal, and `digAlong` bails when it is busy, so a parallel dig loses one |
+| D834 | The reported route is asserted continuous | A skipped step looks correct everywhere else and walks over caches again |
+| D835 | A march can be called off from the unit panel | An order could be replaced or overridden, never simply withdrawn |
+| D836 | ⚠️ **Cancelling keeps the unit's movement** | It withdraws an instruction; it does not give up the turn |
+| D837 | The button is hidden when there is no order | A permanently greyed control explains nothing |
+
 ---
 
 *Last updated: 27 August 2026*

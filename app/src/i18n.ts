@@ -534,6 +534,11 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
     'Startwert {seed} · Runde {turn} · {cities} Städte',
   'Starting a new empire below replaces this saved game.':
     'Ein neues Reich unten ersetzt diesen Spielstand.',
+  // Calling off a multi-turn march.
+  'Cancel march': 'Marsch abbrechen',
+  'Call off the march and decide again next turn (Esc)':
+    'Den Marsch abbrechen und nächste Runde neu entscheiden (Esc)',
+  '{unit} stands and awaits orders.': '{unit} hält an und wartet auf Befehle.',
   'Every advance is a question. Pick a topic, answer it, and the next units unlock.':
     'Jeder Fortschritt ist eine Frage. Wähle ein Thema, beantworte es, und die nächsten Einheiten werden frei.',
   'Attack a walled city. You choose how to go in, and the defender chooses how to meet you.':

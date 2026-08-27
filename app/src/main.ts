@@ -1037,6 +1037,7 @@ const el = {
   actFound: document.querySelector<HTMLButtonElement>('#act-found')!,
   actRaid: document.querySelector<HTMLButtonElement>('#act-raid')!,
   actFortify: document.querySelector<HTMLButtonElement>('#act-fortify')!,
+  actStand: document.querySelector<HTMLButtonElement>('#act-stand')!,
   actSkip: document.querySelector<HTMLButtonElement>('#act-skip')!,
   actCouncil: document.querySelector<HTMLButtonElement>('#act-council')!,
   log: document.querySelector<HTMLElement>('#log')!,
@@ -1343,6 +1344,8 @@ function refreshSelection(): void {
     el.actFound.disabled = true;
     el.actRaid.disabled = true;
     el.actFortify.disabled = true;
+    // Nothing selected means no order to call off.
+    el.actStand.hidden = true;
     /*
      * ⚠️ The resting label is rewritten here, not only on the selected path.
      *
@@ -1480,6 +1483,18 @@ function refreshSelection(): void {
     ? t('Stand down, and move again this turn (h)')
     : t('Dig in for +40% defence, ending this turn (h)');
   el.actSkip.disabled = unit.movesLeft <= 0;
+  /*
+   * Calling off a march.
+   *
+   * ⚠️ **An order had no off switch.** It could be replaced by giving another
+   * one, and cancelled as a side effect of moving the unit by hand, but there
+   * was no way to simply say "forget it, I will decide next turn" — so a route
+   * drawn by a misclick kept walking, and the dotted line stayed on the map
+   * describing a journey the player no longer wanted.
+   *
+   * Shown only while there is something to cancel; see the note in the markup.
+   */
+  el.actStand.hidden = !unit.order;
   refreshCouncil();
 }
 
@@ -2580,6 +2595,28 @@ function doSkip(): void {
 }
 
 /**
+ * Call off a march.
+ *
+ * ⚠️ **Cancelling is NOT the same as skipping, and conflating them would be the
+ * obvious mistake.** The unit keeps whatever movement it has left and can be
+ * sent somewhere else on this turn: the player is withdrawing a standing
+ * instruction, not giving up the turn. Spending the moves would punish somebody
+ * for correcting a misclick.
+ *
+ * The dotted route disappears with the order, because `refreshSelection`
+ * recomputes the overlay from `unit.order` and there is no longer one to draw.
+ */
+function doStand(): void {
+  if (!selectedUnitId) return;
+  const unit = state.units.get(selectedUnitId);
+  if (!unit?.order) return;
+  state = clearMarch(state, selectedUnitId);
+  log(t('{unit} stands and awaits orders.', { unit: t(unitType(unit.typeId).label) }));
+  refreshSelection();
+  dirty = true;
+}
+
+/**
  * Refresh the council button.
  *
  * Cheap enough to call on every state change: the due list is a filter over a
@@ -2999,6 +3036,24 @@ async function doEndTurn(): Promise<void> {
     }
     refreshSelection();
     dirty = true;
+
+    /*
+     * ⚠️ **A march digs up what it walks over, exactly as a hand-driven move
+     * does.** It did not, and the asymmetry was invisible from the outside:
+     * walking a Profiler onto a chest opened it, ordering the same Profiler to
+     * the same tile marched it over the chest and said nothing. The tile was
+     * crossed, the fog opened, and the cache stayed buried. That reads as the
+     * treasure being broken rather than as the march never having mentioned
+     * the route.
+     *
+     * ⚠️ Sequential, not `Promise.all`. `digAlong` plays a film and opens a
+     * question modal; two of them at once would race for the same modal, and
+     * `digAlong` itself bails when one is already open, so the second chest
+     * would be silently lost rather than queued.
+     */
+    for (const report of marched.reports) {
+      await digAlong(report.unitId, report.walked);
+    }
   }
 
   /*
@@ -4599,6 +4654,7 @@ el.faceProctor.addEventListener('click', () => void faceTheProctor());
 el.actFound.addEventListener('click', () => void doFound());
 el.actRaid.addEventListener('click', doRaid);
 el.actFortify.addEventListener('click', doFortify);
+  el.actStand.addEventListener('click', doStand);
 el.actSkip.addEventListener('click', doSkip);
 el.selPrev.addEventListener('click', () => stepUnit(-1));
 el.selNext.addEventListener('click', () => stepUnit(1));

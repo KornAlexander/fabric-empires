@@ -899,6 +899,16 @@
           path too, or deselecting a dug-in unit would leave "Wake" behind.
         -->
         <button id="act-fortify" disabled title="Fortify (h). W A S D fly the camera, so this is not on f" data-i18n="Fortify">Fortify</button>
+        <!--
+          Call off a multi-turn march.
+
+          ⚠️ Hidden unless the selected unit actually has an order, rather than
+          disabled. Every other button here is a thing a unit can always be
+          asked to do and is greyed out when it cannot; this one is a thing that
+          only exists while an order does, and a permanently greyed control
+          teaches nobody what it is for.
+        -->
+        <button id="act-stand" hidden title="Call off the march and decide again next turn (Esc)" data-i18n="Cancel march">Cancel march</button>
         <button id="act-skip" disabled title="Skip this unit (x). W A S D fly the camera, so this is not on s" data-i18n="Skip">Skip</button>
         <button id="act-council" disabled title="Hold a council review (c)" data-i18n="Council">Council</button>
       </div>
