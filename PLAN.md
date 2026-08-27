@@ -10264,6 +10264,95 @@ than none, because they are believed.
 | D856 | The hit area is 44 px, the button is 26 px | The rule is about the target, and the ink would dominate a column |
 | D857 | The help panel was corrected | It described three bindings that three earlier sections had changed |
 
+## 119. The game learns to report on itself
+
+The two stats tables have existed since §111 and nothing had ever read them. This
+section builds the other half: a Direct Lake semantic model over the app's own
+Fabric SQL database, and a three-page Power BI report on top of it.
+
+**Starting point.** The workspace held exactly three Fabric Empires items: the
+AppBackend, the SQLDatabase and its SQLEndpoint. No semantic model, no report.
+The tables were present with the right schema and **all three were empty**, which
+is not a defect: `app/.env.local` exists, so the Fabric-hosted build does record.
+Nobody had played a signed-in game in the hours since the feature shipped.
+
+**The empty-table problem came first**, because it decides whether any of the rest
+can be checked. A report built on zero rows is not merely undemoable, it is
+unverifiable: a correct measure and a broken one both render as an empty card, and
+the usual QA pass degrades to "it is blank, as expected". Sample rows were seeded
+under `userId` prefixed `sample:`, which is one `DELETE` away from gone.
+
+The generator models three effects deliberately, because a report built on uniform
+noise cannot be distinguished from a report built on broken measures: a learning
+curve over twelve weeks, a context penalty so timed questions score below calm
+ones, and answer times that run longer when the answer is wrong. All three
+survived into the model, which is how we know the pipeline carries signal and not
+just row counts: research 79.4%, battle 60.2%, boss 46.5%.
+
+**Direct Lake, on the database's own mirror.** A Fabric SQL database mirrors to
+OneLake automatically, so the model reads `Tables/dbo/<name>` with no refresh
+schedule and no stored credentials. Mirroring was proven before the model was
+written rather than after, and the new dimension took about 80 seconds to appear.
+
+**The DP-600 outline became a real SQL table.** `topicId` is a slug, so without a
+dimension every skill axis reads `dp600-3` and the three exam domains cannot be
+rolled up at all, which is half of one requested page. A DAX calculated table was
+rejected: calculated tables are import tables, and relating an import dimension to
+a Direct Lake fact is precisely the join that drops a model out of Direct Lake.
+
+| ID | Decision | Why |
+| --- | --- | --- |
+| D858 | Sample rows are seeded, marked `sample:` | A blank report cannot be told apart from a broken one |
+| D859 | The seed models a learning curve, a context penalty and answer-time structure | Uniform noise would make a correct Under Pressure page look identical to a broken one |
+| D860 | Direct Lake over the SQL database's mirrored OneLake tables | No refresh schedule and no credentials, and the report is never staler than the mirror |
+| D861 | Mirroring was verified before the model was written | The storage-mode choice depends on it; discovering it afterwards means rebuilding |
+| D862 | The DP-600 outline is a real SQL table, not a calculated table | A calculated table is an import table, and that relationship would drop the model out of Direct Lake |
+| D863 | `dbo.Skills` is not declared in `rayfin/data/schema.ts` | The game never reads or writes it; it is reporting reference data, and declaring it would hand Rayfin ownership of a table it has no use for |
+| D864 | Relationship key types were checked before modelling | `uniqueidentifier` mirrors to varchar; had it not, the join would match zero rows and raise nothing |
+| D865 | Measures live on a disconnected import `Measure` table | The one calculated table a Direct Lake model tolerates, because it needs no relationship |
+| D866 | `Skill Coverage` uses `ALLNOBLANKROW` | `ALL` counts the engine's blank row, reporting full coverage of 41 skills as 97.6% |
+| D867 | The sample-data banner is a measure, not a textbox | A static caption keeps claiming sample data long after the rows are deleted |
+| D868 | The IBCS visuals were not used | They render a percentage measure as `1`, and percentages carry this report |
+| D869 | Tables carry an explicit `sortDefinition` | A table falls back to its first column, so the title "weakest first" was a claim the visual did not honour |
+| D870 | The two text cards were widened and their font reduced | A card clips what does not fit, so the weakest skill arrived as "Enrich data by ad..." |
+| D871 | The `context` docblock was corrected | It listed `founding` and `review`, which this build has never written |
+
+**Three things were caught only because they were checked, and none of them would
+have failed loudly.**
+
+`Skill Coverage` read 97.6% when all 41 skills had been practised. `ALL('Skill')`
+returns 42, because the engine materialises a blank row on the one side of a
+relationship. 97.6% is a *plausible* number, which is what makes it dangerous:
+nothing about it invites a second look.
+
+The Skills table was titled "Every skill, weakest first" and was sorted by domain,
+because a table with no explicit sort falls back to its first column. The title
+was a claim about the data that the visual did not honour.
+
+The truncation check was itself wrong. It searched for `...` while the renderer
+uses a CSS ellipsis, so it reported clean text while the card plainly read
+"Enrich data by adding ne...". Reading the rendered `innerText` back settled it.
+That is the fourth time in this project that **the instrument failed in the
+direction of looking like a pass**.
+
+**A documentation drift surfaced from charting the column.** `QuestionAttempt`
+documented its `context` values as `battle | founding | research | review | exam`.
+The engine's `ChallengeKind` is `battle | settle | unrest | research | treasure |
+boss`, plus `exam`. `founding` and `review` have never been written. A report
+grouped by a documented value that does not exist shows an empty category, which
+reads as "never happened" rather than "never existed".
+
+**What the report shows.** Overview: games, win rate, readiness over time, outcome
+mix. Skills: coverage of the 41 published skills, accuracy by exam domain, and
+every skill weakest-first. Under Pressure: accuracy and answer time by where the
+question was asked, and each context's gap against the player's own average. That
+last page is the one the schema was designed for, and it separates "does not know
+it" from "cannot recall it under siege with a clock running".
+
+Verified end to end: every DAX measure returns real values, and the rendered cards
+match the query baseline exactly at 48 games, 1,407 attempts and 64.1% accuracy.
+
+
 ---
 
 *Last updated: 27 August 2026*

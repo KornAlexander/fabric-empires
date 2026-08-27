@@ -49,9 +49,17 @@ export class QuestionAttempt {
   @boolean() correct!: boolean;
 
   /**
-   * Where the question was asked: 'battle' | 'founding' | 'research' |
-   * 'review' | 'exam'. See the class docblock: this is the column that makes
-   * the rest interpretable.
+   * Where the question was asked. See the class docblock: this is the column
+   * that makes the rest interpretable.
+   *
+   * The values are the engine's `ChallengeKind` plus the exam screen's own
+   * kind: 'battle' | 'settle' | 'unrest' | 'research' | 'treasure' | 'boss' |
+   * 'exam'.
+   *
+   * ⚠️ This list previously read 'founding' and 'review', and neither has ever
+   * been written by this build. The drift was found by charting the column: a
+   * report grouped by a documented value that does not exist shows an empty
+   * category, which reads as "never happened" rather than "never existed".
    */
   @text({ max: 16 }) context!: string;
 

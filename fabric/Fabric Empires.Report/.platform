@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "Report",
+    "displayName": "Fabric Empires"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "8d1c4a02-6f33-4c1b-9a7e-51c2b0d9f4aa"
+  }
+}
