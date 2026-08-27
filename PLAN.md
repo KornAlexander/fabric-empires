@@ -9019,6 +9019,93 @@ turned fair, and the town was already growing.
 | D728 | A non-finite score is treated as no answer | NaN sails through the comparisons and founds a city of size NaN, which is not a crash and is worse |
 | D729 | `settle` joins the challenge kinds, with its own modal label | The fall-through would have labelled a founding "Battle", and the raw identifier trap is already recorded |
 
+## 102. Questions you choose, and a difficulty that finally does something
+
+Every question in the game was compulsory. A raid arrives and you are asked; a
+chest is dug and you are asked; a topic falls due and you are asked. All good
+reasons to be asked, and every one of them happens **to** the player. Nothing in
+the game was a question somebody chose to attempt.
+
+So the map now makes offers, and they can be refused.
+
+### Two kinds, and the pair matters more than either half
+
+- **gold**: a seam, a cache, a windfall. Answer and take it.
+- **mire**: a unit is bogged down. Answer and it walks out today.
+
+⚠️ **Answering can only ever help, and that is the rule the module exists to
+enforce.** Declining and getting it wrong land in exactly the same place. There
+is no arrangement of answers that leaves a player worse off than never having
+been offered anything, which is what makes it safe to say yes to a question you
+are unsure about, which is the entire behaviour a revision tool wants.
+
+The cost of attempting is the player's attention, and that is the only cost. A
+player in a hurry declines and loses nothing but the upside; a player who wants
+the practice says yes. **That choice is the feature.**
+
+⚠️ A mire is jeopardy that is not an attack. Losing one turn of movement costs
+no health, threatens no town and cannot compound, which makes it the mildest
+adversity the game has and therefore the only kind safe to hand to somebody who
+is already losing. If it ever grew teeth it would be an attack, and attacks are
+what this was built to stand beside.
+
+⚠️ **A refusal and a wrong answer are different arguments, not the same one.**
+`applyFortune` takes `number | undefined` rather than encoding a refusal as a
+score of -1. They reach the same outcome today, and a caller forced to spell a
+refusal as a bad answer is one refactor away from making refusals cost
+something.
+
+### Why the chest keeps its teeth and a fortune does not
+
+`treasure.ts` halves the haul on a wrong answer, and that stays. The two are not
+inconsistent, because a chest sits on the map and can be attempted repeatedly:
+without a cost, clicking through it is a strategy. A fortune is gone either way,
+so there is nothing to protect against guessing and no reason to charge for it.
+
+### Difficulty was inert, and now is not
+
+⚠️ **`Difficulty` was chosen at setup, stored on the state, carried through
+every save, and read by no rule at all.** Three named settings that played
+identically is worse than having none, because the menu makes a promise the game
+does not keep. `garrisonCapFor` is the first rule to look at it.
+
+⚠️ **The knob is the garrison cap, NOT the number of factions.** Dropping a
+faction is the obvious way to face fewer enemies and it would quietly remove a
+seventh of the exam: each faction quizzes on its own cluster, so an easier game
+would also be one that never tests you on two of the branches you are revising
+for. Fewer raiders per faction keeps all seven fronts, and therefore all seven
+clusters, while making the pressure survivable.
+
+Starting strength is two, so `analyst` allows one reinforcement per faction
+rather than two: seven fewer raiders across a full board.
+
+That change broke a wall test, and the break was correct. `aiWalls` staged an
+army at `MAX_GARRISON_PER_FACTION` and expected a faction to raise a replacement
+after losing one. On the new default that staging is already **over** the cap, so
+the faction walled up instead. The test now names `architect` explicitly, which
+keeps its subject the cap mechanism rather than the setting.
+
+### Verified on the deployed build
+
+Offers appeared on turns 3 and 11, roughly the intended cadence. Declining one
+logged "Was da unten lag, bleibt da unten" and cost nothing. Accepting another
+("Nach 21 Daten graben") and answering it took the purse from **0 to 21 Daten**,
+logged as "21 Daten aus dem Dreck".
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D730 | The map makes offers the player may refuse | Every question in the game happened TO the player; none was chosen |
+| D731 | ⚠️ **Answering can only help** | A player unsure of an answer must be safe to attempt it, or the tool teaches walking away |
+| D732 | Declining and missing land in the same place | Any gap between them turns attempting into a gamble |
+| D733 | A refusal is `undefined`, not a score of -1 | Encoding it as a bad answer is one refactor from charging for it |
+| D734 | A mire costs movement only | The mildest adversity in the game, and the only kind safe to give a losing player |
+| D735 | The chest keeps its halving; a fortune has none | A chest can be attempted repeatedly, so guessing needs a price; a fortune is gone either way |
+| D736 | One threshold, not a sliding payout | Scaling the haul by the score makes a half-remembered answer pay, which teaches guessing |
+| D737 | Offers are seeded from the turn | Two players on a seed get the same luck and a replay asks the same things (D39) |
+| D738 | ⚠️ **Difficulty finally changes a rule** | It was stored and saved and read by nothing, which is a menu making a promise the game does not keep |
+| D739 | ⚠️ **Difficulty thins raiders, never factions** | One faction fewer is one exam cluster fewer, so an easier game would test less of the syllabus |
+| D740 | `aiWalls` names its difficulty | The cap it is testing is no longer a constant, and a silent pass would test something else |
+
 ---
 
 *Last updated: 27 August 2026*

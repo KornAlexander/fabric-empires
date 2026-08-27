@@ -120,6 +120,30 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
    * the question modal wants.
    */
   Founding: 'Gründung',
+
+  /*
+   * The map's own offers, which the player may refuse.
+   *
+   * ⚠️ The wording has to make the refusal sound free, because it is. A line
+   * that reads like a warning would teach players to decline, which is the
+   * opposite of what these exist for. "Kostet nichts" is doing the work.
+   */
+  '{unit} finds something in the ground.': '{unit} findet etwas im Boden.',
+  '{unit} is bogged down.': '{unit} bleibt im Schlamm stecken.',
+  'Answer one question and it is yours. Walk on and it stays buried. Getting it wrong costs nothing.':
+    'Beantworte eine Frage, dann gehört es dir. Geh weiter, dann bleibt es liegen. Falsch zu liegen kostet nichts.',
+  'Answer one question and it walks out today. Decline and it goes nowhere this turn. Getting it wrong costs nothing extra.':
+    'Beantworte eine Frage, dann kommt sie heute noch frei. Lehnst du ab, bewegt sie sich diese Runde nicht. Falsch zu liegen kostet nichts extra.',
+  'Dig for {amount} {resource}': 'Nach {amount} {resource} graben',
+  'Work it free': 'Freischaufeln',
+  'One question. There is no penalty for missing it.':
+    'Eine Frage. Danebenzuliegen wird nicht bestraft.',
+  'Walk on': 'Weitergehen',
+  'Lose nothing but the chance.': 'Du verlierst nichts außer der Gelegenheit.',
+  '{amount} {resource} out of the dirt.': '{amount} {resource} aus dem Dreck.',
+  'Whatever was down there stays down there.': 'Was da unten lag, bleibt da unten.',
+  '{unit} finds firm ground and marches on.': '{unit} findet festen Boden und zieht weiter.',
+  '{unit} spends the day in the mud.': '{unit} verbringt den Tag im Schlamm.',
   'Site surveyed. Answer three, and build well.':
     'Der Platz ist vermessen. Beantworte drei Fragen und bau gut.',
   'The Architect puts the plans away. Nothing is built.':

@@ -41,6 +41,9 @@ import {
   maxWallHp,
   SETTLE_QUESTIONS,
   settlingBonus,
+  rollFortune,
+  fortuneTaken,
+  applyFortune,
   memoryOf,
   vacateSeat,
   takeSeat,
@@ -2208,6 +2211,99 @@ function settleTopics(count: number): string[] {
 }
 
 /**
+ * The map offers you something, and you decide whether to bother.
+ *
+ * ⚠️ **The point of this is that it is declinable.** Every other question in
+ * the game happens TO the player: a raid arrives and you are asked, a topic
+ * falls due and you are asked. Those are all good reasons to be asked and none
+ * of them was ever chosen. A fortune is the one that is.
+ *
+ * ⚠️ **Answering can only help, so declining is never the safe play, it is the
+ * quick one.** Walking away and getting it wrong land in exactly the same
+ * place, which is what makes it safe to attempt a question you are unsure of.
+ * The cost of saying yes is attention and nothing else.
+ */
+async function offerFortune(): Promise<void> {
+  if (finished || modal.isOpen() || choice.open()) return;
+
+  const offer = rollFortune(state, createRng(state.seed, `fortune:${state.turn}`), mySeat);
+  if (!offer) return;
+
+  const unit = state.units.get(offer.unitId);
+  if (!unit) return;
+  const who = t(unitType(unit.typeId).label);
+  scene.focus(offer.hex);
+
+  const gold = offer.kind === 'gold';
+  const title = gold
+    ? t('{unit} finds something in the ground.', { unit: who })
+    : t('{unit} is bogged down.', { unit: who });
+  const body = gold
+    ? t('Answer one question and it is yours. Walk on and it stays buried. Getting it wrong costs nothing.')
+    : t('Answer one question and it walks out today. Decline and it goes nowhere this turn. Getting it wrong costs nothing extra.');
+
+  const TRY = 'try';
+  const picked = await choice.ask(title, body, [
+    {
+      id: TRY,
+      label: gold
+        ? t('Dig for {amount} {resource}', {
+            amount: String(offer.amount),
+            resource: t(resourceLabel(offer.resource)),
+          })
+        : t('Work it free'),
+      detail: t('One question. There is no penalty for missing it.'),
+      primary: true,
+    },
+    { id: 'walk', label: t('Walk on'), detail: t('Lose nothing but the chance.') },
+  ]);
+
+  let score: number | undefined;
+  if (picked === TRY) {
+    const topic = settleTopics(1)[0];
+    if (topic) {
+      const outcome = await provider.present({
+        kind: 'settle',
+        topicId: topic,
+        tier: 1,
+        timeLimitMs: timeLimit(RESEARCH_TIME_MS),
+      });
+      // ⚠️ An abandoned modal is a refusal, not a wrong answer. They reach the
+      // same outcome today, and encoding one as the other is how a refusal
+      // eventually starts costing something.
+      if (!outcome.abandoned) score = outcome.score;
+    }
+  }
+
+  const won = score !== undefined && fortuneTaken(score);
+  state = applyFortune(state, offer, score);
+
+  if (gold) {
+    if (won) {
+      log(
+        t('{amount} {resource} out of the dirt.', {
+          amount: String(offer.amount),
+          resource: t(resourceLabel(offer.resource)),
+        }),
+        'good',
+      );
+      effects.floatingText(offer.hex, `+${offer.amount}`, '#ffd479', 1.3);
+    } else {
+      log(t('Whatever was down there stays down there.'));
+    }
+  } else if (won) {
+    log(t('{unit} finds firm ground and marches on.', { unit: who }), 'good');
+  } else {
+    log(t('{unit} spends the day in the mud.', { unit: who }));
+    effects.pulse(offer.hex, '#8a7f6a', 2);
+  }
+
+  refreshHud();
+  refreshCities();
+  dirty = true;
+}
+
+/**
  * Found a city, which is three questions and then a town.
  *
  * ⚠️ **The site is validated BEFORE anything is asked.** Asking three questions
@@ -2739,6 +2835,11 @@ async function doEndTurn(): Promise<void> {
   refreshReadiness();
   refreshThreats();
   dirty = true;
+
+  // The map's own offer, if it made one. Voluntary, so it comes after the turn
+  // has been reported rather than interrupting it.
+  await offerFortune();
+
   /*
    * The autosave point.
    *

@@ -17,3 +17,4 @@ export * from './defence.js';
 export * from './treasure.js';
 export * from './seats.js';
 export * from './duel.js';
+export * from './fortune.js';
