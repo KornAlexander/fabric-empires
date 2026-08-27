@@ -1965,6 +1965,18 @@ async function playAttack(
     state = nextState;
     dirty = true;
 
+    /*
+     * The blow makes a noise.
+     *
+     * ⚠️ Fired on IMPACT rather than when the attack was ordered, so the sound
+     * lands with the animation instead of a second before it. A ranged shot
+     * gets a thinner sting than a melee hit, and a wall coming down gets the
+     * heaviest one in the game, because those are three different events and
+     * the ear can tell them apart faster than the eye can.
+     */
+    if (battle.wallBroken) cues.play('breach');
+    else cues.play(unitType(attacker.typeId).range > 1 ? 'volley' : 'clash');
+
     // Damage numbers stay on the 2D layer: text is crisper drawn flat
     // than projected, and it needs to stay legible at every distance.
     if (battle.damageToDefender > 0) {
@@ -2288,6 +2300,7 @@ async function offerFortune(): Promise<void> {
         'good',
       );
       effects.floatingText(offer.hex, `+${offer.amount}`, '#ffd479', 1.3);
+      cues.play('windfall');
     } else {
       log(t('Whatever was down there stays down there.'));
     }
@@ -2392,6 +2405,13 @@ async function doFound(): Promise<void> {
     effects.pulse(city.hex, '#8fd694', 3);
     effects.floatingText(city.hex, city.name, '#cfe6ff', 1.2);
     if (bonus > 0) effects.floatingText(city.hex, `+${bonus}`, '#8fd694', 1.3);
+    /*
+     * ⚠️ Only when the `first-city` film is NOT about to play, or the sting and
+     * the cue land on top of each other. `playOnce` fires a cinematic at most
+     * once per game, so without this every founding after the first would be
+     * the silent one.
+     */
+    if (seenCinematics.has('first-city')) cues.play('settle');
     void playOnce(
       orbitShot({
         id: 'first-city',
@@ -2986,6 +3006,11 @@ async function presentEnemyTurn(
     if (from) {
       const onImpact = (): void => {
         adopt?.();
+        // ⚠️ The same sting on a raid as on your own attack. A blow that
+        // sounded different depending on who threw it would read as two
+        // different events rather than one seen from the other side.
+        if (battle.wallBroken) cues.play('breach');
+        else cues.play('clash');
         if (battle.damageToDefender > 0) {
           effects.floatingText(target, `-${battle.damageToDefender}`, '#ff9b91', 1.3);
         }

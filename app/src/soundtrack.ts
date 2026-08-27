@@ -75,8 +75,20 @@ const STORE_KEY = 'fabric-empires:music';
  * Quieter than the anthem's 0.55, because this one plays *under* something.
  * The anthem has the screen to itself; the score competes with a question the
  * player is trying to read.
+ *
+ * ⚠️ Lowered from 0.28 when the game gained gameplay stings. The score was
+ * never actually too loud in absolute terms: it was the only thing playing,
+ * because everything a player DID was silent. Now that a blow, a breach and a
+ * founding all make a noise, the bed has to sit under them rather than beside
+ * them.
+ *
+ * ⚠️ Exported so the tests can assert against the real number. It used to be
+ * private, and a test proving the fade-in had finished checked `> 0.2`, which
+ * is this value written down a second time in a second file. Lowering the
+ * music broke that test for a reason that had nothing to do with ducking.
  */
-const VOLUME = 0.28;
+export const MUSIC_VOLUME = 0.15;
+const VOLUME = MUSIC_VOLUME;
 
 /**
  * Silence between tracks.

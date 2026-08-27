@@ -9106,6 +9106,83 @@ logged as "21 Daten aus dem Dreck".
 | D739 | ⚠️ **Difficulty thins raiders, never factions** | One faction fewer is one exam cluster fewer, so an easier game would test less of the syllabus |
 | D740 | `aiWalls` names its difficulty | The cap it is testing is no longer a constant, and a silent pass would test something else |
 
+## 103. The music was not too loud, it was alone
+
+The report was "background more silent, front end louder, like attack". The
+first half was easy and the second half turned out to be the real finding:
+
+⚠️ **There was no front end.** The game had exactly three cue: `first-city`,
+`first-blood` and `city-falls`, each fired at most once per game by a
+cinematic. Moving, fighting, breaching a wall and founding a town were all
+completely silent. So a player heard a continuous orchestral bed and nothing
+else, and a bed with nothing on top of it is a bed you notice.
+
+Turning the music down alone would have made the game quiet rather than
+balanced. Both halves were needed:
+
+| | Before | After |
+| --- | --- | --- |
+| Score | 0.28 | 0.15 |
+| Cue bus | 0.50 | 0.80 |
+| Sounds while playing | none | five |
+
+### Stings are not cinematic cues
+
+⚠️ **They live in their own table, and the separation is what keeps two tests
+honest.** `CUES` is keyed by cinematic id and two tests hold that mapping
+exactly: every film must have a cue, and every cue must have a film. A combat
+sound in that table is an orphan by definition, and the obvious fix of relaxing
+the orphan test would throw away the thing that catches a renamed cinematic
+playing in silence. `play` looks in both, so no caller has to know which kind of
+sound it is asking for.
+
+⚠️ **A sting is SHORT, and that is a rule rather than a preference.** A
+cinematic cue has the screen to itself for four seconds. A sting fires in the
+middle of a turn, sometimes twice in a row, and anything with a long tail turns
+a busy turn into mud. Nothing rings past a second, and the test enforces it.
+
+Five sounds: `clash` for a blow landing, `volley` for a shot, `breach` for
+masonry giving way, `settle` for a town founded, `windfall` for something worth
+having dug out of the ground.
+
+⚠️ Fired on **impact**, not when the attack was ordered, so the sound lands with
+the animation rather than a second before it. A raid sounds exactly like your
+own attack, because a blow that changed depending on who threw it would read as
+two events rather than one seen from the other side.
+
+⚠️ The founding sting is suppressed when the `first-city` film is about to play.
+`playOnce` fires a cinematic at most once per game, so without that guard the
+first founding would play both at once and every later one would be the silent
+one, which is precisely backwards.
+
+### A number written down twice, found the usual way
+
+Lowering the score broke a **ducking** test, which had nothing to do with
+ducking. It asserted `volume > 0.2` as a proxy for "the fade-in finished", and
+0.2 was the module's own volume copied into a second file. `MUSIC_VOLUME` is
+exported now and both tests read it, so the next change to the mix cannot break
+a test about something else.
+
+### Verified on the deployed build
+
+Sound cannot be checked by looking, so the `AudioContext` was instrumented and
+the voices counted: **zero gain nodes before the fighting started, 27 during
+it**. The stings really do fire on blows that used to be silent.
+
+⚠️ Whether the resulting balance is *right* is a question for ears, not for a
+test. The numbers are a starting point and are meant to be moved.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D741 | The mix moved in both directions at once | The score alone would leave the game quiet; the bus alone would make the films shout |
+| D742 | ⚠️ **The game gained a foreground at all** | Three once-per-game cues over a continuous bed is why the music sounded too loud |
+| D743 | Stings live in their own table, not in `CUES` | A gameplay sound there is an orphan, and relaxing that test loses a real guard |
+| D744 | A sting rings for at most a second | It fires mid-turn and repeatedly, unlike a film cue that owns the screen |
+| D745 | Sounds fire on impact | Otherwise the noise arrives before the blow it belongs to |
+| D746 | A raid sounds like your own attack | One event seen from two sides, not two events |
+| D747 | The founding sting yields to the founding film | `playOnce` runs once a game, so the guard is what makes every LATER founding audible |
+| D748 | `MUSIC_VOLUME` is exported | It was written down twice, and lowering it broke a ducking test for no reason |
+
 ---
 
 *Last updated: 27 August 2026*
