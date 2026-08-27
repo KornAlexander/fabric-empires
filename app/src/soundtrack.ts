@@ -54,10 +54,18 @@ export interface Track {
  * load, so this list may name more than a given checkout actually has, and
  * that is the intended state of affairs rather than an oversight.
  *
- * Terra Nostra is the live example of that: its slot is real and its file is
- * not, because the regeneration on the Pro plan was interrupted by a human
- * verification challenge that automation must not answer. Generating it fills
- * the gap with no code change at all.
+ * ⚠️ **Terra Nostra was the standing example of that, and the diagnosis here
+ * was wrong for days.** This comment said the file did not exist because the
+ * regeneration on the Pro plan had been interrupted by a human verification
+ * challenge. The generation had in fact finished: two takes were sitting in
+ * the library the whole time, under Suno's auto-title *Pastoral Interlude*,
+ * because the title field was never filled in. The challenge blocked the
+ * **download**, not the generation, and nobody went back to look.
+ *
+ * The lesson is not about music. A failure was recorded at the step where it
+ * was noticed rather than the step where it happened, and the wrong write-up
+ * then made the work look larger than it was: regenerating a track reads as a
+ * job, fetching a file that already exists does not.
  */
 export const SOUNDTRACK: readonly Track[] = [
   { file: 'audio/terra-nostra.mp3', title: 'Terra Nostra', mood: 'calm' },

@@ -9649,6 +9649,51 @@ rather than scene motion.
 | D792 | ffmpeg is resolved from `$FFMPEG` and checked for libass first | A minimal build fails only after a slow encode, and one ships in this repo's virtualenv |
 | D793 | The AI disclosure was re-verified after the change | It now overlaps the title card, and it is the one caption with a compliance reason to exist |
 
+## 109. Terra Nostra was never missing
+
+The score has named six tracks and shipped five since section 63. The sixth,
+Terra Nostra, was recorded in `soundtrack.ts` as a slot whose file did not
+exist "because the regeneration on the Pro plan was interrupted by a human
+verification challenge that automation must not answer".
+
+That was wrong, and it was wrong in a way worth keeping.
+
+The generation had completed. **Two takes were in the Suno library the whole
+time**, 2:37 and 2:54, carrying the prompt sheet's Terra Nostra text verbatim,
+on v5.5. They were invisible in a list of tracks-by-name because the title
+field was never filled in, so Suno auto-titled them *Pastoral Interlude*.
+
+⚠️ **The challenge blocked the DOWNLOAD, not the generation.** The failure was
+written down at the step where it was noticed rather than the step where it
+happened, and every later reading of that note concluded there was a track to
+make. There was a file to fetch.
+
+⚠️ **A wrong diagnosis inflates the work.** "Regenerate a track" reads as a job
+needing a subscription, a prompt and a human at the keyboard, so it sat. "Fetch
+a file that already exists" is a minute. The note did not merely fail to
+describe the problem, it made the problem look expensive.
+
+⚠️ **And graceful degradation is what let it sit.** `mediaExists` drops missing
+tracks silently and by design, so a five-track score sounds exactly like a
+six-track score with one file absent. That is the right behaviour for a clone
+with no media, and it is also why nothing ever prompted anybody to look. The
+same property that makes the failure harmless makes it invisible.
+
+The take chosen is 2:37, on the grounds that the calm bed plays under a player
+reading an exam question and the more interesting take is the wrong one for an
+underscore.
+
+All seven files now serve real audio from the deployed host, checked by content
+type rather than status code, because the host answers a missing path with
+`200` and `index.html`.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D794 | Terra Nostra ships, from the existing 2:37 take | It already existed; only the download had ever failed |
+| D795 | ⚠️ **The old diagnosis is corrected in place, not deleted** | The mistake is more instructive than the fix: a failure logged at the wrong step misdirects everyone who reads it afterwards |
+| D796 | The shorter take was chosen | It is a bed under a question being read, and the more interesting take is the worse underscore |
+| D797 | Verified by content type on the live host | A missing file returns `200` with `index.html`, so the status code proves nothing |
+
 ---
 
 *Last updated: 27 August 2026*
