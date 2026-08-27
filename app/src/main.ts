@@ -141,7 +141,7 @@ import { createTreasureFilm } from './ui/treasureFilm.js';
 import { CHEATS, CHEAT_CODE_WIDTH, OKAY_CHEAT, matchCheat } from './cheats.js';
 import { approachShot, descendShot, orbitShot } from './three/cinematic.js';
 import { introShots } from './intro.js';
-import { createAnthem } from './audio.js';
+import { ANTHEM_FADE_OUT_MS, createAnthem } from './audio.js';
 import { createSoundtrack } from './soundtrack.js';
 import { createCues } from './cues.js';
 import { applyStaticTranslations, lang, onLangChange, plural, t, toggleLang } from './i18n.js';
@@ -812,6 +812,16 @@ const seenCinematics = new Set<string>();
  * fresh clone. See `audio.ts` for why the file is kept out of the repository.
  */
 const anthem = createAnthem();
+
+/**
+ * The silence between the anthem ending and the score beginning.
+ *
+ * ⚠️ Not zero, and not the 800 ms it used to be. Zero would overlap two
+ * recordings in different keys; 800 was long enough that a player heard music
+ * stop and, separately, music start. A quarter of a second reads as one breath
+ * inside a single continuous piece of sound.
+ */
+const HANDOVER_BREATH_MS = 250;
 
 /**
  * The optional score for everything after the opening.
@@ -4060,13 +4070,25 @@ async function playOpening(): Promise<void> {
     /*
      * The handover.
      *
-     * ⚠️ **Delayed past the anthem's fade on purpose.** `fade()` returns
-     * immediately and takes 1.6 seconds to finish, so starting the score here
-     * would put the first background track underneath the last bar of the
-     * anthem. The wait is the fade plus a breath, which also gives the player
-     * a moment of the world in silence before the music comes back.
+     * ⚠️ **Timed off the anthem's fade, not off a number picked by feel.**
+     * `fade()` returns immediately and takes `ANTHEM_FADE_OUT_MS` to finish, so
+     * the score has to wait for it or the first background track plays
+     * underneath the last bar of the anthem.
+     *
+     * ⚠️ **A short gap, deliberately, rather than a true crossfade.** Overlapping
+     * the two would be the smoother edit if they were one piece of music, and
+     * they are not: the anthem and the score are different recordings in
+     * different keys, and the module's own ducking note is about exactly this,
+     * that two pieces at once argue. So the anthem finishes, the world is
+     * silent for a breath, and the score rises into it over its own
+     * `FADE_IN_MS`. Both ends are ramps; only the join is empty.
+     *
+     * It used to be a flat 2,400 ms, which was the fade plus 800 of dead air.
+     * The breath is a quarter of that now, so the sequence reads as one
+     * continuous piece of sound rather than as music stopping and later
+     * starting again.
      */
-    window.setTimeout(() => music.start(), 2_400);
+    window.setTimeout(() => music.start(), ANTHEM_FADE_OUT_MS + HANDOVER_BREATH_MS);
   }
 }
 

@@ -9183,6 +9183,84 @@ test. The numbers are a starting point and are meant to be moved.
 | D747 | The founding sting yields to the founding film | `playOnce` runs once a game, so the guard is what makes every LATER founding audible |
 | D748 | `MUSIC_VOLUME` is exported | It was written down twice, and lowering it broke a ducking test for no reason |
 
+## 104. Blending the music, and finding out why there was so little of it
+
+The report was that the joins between the teaser, the settings screen and the
+game were abrupt. Three boundaries, three different faults, and then a fourth
+thing that turned out to matter more than any of them.
+
+### The three joins
+
+**The teaser stopped dead.** It carries its own cue, and `finish()` called
+`video.pause()` on the spot, so skipping it cut the music mid-bar straight into
+the silence of the settings screen. It fades now. ⚠️ Only the **sound** is held
+for the length of the fade: the picture goes immediately, because a frozen frame
+lingering behind the settings would look like the app had hung.
+
+**The anthem punched in.** `start()` set the volume and called `play()`, so its
+first sample was its loudest, arriving out of silence. It rises over
+`ANTHEM_FADE_IN_MS` now, on the same interval that runs the fade out, so the two
+can never disagree about how a ramp is done. ⚠️ A fade of zero is still honoured,
+because the intro's card timing is measured against the anthem's clock and a
+measurement should not have to wait out a musical nicety.
+
+**The handover left a hole.** `anthem.fade()` takes 1,600 ms and the score was
+started at a flat 2,400 ms: the fade plus 800 ms of dead air, written as one
+number with no visible relationship to the fade it was waiting for. It is
+`ANTHEM_FADE_OUT_MS + HANDOVER_BREATH_MS` now, and the breath is 250 ms.
+
+⚠️ **A short gap, deliberately, rather than a true crossfade.** Overlapping the
+two would be the smoother edit if they were one piece of music, and they are
+not: the anthem and the score are different recordings in different keys, and
+this module's own ducking note is about precisely that, that two pieces at once
+argue. Both ends are ramps; only the join is empty.
+
+### ⚠️ And the real finding: four of the seven tracks are not there
+
+Probing the deployed build for every file the soundtrack asks for:
+
+| Asked for | On the host |
+| --- | --- |
+| `terra-nostra.mp3` | missing |
+| `aurora.mp3` | missing |
+| `ferrum.mp3` | missing |
+| `vigiles.mp3` | missing |
+| `turris.mp3` | present |
+| `semina.mp3` | present |
+| `corona.mp3` | present |
+| `anthem.mp3` | present |
+
+And on disk, unreferenced by anything: `aqua-alta.mp3`, plus `ferrum-et-ignis.mp3`
+where the list asks for `ferrum.mp3`.
+
+So the score has been rotating over **three tracks, not seven**, which means far
+more repetition and far more of the seven-second gap between them. That is a
+much better explanation for "the music does not flow" than any of the fades
+above, and it was invisible from inside the game.
+
+⚠️ **The thing that hid it is a feature working exactly as designed.** The probe
+treats a file that is not there as *absent rather than broken*, deliberately, so
+that a checkout without the audio still plays. The cost of that kindness is that
+a renamed file is indistinguishable from a deliberate omission, and nothing
+anywhere says "you asked for seven and got three".
+
+⚠️ **Not fixed here, because fixing it means guessing.** `ferrum` to
+`ferrum-et-ignis` is an obvious rename; `aqua-alta` standing in for one of
+`terra-nostra`, `aurora` or `vigiles` is not something the code can know, and
+inventing a title and a mood for somebody else's music is worse than leaving the
+list honest. The audio folder is gitignored, so this is a content question.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D749 | The anthem rises instead of starting at full level | Its first sample being its loudest reads as a speaker switching on, not as music |
+| D750 | One interval runs both ramps | Two would race on the same volume and the loser would keep pushing it back |
+| D751 | A zero fade is still honoured | The intro's timing is measured against the anthem's clock |
+| D752 | The anthem leaves slower than it arrives | Music that goes faster than it came sounds interrupted rather than finished |
+| D753 | The handover is expressed as the fade plus a breath | A flat 2,400 had no visible relationship to the 1,600 it was waiting for |
+| D754 | ⚠️ **A short gap, not a crossfade** | Two recordings in different keys overlapping is the thing the ducking rule exists to prevent |
+| D755 | The teaser fades its sound but drops its picture at once | A held frame behind the settings looks like a hang; a cut cue sounds like a fault |
+| D756 | ⚠️ **The missing tracks are reported, not guessed at** | A rename is obvious; inventing a title and mood for somebody else's music is not |
+
 ---
 
 *Last updated: 27 August 2026*
