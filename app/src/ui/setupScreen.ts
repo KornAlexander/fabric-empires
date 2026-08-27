@@ -128,6 +128,43 @@ export function createSetupScreen(): SetupScreen {
       card.append(blurb);
 
       /*
+       * A way straight into the game, at the top.
+       *
+       * ⚠️ **The card is taller than the screen it opens on.** Measured at
+       * 900x700 the setup screen was 1786 px of card, and on a 390x844 phone
+       * the option groups run well past the fold. The only way to start was a
+       * button at the very bottom, so somebody who did not care about world
+       * shape still had to scroll the entire form to get past it.
+       *
+       * ⚠️ **It shares `commit`, it does not reimplement it.** A second copy
+       * of the resolve payload is a second place to forget a field: the day a
+       * tenth setting is added, one of the two buttons starts a game missing
+       * it, and only on the path fewer people take. The handler is attached
+       * further down for the single reason that `commit` does not exist yet
+       * here.
+       *
+       * ⚠️ **Deliberately NOT a second copy of the Begin button either.** It
+       * is outlined rather than filled, so the page has one primary action and
+       * one quiet alternative rather than the same blue bar twice, which reads
+       * as a mistake.
+       */
+      const quickRow = document.createElement('div');
+      quickRow.className = 'fe-setup-quick';
+
+      const quickPlay = document.createElement('button');
+      quickPlay.className = 'fe-setup-quick-play';
+      quickPlay.type = 'button';
+      quickPlay.textContent = t('Skip the questions and start');
+      quickRow.append(quickPlay);
+
+      const quickNote = document.createElement('span');
+      quickNote.className = 'fe-setup-detail';
+      quickNote.textContent = t('Every choice below already has a sensible default.');
+      quickRow.append(quickNote);
+
+      card.append(quickRow);
+
+      /*
        * The first five minutes, on the screen everybody passes through.
        *
        * ⚠️ **The deployed URL is the only thing most people will ever see.**
@@ -361,6 +398,8 @@ export function createSetupScreen(): SetupScreen {
         });
       };
       play.addEventListener('click', commit);
+      // The top button starts the same game as the bottom one, by construction.
+      quickPlay.addEventListener('click', commit);
       seedInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') commit();
       });

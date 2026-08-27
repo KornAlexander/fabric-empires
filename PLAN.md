@@ -9694,6 +9694,103 @@ type rather than status code, because the host answers a missing path with
 | D796 | The shorter take was chosen | It is a bed under a question being read, and the more interesting take is the worse underscore |
 | D797 | Verified by content type on the live host | A missing file returns `200` with `index.html`, so the status code proves nothing |
 
+## 110. A public URL, and a way into the game from the top of the form
+
+Two things, connected by the same complaint: the game was hard to *reach*.
+
+### The deployed URL needed a sign-in, so nobody could be shown it
+
+The Fabric App host has `auth.fabric.enabled: true`, so the one link that
+existed asked a stranger to authenticate before they could look. It also could
+not be embedded anywhere. There is now a second, public home:
+
+**https://kornalexander.github.io/fabric-empires/**
+
+⚠️ **The repository is public as of this section.** GitHub Pages requires it on
+this plan, and the alternative (a second repo holding only the bundle) was
+declined. That is a one-way door, so the whole history was scanned first rather
+than only the working tree:
+
+- `verify_publishable.py` only reads `git ls-files`. Publishing exposes every
+  commit, so it is **not** sufficient on its own for this decision.
+- ⚠️ `rayfin/.deployments.json`, which holds the capacity and workspace GUIDs,
+  **was never committed** in any of the 134 commits. It has been ignored since
+  before the first deploy, with the reason written beside the ignore rule.
+- Every hit for `webapp.fabricapps.net` or `pbidedicated.windows.net` across
+  all history is an `example-` string inside the gate itself or inside PLAN.md
+  describing the gate. There are no real ones.
+
+The build needed no change to move: `app/dist` is self-contained (it is what
+`serve:standalone` already serves), and `vite.config` has carried
+`base: './'` all along, with a comment naming a GitHub Pages project site as a
+target. It is served from a **`gh-pages` branch**, so `main` keeps ignoring the
+60 MB of media rather than having that decision quietly reversed by hosting.
+
+⚠️ The full build is 62 MB and **60.7 MB of that is media**: a 32.6 MB teaser
+and 23 MB of score. The app is 1.25 MB. On a phone on cellular that is the
+whole first impression, and a slim build remains one command away, because
+missing media already degrades silently by design.
+
+### The only way to start was at the bottom of a form taller than the screen
+
+Measured on this build: the Begin button sits at **1860 px on a 1280x800
+desktop and 3008 px on a 390x844 phone**. Section 22.2's argument for the setup
+screen was that a menu is a better way to spend the cold start than a blank
+screen, and that is still true. It is not an argument for making everybody read
+it.
+
+There is now a quiet outlined control directly under the blurb, at **174 px**,
+above the fold on both sizes.
+
+⚠️ **It shares `commit`, it does not reimplement it.** A second control that
+built its own resolve payload would be a second place to forget a field: the
+day a tenth setting is added, one of the two buttons starts a game missing it,
+and only on the path fewer people take. Three tests pin this, and the one that
+matters compares the two payloads with `toEqual` rather than field by field, so
+a new setting is covered without anybody remembering to edit the test.
+
+⚠️ **Document order is the feature, and is asserted.** A quick-start button
+placed underneath the form would compile, pass any "does it exist" check, and
+help nobody.
+
+⚠️ **It is deliberately not a second copy of the Begin button.** Outlined rather
+than filled: one primary action and one quiet alternative. Two identical accent
+bars on one page read as a mistake rather than a choice. It clears 44 px,
+because the mobile audit's rule is that every control does and a new one must
+not become the first exception.
+
+### The mobile recheck found nothing, three times over
+
+Four device profiles, all reaching the map: correct `viewport-fit=cover` meta,
+**zero horizontal overflow**, **zero controls under 44 px**. The audit did
+report two faults, and ⚠️ **both were the instrument, not the game**:
+
+- Two research options measured below the viewport. They sit in a scroll
+  container holding 1542 px of content in a 371 px window. The audit compared
+  against the viewport instead of the scroll container.
+- A hit test then said one was untappable. The element on top was `.fe-cine`
+  with `body.fe-cine-on`: the opening cinematic, which covers the screen on
+  purpose so that a tap anywhere skips it. The measurement was taken while the
+  intro was playing. Dismiss it and the same control reports tappable.
+
+⚠️ That is the third time in one day that a measurement failed **in the
+direction of looking like a product bug**, after DOM checks passing over 21 s
+of attract screen and a gold detector counting candlelight. The pattern is
+worth more than the three findings: an instrument that is wrong about a
+healthy system will invent work, and the invented work looks urgent.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D798 | The repository is public, and the game has a public URL | The signed-in host could not be shown to anyone or embedded anywhere |
+| D799 | ⚠️ **All 134 commits were scanned before flipping it** | `verify_publishable.py` reads only `git ls-files`, and publishing exposes history |
+| D800 | Served from a `gh-pages` branch | `main` keeps ignoring the media rather than having that reversed by the hosting choice |
+| D801 | The full build ships publicly, media included | Chosen deliberately; the 32.6 MB teaser is the cost, and a slim build stays one command away |
+| D802 | A start control sits at the top of the setup form | The only way in was 1860 px down on desktop and 3008 px down on a phone |
+| D803 | ⚠️ **It shares `commit` rather than repeating it** | Two payloads drift the day a setting is added, on the path fewer people take |
+| D804 | Its position in the document is asserted, not just its existence | Underneath the form it would pass every other test and help nobody |
+| D805 | It is outlined, not a second filled accent button | One primary action; two identical bars read as a duplicate |
+| D806 | ⚠️ **Both mobile "faults" are recorded as measurement errors** | A scroll container and the intro cinematic; writing them up as bugs would have invented work on a healthy screen |
+
 ---
 
 *Last updated: 27 August 2026*

@@ -521,6 +521,10 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
     'Der DP-600-Lehrplan ist der Technologiebaum. Jede gegnerische Fraktion hält einen Zweig davon: besiege sie und nimm dir ihr Wissen, oder brenne es nieder und bleibe unwissend.',
   // The first five minutes, for somebody who has only opened the link.
   'If you only have five minutes': 'Wenn du nur fünf Minuten hast',
+  // The way straight past the setup form, at the top of it.
+  'Skip the questions and start': 'Fragen überspringen und starten',
+  'Every choice below already has a sensible default.':
+    'Alle Optionen unten haben bereits sinnvolle Vorgaben.',
   'Every advance is a question. Pick a topic, answer it, and the next units unlock.':
     'Jeder Fortschritt ist eine Frage. Wähle ein Thema, beantworte es, und die nächsten Einheiten werden frei.',
   'Attack a walled city. You choose how to go in, and the defender chooses how to meet you.':

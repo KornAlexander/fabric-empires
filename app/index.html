@@ -129,6 +129,28 @@
         color: var(--muted); font-size: 12px; line-height: 1.6; margin-bottom: 4px;
       }
       .fe-setup-try li:last-child { margin-bottom: 0; }
+      /*
+        The way straight into the game, at the top of a card that is taller
+        than the screen.
+
+        ⚠️ Outlined, not filled: the filled accent button at the bottom is the
+        primary action, and repeating it here would give the page two identical
+        blue bars, which reads as a duplicate rather than a choice.
+        ⚠️ min-height 44px because the mobile audit's rule is that every control
+        clears 44px, and a new one must not be the first exception.
+      */
+      .fe-setup-quick {
+        display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+        margin: 0 0 20px;
+      }
+      .fe-setup-quick-play {
+        padding: 9px 18px; min-height: 44px;
+        font: inherit; font-weight: 600; font-size: 13px; cursor: pointer;
+        color: var(--accent); background: transparent;
+        border: 1px solid var(--accent); border-radius: 9px;
+      }
+      .fe-setup-quick-play:hover { background: rgba(74, 159, 224, 0.14); }
+      .fe-setup-quick .fe-setup-detail { flex: 1 1 22ch; }
       .fe-setup-group { margin-bottom: 18px; }
       .fe-setup-section {
         margin: 22px 0 10px; font-size: 13px; font-weight: 600;
