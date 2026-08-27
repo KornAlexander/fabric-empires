@@ -9987,6 +9987,49 @@ flattened in place.
 | D823 | ⚠️ **A degenerate look direction falls back to screen-up** | Looking straight down would otherwise divide by zero and send the position to NaN |
 | D824 | The tests were proven to fail without the fix | A guard that passes either way guards nothing |
 
+## 114. The setup screen becomes the only way in
+
+Clicking **Skip to setup** on the attract card did not reach the setup screen.
+It went straight into the saved game.
+
+⚠️ **The button was telling the truth about an intention nothing implemented.**
+Skipping only ever skipped the FILM. What happened next was `boot`, which
+adopted a save the instant it read one, so both routes in led to the same place:
+`Enter` played the film and resumed, `Skip to setup` skipped the film and
+resumed. A returning player could not reach the options, the seed or the course
+pickers at all. They existed and were unreachable.
+
+The resume now happens in `askAndStart`, after a choice, rather than in `boot`
+instead of one. Boot always asks; a save is offered as a **Continue** card at
+the top of the screen, carrying the seed, the turn and the city count so
+somebody can recognise their own empire.
+
+### The hang was the same bug wearing a different coat
+
+⚠️ The setup screen exists partly to **cover the cold start**: §22.2 measured
+8.1 seconds of world generation and terrain build, and this screen is what that
+wait is spent on. Resuming straight from boot skipped the cover and not the
+work, so the page froze for several seconds with nothing on it. Nobody had
+reported it as the same defect because it does not look like one.
+
+⚠️ **The save is one slot, so Begin is destructive**, and the screen now says so
+next to the Continue card rather than letting it be discovered. This is a
+disclosure, not a fix: the fix would be several named slots, which changes the
+save contract and is deliberately not done here.
+
+⚠️ **`Continue` was already in the German strings, as `Weiter`.** Adding it
+again failed the build as a duplicate object key, which is the good outcome.
+The bad one would have been two spellings of the same button in one interface.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D825 | Boot always shows the setup screen | Resuming from boot made the entire screen unreachable for anyone who had played before |
+| D826 | A save is offered as Continue, first on the card | Somebody with a game in progress usually wants it, and everything else is the alternative |
+| D827 | ⚠️ **The resume decision moved out of `boot` into `askAndStart`** | It belongs after a choice, not instead of one |
+| D828 | The setup screen never reads storage | It is handed the few facts worth showing; whoever owns the save does the resuming |
+| D829 | ⚠️ **The overwrite is disclosed, not prevented** | One slot means Begin destroys a game in progress, and discovering that afterwards is worse than reading it |
+| D830 | Fixing the flow fixed the freeze | The screen is the cold-start cover; skipping it skipped the cover and not the work |
+
 ---
 
 *Last updated: 27 August 2026*

@@ -525,6 +525,15 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
   'Skip the questions and start': 'Fragen überspringen und starten',
   'Every choice below already has a sensible default.':
     'Alle Optionen unten haben bereits sinnvolle Vorgaben.',
+  // Carrying on with the saved game, offered on the same screen.
+  // ⚠️ `Continue` is NOT added here: it already exists above as 'Weiter'.
+  // A second entry compiles as a duplicate object key and TypeScript rejects
+  // it, which is the good outcome; the bad one would have been two spellings
+  // of the same button in one UI.
+  'Seed {seed} · turn {turn} · {cities} cities':
+    'Startwert {seed} · Runde {turn} · {cities} Städte',
+  'Starting a new empire below replaces this saved game.':
+    'Ein neues Reich unten ersetzt diesen Spielstand.',
   'Every advance is a question. Pick a topic, answer it, and the next units unlock.':
     'Jeder Fortschritt ist eine Frage. Wähle ein Thema, beantworte es, und die nächsten Einheiten werden frei.',
   'Attack a walled city. You choose how to go in, and the defender chooses how to meet you.':

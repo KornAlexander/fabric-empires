@@ -137,7 +137,7 @@ import { createEndScreen } from './ui/endScreen.js';
 import { beginRun, flush, recordAttempt, recordRun, statsConfigured } from './stats.js';
 import { createCinematicOverlay } from './ui/cinematicOverlay.js';
 import { createChoiceModal } from './ui/choice.js';
-import { createSetupScreen, type SetupResult } from './ui/setupScreen.js';
+import { createSetupScreen, type ResumeOffer, type SetupResult } from './ui/setupScreen.js';
 import { createCheatConsole } from './ui/cheatConsole.js';
 import { createRaidAlert } from './ui/raidAlert.js';
 import { createDuoModal } from './ui/duoModal.js';
@@ -4100,8 +4100,28 @@ function newGame(rawSeed: string): void {
  * page. Now it is spent on a menu, and the world appears when the player has
  * finished choosing rather than before they have started.
  */
-async function askAndStart(): Promise<void> {
-  lastSetup = await setup.ask(lastSetup);
+async function askAndStart(resume?: { offer: ResumeOffer; state: GameState }): Promise<void> {
+  const choice = await setup.ask(lastSetup, resume?.offer);
+
+  /*
+   * ⚠️ Resuming happens HERE, not in `boot`, and that is the whole fix.
+   *
+   * `boot` used to adopt a save the instant it loaded one, so a returning
+   * player never saw this screen at all: no options, no seed, no way back.
+   * The attract card's "Skip to setup" button could not help, because skipping
+   * only ever skipped the film. Every route in led to the same place.
+   */
+  if (choice === 'resume' && resume) {
+    adopt(resume.state, t('Resumed on seed {seed}, turn {turn}.', {
+      seed: resume.state.seed,
+      turn: resume.state.turn,
+    }));
+    // A resumed empire plays no opening, so nothing else would start the score.
+    startMusicOnFirstGesture();
+    return;
+  }
+
+  lastSetup = choice as SetupResult;
   // A new campaign is a new row. Also clears any attempts queued but never
   // flushed by the game being abandoned.
   beginRun();
@@ -4306,7 +4326,17 @@ function adopt(next: GameState, message: string): void {
 }
 
 /**
- * Resume the stored empire, or start a fresh one.
+ * Always ask, and offer the stored empire as one of the answers.
+ *
+ * ⚠️ **This no longer resumes on its own.** It used to adopt the save the
+ * moment it read one, which meant the setup screen was unreachable for anybody
+ * who had ever played: the options, the seed and the course pickers all existed
+ * and could not be got to. Handing the save to the setup screen as a Continue
+ * card keeps the resume one click away and puts the alternative back on screen.
+ *
+ * ⚠️ It also removes a freeze. The setup screen is what covers the ~8 s of
+ * world generation (§22.2); resuming straight from boot skipped the cover and
+ * not the work, so the page simply stopped responding for several seconds.
  *
  * An unreadable save says so in the log instead of failing silently. The
  * player cannot do anything about it, but "could not be read" and "you never
@@ -4315,16 +4345,16 @@ function adopt(next: GameState, message: string): void {
 function boot(): void {
   const loaded = loadGame(slot, provider.topics());
   if (loaded.ok) {
-    adopt(loaded.state, t('Resumed on seed {seed}, turn {turn}.', {
-      seed: loaded.state.seed,
-      turn: loaded.state.turn,
-    }));
-    // A resumed empire plays no opening, so nothing else would ever start the
-    // score. See the note on the function: this is the one path that needs it.
-    startMusicOnFirstGesture();
+    void askAndStart({
+      state: loaded.state,
+      offer: {
+        seed: loaded.state.seed,
+        turn: loaded.state.turn,
+        cities: [...loaded.state.cities.values()].filter((c) => c.factionId === mySeat).length,
+      },
+    });
     return;
   }
-  // No game to resume, so ask what kind of world this one should be.
   void askAndStart();
   if (loaded.reason === 'unreadable') {
     log(t('A saved game was found but could not be read, so this is a new one.'), 'bad');

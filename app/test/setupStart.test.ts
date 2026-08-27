@@ -71,3 +71,44 @@ describe('starting without answering the form', () => {
     expect(quick.textContent).not.toBe(begin.textContent);
   });
 });
+
+/**
+ * ⚠️ Boot used to adopt a save the instant it read one, so a returning player
+ * never saw this screen: no options, no seed, no course pickers, and no way
+ * back to them. The attract card's "Skip to setup" button could not help,
+ * because skipping only ever skipped the film. Both routes in led to the same
+ * place, and the button's label described an intention nothing implemented.
+ */
+describe('⚠️ carrying on with a saved game', () => {
+  const offer = { seed: 'FABRIC', turn: 12, cities: 3 };
+
+  it('offers Continue when there is a game to continue', () => {
+    const screen = createSetupScreen();
+    void screen.ask(defaults, offer);
+    const cont = document.querySelector<HTMLButtonElement>('button.fe-setup-continue-play');
+    expect(cont, 'no Continue button was offered').not.toBeNull();
+    // The facts that let somebody recognise their own game.
+    expect(document.body.textContent).toContain('FABRIC');
+    expect(document.body.textContent).toContain('12');
+  });
+
+  it('resolves with resume rather than a world to build', async () => {
+    const screen = createSetupScreen();
+    const settled = screen.ask(defaults, offer);
+    document.querySelector<HTMLButtonElement>('button.fe-setup-continue-play')!.click();
+    await expect(settled).resolves.toBe('resume');
+  });
+
+  it('says that starting a new empire replaces the save', () => {
+    const screen = createSetupScreen();
+    void screen.ask(defaults, offer);
+    // There is one save slot, so Begin is destructive for anybody mid-game.
+    expect(document.body.textContent).toMatch(/replaces this saved game|ersetzt diesen Spielstand/);
+  });
+
+  it('offers nothing to continue when there is no save', () => {
+    const screen = createSetupScreen();
+    void screen.ask(defaults);
+    expect(document.querySelector('button.fe-setup-continue-play')).toBeNull();
+  });
+});
