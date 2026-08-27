@@ -1496,6 +1496,8 @@ function refreshSelection(): void {
    */
   el.actStand.hidden = !unit.order;
   refreshCouncil();
+  // Orders given or withdrawn change what is left to do.
+  refreshTurnButton();
 }
 
 function select(unitId: string | undefined): void {
@@ -1553,9 +1555,7 @@ function doRaid(): void {
 
 /** Jump to the next unit still awaiting orders, the way a 4X should. */
 function selectNextIdle(): void {
-  const idle = unitsOf(state, mySeat).filter(
-    (u) => u.movesLeft > 0 && !u.fortified,
-  );
+  const idle = awaitingOrders();
   if (idle.length === 0) {
     select(undefined);
     return;
@@ -1564,6 +1564,124 @@ function selectNextIdle(): void {
   const next = idle[(currentIndex + 1) % idle.length]!;
   select(next.id);
   scene.focus(next.hex);
+}
+
+/**
+ * Units the player still has to decide something about.
+ *
+ * ⚠️ **A unit with a march order is NOT awaiting orders. It has them.** Without
+ * that exclusion every marching unit would keep the turn looking unfinished for
+ * as long as its journey lasted, so the whole indicator would be at its least
+ * trustworthy exactly when the player is using the feature that needs it most.
+ */
+function awaitingOrders(): readonly Unit[] {
+  return unitsOf(state, mySeat).filter((u) => u.movesLeft > 0 && !u.fortified && !u.order);
+}
+
+/**
+ * What is left to do this turn.
+ *
+ * ⚠️ **Three different kinds of unfinished, deliberately.** A turn is not only
+ * about moving: an empire researching nothing is wasting every point of Compute
+ * it earns, and a due review is the whole learning loop asking to be run. Both
+ * are silent, both are easy to forget, and neither used to be visible anywhere
+ * near the button that ends the turn.
+ */
+interface Pending {
+  readonly units: readonly Unit[];
+  readonly research: boolean;
+  readonly council: boolean;
+  readonly total: number;
+}
+
+function pendingWork(): Pending {
+  const units = awaitingOrders();
+  // Nothing to research is only a fault when there is something to research.
+  const research = state.research.current === undefined && researchable(state).length > 0;
+  const council = pendingReviews().length > 0;
+  return {
+    units,
+    research,
+    council,
+    total: units.length + (research ? 1 : 0) + (council ? 1 : 0),
+  };
+}
+
+/**
+ * Do the next outstanding thing, or say there is nothing left.
+ *
+ * Units first, because they are the many and the other two are the one. The
+ * order after that is research before council: research is a standing waste
+ * while it is unset, a review is merely due.
+ */
+function nextAction(): void {
+  const pending = pendingWork();
+  if (pending.units.length > 0) {
+    selectNextIdle();
+    return;
+  }
+  if (pending.research) {
+    el.resOptions.querySelector<HTMLButtonElement>('button')?.focus();
+    el.resOptions.scrollIntoView({ block: 'nearest' });
+    log(t('Nothing is being researched. Pick a topic.'));
+    return;
+  }
+  if (pending.council) {
+    void doCouncil();
+  }
+}
+
+/**
+ * Keep the turn button honest about what it is for.
+ *
+ * ⚠️ **One button, two jobs, and the label is the whole feature.** It used to
+ * say "End turn" from the first second of a turn to the last, so the fastest
+ * way to play was to press it, and the game never mentioned the four units
+ * standing still or the Compute being earned against no research at all.
+ *
+ * Highlighted only when there is genuinely nothing left, so the highlight
+ * means something. A button that glows all turn is decoration.
+ */
+function refreshTurnButton(): void {
+  const pending = pendingWork();
+  const done = pending.total === 0;
+  el.endTurn.classList.toggle('ready', done);
+  el.endTurn.dataset.mode = done ? 'end' : 'next';
+
+  if (done) {
+    el.endTurn.textContent = t('End turn');
+    el.endTurn.title = t('Nothing left to do. Space ends the turn.');
+    return;
+  }
+  if (pending.units.length > 0) {
+    el.endTurn.textContent = t('Next unit ({n})', { n: pending.units.length });
+    el.endTurn.title = t('{n} units still have something to do. Ctrl+Space ends the turn anyway.', {
+      n: pending.units.length,
+    });
+    return;
+  }
+  if (pending.research) {
+    el.endTurn.textContent = t('Choose research');
+    el.endTurn.title = t('Compute is being earned against nothing. Ctrl+Space ends the turn anyway.');
+    return;
+  }
+  el.endTurn.textContent = t('Council');
+  el.endTurn.title = t('A review has fallen due. Ctrl+Space ends the turn anyway.');
+}
+
+/**
+ * The turn button was pressed, or Space was.
+ *
+ * ⚠️ Reads the CURRENT pending work rather than a flag set when the label was
+ * last painted. A label can be one frame stale; ending a turn by accident
+ * because of it cannot be undone.
+ */
+function turnButtonAction(): void {
+  if (pendingWork().total === 0) {
+    void doEndTurn();
+    return;
+  }
+  nextAction();
 }
 
 /**
@@ -4074,6 +4192,10 @@ function refreshHud(): void {
   el.compute.textContent = String(resources.compute);
   el.cu.textContent = String(resources.cu);
   el.trust.textContent = String(resources.trust);
+  // What is left to do changes with almost anything, so it is repainted with
+  // the rest of the HUD rather than from each of the dozen places that could
+  // have changed it.
+  refreshTurnButton();
 }
 
 function viewportSize(): { width: number; height: number } {
@@ -4598,7 +4720,18 @@ window.addEventListener('keydown', (e) => {
 
   if (e.key === ' ') {
     e.preventDefault();
-    void doEndTurn();
+    /*
+     * ⚠️ Ctrl+Space ends the turn even with work outstanding, and plain Space
+     * does whatever the button currently says. One key, one meaning: "do the
+     * obvious next thing". Space used to end the turn unconditionally, which
+     * made the fastest way to play also the way to abandon four units.
+     */
+    if (e.ctrlKey || e.metaKey) void doEndTurn();
+    else turnButtonAction();
+  } else if (e.key === 'Enter') {
+    // Always steps, never ends. The one key that cannot cost a turn.
+    e.preventDefault();
+    nextAction();
   } else if (e.key === 'n' || e.key === 'Tab') {
     e.preventDefault();
     selectNextIdle();
@@ -4647,7 +4780,7 @@ window.addEventListener('resize', fitCanvas);
 window.addEventListener('orientationchange', () => {
   requestAnimationFrame(() => requestAnimationFrame(fitCanvas));
 });
-el.endTurn.addEventListener('click', doEndTurn);
+el.endTurn.addEventListener('click', turnButtonAction);
 el.openLibrary.addEventListener('click', () => library.toggle());
 el.openSeats.addEventListener('click', () => void openSeats());
 el.faceProctor.addEventListener('click', () => void faceTheProctor());

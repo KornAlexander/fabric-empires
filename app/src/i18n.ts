@@ -539,6 +539,19 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
   'Call off the march and decide again next turn (Esc)':
     'Den Marsch abbrechen und nächste Runde neu entscheiden (Esc)',
   '{unit} stands and awaits orders.': '{unit} hält an und wartet auf Befehle.',
+  // The turn button, which is now two buttons wearing one coat.
+  'Next unit ({n})': 'Nächste Einheit ({n})',
+  'Choose research': 'Forschung wählen',
+  'Nothing left to do. Space ends the turn.':
+    'Nichts mehr zu tun. Leertaste beendet den Zug.',
+  '{n} units still have something to do. Ctrl+Space ends the turn anyway.':
+    '{n} Einheiten haben noch etwas zu tun. Strg+Leertaste beendet den Zug trotzdem.',
+  'Compute is being earned against nothing. Ctrl+Space ends the turn anyway.':
+    'Compute wird ohne Ziel erwirtschaftet. Strg+Leertaste beendet den Zug trotzdem.',
+  'A review has fallen due. Ctrl+Space ends the turn anyway.':
+    'Eine Wiederholung ist fällig. Strg+Leertaste beendet den Zug trotzdem.',
+  'Nothing is being researched. Pick a topic.':
+    'Es wird nichts erforscht. Wähle ein Thema.',
   'Every advance is a question. Pick a topic, answer it, and the next units unlock.':
     'Jeder Fortschritt ist eine Frage. Wähle ein Thema, beantworte es, und die nächsten Einheiten werden frei.',
   'Attack a walled city. You choose how to go in, and the defender chooses how to meet you.':

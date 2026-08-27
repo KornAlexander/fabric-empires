@@ -10084,6 +10084,61 @@ greyed button teaches nobody what it is for.
 | D836 | ⚠️ **Cancelling keeps the unit's movement** | It withdraws an instruction; it does not give up the turn |
 | D837 | The button is hidden when there is no order | A permanently greyed control explains nothing |
 
+## 116. The turn button stops lying about what is left
+
+It read **End turn** from the first second of a turn to the last. So the
+fastest way to play was to press it, and the game never mentioned the four
+units standing still, the Compute being earned against no research, or the
+review that had fallen due.
+
+One button, two jobs. While anything is outstanding it names the next thing and
+goes there; when nothing is, it says End turn and pulses once.
+
+### Three kinds of unfinished, not one
+
+⚠️ **A turn is not only about moving.** An empire researching nothing wastes
+every point of Compute it earns, and a due review is the entire learning loop
+asking to be run. Both are silent, both are easy to forget, and neither was
+visible anywhere near the button that ends the turn.
+
+⚠️ **A marching unit is NOT awaiting orders. It has them.** Without that
+exclusion every unit on a multi-turn order would keep the turn looking
+unfinished for the whole length of its journey, so the indicator would be at
+its least trustworthy exactly when the feature that needs it is in use. This is
+the one line in `awaitingOrders` worth guarding, and it is.
+
+### The keys
+
+| key | does |
+| --- | --- |
+| `Enter` | the next outstanding thing. Never ends a turn. |
+| `Space` | whatever the button currently says |
+| `Ctrl`/`Cmd`+`Space` | ends the turn regardless |
+
+⚠️ **Space used to end the turn unconditionally**, which made the fastest way
+to play also the way to abandon four units mid-move. It now follows the button,
+so the key and the control can never disagree, and there is a deliberate
+modifier for "yes, I know, end it anyway". `Enter` is the one key that cannot
+cost a turn.
+
+⚠️ **`turnButtonAction` recomputes rather than reading a flag** left behind by
+the last repaint. A label can be one frame stale; a turn ended by accident
+because of it cannot be undone.
+
+⚠️ The pulse runs **three times and stops**, and honours
+`prefers-reduced-motion`. A control that pulses all turn is one people learn to
+ignore, which would cost the highlight the only thing it has.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D838 | One button that names the next thing, then ends the turn | It said "End turn" all turn, so the quickest way to play was to skip the turn |
+| D839 | Unfinished means units, idle research, or a due review | Two of the three were silent and neither was near the button that ends the turn |
+| D840 | ⚠️ **A unit with a march order does not count as idle** | It has orders; counting it would break the indicator whenever marches are used |
+| D841 | Space follows the button, Ctrl+Space overrides | The key and the control cannot drift apart, and abandoning a turn takes a modifier |
+| D842 | Enter always steps and never ends | One key that cannot cost a turn by accident |
+| D843 | ⚠️ **The action recomputes instead of trusting the label** | A stale label is a cosmetic bug until it ends your turn |
+| D844 | The ready pulse stops after three passes | A permanent animation is one people stop seeing |
+
 ---
 
 *Last updated: 27 August 2026*
