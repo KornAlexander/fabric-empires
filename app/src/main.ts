@@ -2052,6 +2052,13 @@ async function digAlong(unitId: string, route: readonly Hex[]): Promise<void> {
   const chest = found;
   log(t('The Profiler turns up a buried cache.'), 'good');
   scene.focus(chest.hex);
+  /*
+   * ⚠️ The cue is played HERE, not inside the film player, because the film
+   * is optional and the sound is not. 	reasureFilm degrades to nothing when
+   * the clip is missing (a clone with no media, the public build), and that is
+   * exactly the case where the sound is carrying the whole moment.
+   */
+  cues.play('treasure-found');
   await treasureFilm.play('found');
 
   /*
@@ -2087,6 +2094,7 @@ async function digAlong(unitId: string, route: readonly Hex[]): Promise<void> {
       'good',
     );
     effects.floatingText(chest.hex, `+${claim.gained}`, '#ffd166', 1.4);
+    cues.play('treasure-opened');
     await treasureFilm.play('opened');
   } else if (claim.remaining) {
     // Say what it cost, or the shrinking is invisible and reads as a bug.

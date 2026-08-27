@@ -10139,6 +10139,68 @@ ignore, which would cost the highlight the only thing it has.
 | D843 | ⚠️ **The action recomputes instead of trusting the label** | A stale label is a cosmetic bug until it ends your turn |
 | D844 | The ready pulse stops after three passes | A permanent animation is one people stop seeing |
 
+## 117. The treasure had no sound at all
+
+Finding a cache and opening it were the two most cinematic moments in a turn,
+and both played in **silence**.
+
+⚠️ **Measured, not assumed:** `ffprobe` reports **no audio stream** in either
+`treasure-found.mp4` or `treasure-opened.mp4`, and `treasureFilm.ts` sets
+`video.muted = true` besides, deliberately, so Sora's ambient bed cannot fight
+the score. Two four-second films, no sound.
+
+⚠️ **The one sound anywhere near a treasure fired at the wrong end.**
+`cues.play('windfall')` runs after the answer, and only when the answer was
+right AND the prize was gold. So the discovery was silent, the opening was
+silent, and getting it wrong was silent twice over. That is why this read as
+"the treasure has no music" rather than as "the treasure is quiet".
+
+### A third cue table, rather than bending either of the two
+
+⚠️ `CUES` is paired to camera cinematics by a test that scans `main.ts` for
+`orbitShot`/`descendShot`/`approachShot`. A treasure entry there is an orphan by
+definition and would fail the very test that catches a renamed film playing in
+silence.
+
+⚠️ `STINGS` states in writing that nothing in it rings past about a second,
+because a sting fires several times a turn and a long tail turns a busy turn
+into mud. These run under a film that has the screen for four seconds.
+
+Relaxing either rule to fit these in would have cost more than a third table.
+`FILMS` is paired to `TreasureBeat` by its own scan, so it cannot drift either.
+
+⚠️ **The cue is played from `main.ts`, not from inside the film player.** The
+film is optional and degrades to nothing when the clip is missing, which is
+precisely the case where the sound is carrying the whole moment. Triggering it
+inside the player would have made the sound disappear exactly when it mattered
+most.
+
+### Composed is not audible
+
+The unit tests can check that a cue exists and cannot check that its graph makes
+a sound, which is why `renderCue` exists. Rendered offline in a real browser:
+
+| cue | peak | rms |
+| --- | --- | --- |
+| `treasure-found` | 0.485 | 0.0482 |
+| `treasure-opened` | 0.622 | 0.0686 |
+| `windfall` (existing) | 0.415 | 0.0176 |
+| `first-city` (existing film cue) | 0.597 | 0.0575 |
+
+Both sit with the cinematic cues, and carry roughly three to four times the RMS
+of the sting that used to be the only sound in a treasure.
+
+`opened` is deliberately the same phrase as `found`, resolved and brighter: an
+answer to it rather than a different idea.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D845 | Both treasure beats get a cue | The clips carry no audio stream and the element is muted; both moments were silent |
+| D846 | ⚠️ **A third table, `FILMS`** | `CUES` pairing would reject them as orphans and `STINGS` forbids anything this long |
+| D847 | ⚠️ **Played from `main.ts`, not the film player** | The film is optional; the sound is what remains when the clip is missing |
+| D848 | `opened` answers `found` musically | One phrase across two beats reads as one event, not two |
+| D849 | Audibility measured with `renderCue` | A test can prove a cue was composed and never that it makes a sound |
+
 ---
 
 *Last updated: 27 August 2026*

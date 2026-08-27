@@ -179,6 +179,56 @@ export const STINGS: Readonly<Record<string, readonly CueEvent[]>> = {
   ],
 };
 
+/**
+ * The video films, which are silent files.
+ *
+ * ⚠️ **A third table, because the other two each have a rule these would
+ * break.** `CUES` is paired to camera cinematics by a test that scans for
+ * `orbitShot`/`descendShot`/`approachShot`, so a treasure entry there is an
+ * orphan by definition and would fail the very test that catches a renamed
+ * film playing in silence. `STINGS` says in writing that nothing in it rings
+ * past about a second, which is right for a sound that fires several times a
+ * turn and wrong for a four second film. Relaxing either rule to fit these in
+ * would cost more than a third table does.
+ *
+ * ⚠️ **The clips carry no audio at all.** Measured: `ffprobe` reports no audio
+ * stream in either, and the element is muted besides (see `treasureFilm.ts`,
+ * which strips it deliberately so Sora's ambient bed cannot fight the score).
+ * So the whole of a treasure, the discovery AND the payoff, played in total
+ * silence, and the only sound anywhere near it was `windfall` — which fires at
+ * the very end, and only when the answer was right and the prize was gold.
+ * Getting it wrong was silent twice over.
+ *
+ * These are long, on purpose: they run under a film that has the screen.
+ */
+export const FILMS: Readonly<Record<string, readonly CueEvent[]>> = {
+  /*
+   * Something is down there. Curiosity, not reward: the question has not been
+   * asked yet and the player may still lose it.
+   *
+   * A low drone under two rising bells, the second unresolved, so it sounds
+   * like an opening rather than an answer.
+   */
+  'treasure-found': [
+    { at: 0.0, voice: 'drone', hz: D3, seconds: 3.4, gain: 0.34 },
+    { at: 0.18, voice: 'bell', hz: D5, seconds: 2.2, gain: 0.42 },
+    { at: 0.9, voice: 'swell', hz: G3, seconds: 1.8, gain: 0.3 },
+    { at: 1.5, voice: 'bell', hz: A5, seconds: 2.4, gain: 0.34 },
+  ],
+
+  /*
+   * The lid comes off. The same shape as `found`, resolved and brighter: it is
+   * deliberately the answer to that phrase rather than a different idea.
+   */
+  'treasure-opened': [
+    { at: 0.0, voice: 'drum', hz: 110, seconds: 0.5, gain: 0.5 },
+    { at: 0.05, voice: 'swell', hz: G3, seconds: 2.4, gain: 0.38 },
+    { at: 0.2, voice: 'bell', hz: D5, seconds: 2.6, gain: 0.5 },
+    { at: 0.75, voice: 'bell', hz: A5, seconds: 2.6, gain: 0.46 },
+    { at: 1.4, voice: 'bell', hz: D6, seconds: 2.8, gain: 0.4 },
+  ],
+};
+
 export interface Cues {
   /** Sound the cue for a cinematic. Unknown ids are silence, not an error. */
   play(id: string): void;
@@ -427,7 +477,7 @@ export function createCues(makeContext?: ContextFactory): Cues {
       if (muted) return;
       // Films first, then the gameplay stings. Two tables, one entry point, so
       // a caller never has to know which kind of sound it is asking for.
-      const events = CUES[id] ?? STINGS[id];
+      const events = CUES[id] ?? FILMS[id] ?? STINGS[id];
       if (!events || events.length === 0) return;
       const parts = audio();
       if (!parts) return;
