@@ -134,6 +134,7 @@ import { createGreatLibrary } from './ui/greatLibrary.js';
 import { createDroneHud } from './ui/droneHud.js';
 import { Vector3 } from 'three';
 import { createEndScreen } from './ui/endScreen.js';
+import { beginRun, flush, recordAttempt, recordRun, statsConfigured } from './stats.js';
 import { createCinematicOverlay } from './ui/cinematicOverlay.js';
 import { createChoiceModal } from './ui/choice.js';
 import { createSetupScreen, type SetupResult } from './ui/setupScreen.js';
@@ -223,6 +224,9 @@ const mastery = createMasteryTracker({
 const soloPresenter = createQuestionPresenter(modal, {
   asked: askedThisSession,
   retired: retiredThisSession,
+  // Reads `lastSetup` at call time, not at construction: the course is chosen
+  // after this is built.
+  onAttempt: (a) => recordAttempt(a, { seat: 1, courseId: lastSetup.courseP1 }),
 });
 
 /**
@@ -271,7 +275,11 @@ function buildSecondSeat(): void {
   const own = courseById(lastSetup.courseP1);
   seatOnePresenter = createQuestionPresenter(
     duo.ui({ seat: 1, who: 'Player 1', course: own?.course ?? 'Fabric Empires' }),
-    { asked: askedThisSession, retired: retiredThisSession },
+    {
+      asked: askedThisSession,
+      retired: retiredThisSession,
+      onAttempt: (a) => recordAttempt(a, { seat: 1, courseId: lastSetup.courseP1 }),
+    },
   );
 
   /*
@@ -289,6 +297,23 @@ function buildSecondSeat(): void {
       questions: campaign.questions,
       asked: new Set<string>(),
       retired: new Set<string>(),
+      /*
+       * ⚠️ Seat two's attempts ARE recorded, and that does not reopen D205.
+       *
+       * D205 keeps this seat out of the DP-600 study record, because the
+       * readiness figure describes ONE person's progress towards ONE exam and
+       * a six-year-old's Anlaute answers would corrupt the only number this
+       * product really produces. The stats tables are a different thing: they
+       * carry `seat` and `courseId` columns precisely so two learners stay
+       * separable in the data. Recording here adds a second learner; it does
+       * not merge them.
+       *
+       * ⚠️ The guard test for D205 reads this function's SOURCE and forbids
+       * the name of that tracker appearing anywhere in it, which is why this
+       * comment talks around it. That is the test being strict rather than
+       * clumsy, and it caught this comment on the first run.
+       */
+      onAttempt: (a) => recordAttempt(a, { seat: 2, courseId: lastSetup.courseP2 }),
     },
   );
   // The topics this seat can be asked about, which are its own, not the
@@ -2999,11 +3024,31 @@ async function doEndTurn(): Promise<void> {
   finished = true;
   el.endTurn.disabled = true;
   await presentedEnemyTurn;
+  const myCities = [...state.cities.values()].filter((c) => c.factionId === mySeat).length;
   endScreen.show(report.outcome, {
     turn: report.turn,
     skills: `${state.research.known.length}/${state.topics.nodes.length}`,
-    cities: [...state.cities.values()].filter((c) => c.factionId === mySeat).length,
+    cities: myCities,
     cheats: state.cheatsUsed,
+  });
+
+  /*
+   * The one moment a campaign is worth recording.
+   *
+   * ⚠️ Deliberately AFTER the end screen is shown, and not awaited. The player
+   * has finished; making them wait on a network write to see their own result
+   * would be charging them for the statistics. If it fails, it fails quietly.
+   */
+  void recordRun({
+    seed: state.seed,
+    difficulty: state.difficulty,
+    players: lastSetup.players,
+    outcome: String(report.outcome).toLowerCase().includes('vic') ? 'victory' : 'defeat',
+    turns: report.turn,
+    cities: myCities,
+    readinessPercent: Math.round(libraryModel().examRetained * 100),
+    skillsResearched: state.research.known.length,
+    cheatsUsed: state.cheatsUsed,
   });
 }
 
@@ -4057,6 +4102,9 @@ function newGame(rawSeed: string): void {
  */
 async function askAndStart(): Promise<void> {
   lastSetup = await setup.ask(lastSetup);
+  // A new campaign is a new row. Also clears any attempts queued but never
+  // flushed by the game being abandoned.
+  beginRun();
   buildSecondSeat();
   newGame(lastSetup.seed);
   // Build the shaders before the film starts rather than during it. The world

@@ -9791,6 +9791,117 @@ healthy system will invent work, and the invented work looks urgent.
 | D805 | It is outlined, not a second filled accent button | One primary action; two identical bars read as a duplicate |
 | D806 | ⚠️ **Both mobile "faults" are recorded as measurement errors** | A scroll container and the intro cinematic; writing them up as bugs would have invented work on a healthy screen |
 
+## 111. The game starts keeping records
+
+PLAN §1 listed `GameStats` and `LeaderboardEntry` among the entities this
+project would need. They were never built, and the gap was wider than a missing
+table: **the game kept no record of itself at all.** The save holds exactly one
+campaign and overwrites it, so a player could finish twenty games and leave
+behind nothing but an SM-2 schedule that cannot say how many games there were.
+There was no telemetry of any kind: no `track`, no `logEvent`, no history.
+
+That is an awkward hole for a project whose entire claim is that it teaches
+DP-600, because nothing anywhere could be asked to show that it does.
+
+### Two tables, because each is the other's denominator
+
+`GameResults` is one row per finished campaign. `QuestionAttempts` is one row
+per question answered.
+
+⚠️ **The per-game table alone would be nearly worthless.** "Won in 40 turns at
+62% readiness" describes the *game* and cannot say which skills carried it or
+which were guessed. The attempts alone cannot say whether any of it added up to
+a win. Paying for two tables buys the ability to ask either question.
+
+⚠️ **`context` is why the attempts table beats a quiz log.** The same question
+asked mid-siege under a clock is not the same measurement as the same question
+during calm research. It is the only way to separate "does not know it" from
+"cannot recall it under pressure", and those want different remedies.
+
+⚠️ **Neither table stores a question's TEXT.** `topicId` and `questionId` are
+keys into the bank; the bank stays the only copy. Copying prompts into a
+statistics store would put the content somewhere it can drift from the source.
+
+### Where it lives, and who can see it
+
+`services.data` is now on, `dialect: mssql`, which provisions a **Fabric SQL
+Database as a child item of the Rayfin item** in the same workspace. Verified
+against the live database: `dbo.GameResults`, `dbo.QuestionAttempts` and
+Rayfin's own `dbo.Users`, with exactly the declared columns and types.
+
+⚠️ **Rayfin PLURALISES entity names.** The class `GameResult` becomes the table
+`GameResults`. Anything written against the singular, a semantic model
+especially, will fail to find it.
+
+⚠️ **Row-level security and full-fleet reporting are both satisfied, through
+different doors.** `@role('authenticated', '*', { policy: sub == userId })`
+constrains the app, because app traffic goes through Data API Builder. A
+semantic model connects to the database's **SQL analytics endpoint** instead,
+with its own credentials, and sees every row. This matters because the `role`
+decorator only accepts `'authenticated'`: there is no custom `admin` role to
+declare, and none is needed.
+
+### Recording must never cost a turn
+
+⚠️ **The hook lives in `learn`, and `learn` does not know what a database is.**
+`PresenterOptions.onAttempt` reports what happened; the app decides where it
+goes. This is D35's separation drawn a second time: if the learning layer held
+a client, asking a question would depend on a network being present.
+
+⚠️ **The callback is wrapped in a try/catch at BOTH ends, deliberately.** The
+caller of `present()` is a battle. An expired token inside a recorder would
+otherwise throw out through the question and lose the player the fight. Nothing
+about statistics is worth a turn.
+
+⚠️ **Attempts are queued and flushed in batches**, because one round trip per
+question is a network call every few seconds for an hour. A failed flush is
+**dropped, not retried**: a retry loop against a broken token would grow all
+session and then post a burst of stale rows.
+
+⚠️ **Sign-in is never triggered.** Rayfin's Fabric sign-in can end in
+`window.open`, which browsers only allow inside a user gesture, and there is no
+gesture to spend after a keyboard answer. A silent session or no row.
+
+### The public build records nothing, on purpose
+
+⚠️ **`app/.env.local` is the switch, and its absence is a feature.** Vite reads
+env from its own root, so a file at the repo root is ignored: measured, the
+bundle built that way contains neither the API URL nor the publishable key. The
+GitHub Pages copy is static with nobody signed in, so there is no session to
+attribute a row to anyway, and baking the tenant's endpoint into a public
+artefact would put a `*.pbidedicated.windows.net` address exactly where
+`verify_publishable.py` exists to keep it out of.
+
+So stats degrade the way missing media does: the public build simply does not
+record, and nothing reports an error.
+
+### Two things this cost
+
+⚠️ **`git checkout HEAD -- rayfin/rayfin.yml` silently reverted `data:
+enabled`.** The deploy script restores that file to strip the tenant URL
+`rayfin up` appends, which is correct, and it also throws away any *uncommitted*
+change to it. The database survived because it was already provisioned; the
+declaration did not. Commit config changes before deploying.
+
+⚠️ **The D205 guard test reads `buildSecondSeat`'s SOURCE and forbids the study
+tracker's name appearing in it.** A comment explaining why seat two's attempts
+are recorded used that word and failed the test. The test was right: it is
+guarding the one number this product produces. The comment was reworded rather
+than the test loosened.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D807 | The game records finished runs and answered questions | It claimed to teach DP-600 and kept no evidence whatsoever |
+| D808 | Two tables, not one | The summary cannot say what was learned; the attempts cannot say whether it was won |
+| D809 | ⚠️ **No question text is ever copied into stats** | The bank is the asset and must stay the only copy |
+| D810 | `context` is recorded per attempt | Separates not knowing from not recalling under pressure |
+| D811 | ⚠️ **The hook is in `learn`, the client is in `app`** | Asking a question must not depend on a network, per D35's separation |
+| D812 | Recording failures are swallowed at both ends | The caller of `present()` is a battle; a stats write must not lose it |
+| D813 | Attempts batch, and a failed flush is dropped | A retry loop on a dead token posts a burst of stale rows an hour later |
+| D814 | Sign-in is never triggered from recording | It can call `window.open`, which needs a gesture that is not there |
+| D815 | ⚠️ **The public build records nothing** | No session to attribute rows to, and it would leak the tenant endpoint |
+| D816 | RLS for the app, SQL endpoint for the report | Two doors; `role` only accepts `'authenticated'`, so no admin role exists to declare |
+
 ---
 
 *Last updated: 27 August 2026*
