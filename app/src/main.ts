@@ -4804,6 +4804,35 @@ window.addEventListener('resize', fitCanvas);
 window.addEventListener('orientationchange', () => {
   requestAnimationFrame(() => requestAnimationFrame(fitCanvas));
 });
+
+/*
+ * The shell is not a document and must never sit at a scroll offset.
+ *
+ * ⚠️ `overflow: hidden` is not the guarantee it looks like. It removes the
+ * scrollbar and the wheel, and leaves PROGRAMMATIC scrolling untouched: the
+ * browser scrolls an element into view whenever it takes focus, and the setup
+ * card is taller than a short window, so clicking play scrolled `body` by
+ * 422px on a 1365x768 screen. Nothing then puts it back, because the two
+ * things that normally would - the scrollbar and the wheel - are the two
+ * things `overflow: hidden` took away.
+ *
+ * ⚠️ It is `body` that moves, not `documentElement`, because `html, body`
+ * both carry `height: 100%`. So `window.scrollTo(0, 0)` does NOT fix it: that
+ * addresses the scrolling element, which is the one that did not move.
+ * Measured, and it is why the obvious fix reads as no fix at all.
+ *
+ * The board is `position: fixed` and so cannot be dragged out of view by this
+ * any more. This is the belt to that pair of braces: an offset shell would
+ * still displace anything laid out in normal flow later.
+ */
+const pinShell = (): void => {
+  if (document.body.scrollTop !== 0) document.body.scrollTop = 0;
+  if (document.body.scrollLeft !== 0) document.body.scrollLeft = 0;
+  if (document.documentElement.scrollTop !== 0) document.documentElement.scrollTop = 0;
+  if (document.documentElement.scrollLeft !== 0) document.documentElement.scrollLeft = 0;
+};
+// Capture, because a scroll event does not bubble.
+document.addEventListener('scroll', pinShell, true);
 el.endTurn.addEventListener('click', turnButtonAction);
 el.openLibrary.addEventListener('click', () => library.toggle());
 el.openSeats.addEventListener('click', () => void openSeats());
