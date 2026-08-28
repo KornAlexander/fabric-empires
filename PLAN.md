@@ -10352,7 +10352,92 @@ it" from "cannot recall it under siege with a clock running".
 Verified end to end: every DAX measure returns real values, and the rendered cards
 match the query baseline exactly at 48 games, 1,407 attempts and 64.1% accuracy.
 
+## 120. The panels left their corners, and took the board with them
+
+Reported as "the game is broken": the 3D view filled only the top part of the
+window, the rest was a black band, and the HUD panels floated in that band on
+top of each other. It looks like a renderer that has lost its viewport. It is
+not one, and the instrument that eventually named it was `getBoundingClientRect`
+rather than anything in three.js.
+
+One declaration did all of it:
+
+```css
+.panel.foldable { position: relative; }
+```
+
+It was added with the fold toggles, to give an absolutely positioned button
+something to anchor to. `.panel` is already `position: fixed`, which is a
+containing block in its own right, so the toggle never needed it — and
+`relative` is not an addition to `fixed`, it **replaces** it.
+
+**Fault one, the visible mess.** The six foldable panels left their pinned
+corners and fell into normal document flow, one under the next. Measured on
+1365x768: `help` at 62, `threats` at 242, `tile` at 426, `research` at 587,
+`log` at 735, with `research` ending at **811** and `log` at **802**, both past
+the bottom of the window, and eight overlapping pairs.
+
+**Fault two, the one that got reported.** Those in-flow panels made `body`
+taller than the viewport. ⚠️ **`overflow: hidden` is not the guarantee it looks
+like**: it removes the scrollbar and the wheel and leaves PROGRAMMATIC scrolling
+untouched. The browser scrolls an element into view when it takes focus, the
+setup card is taller than a short window, so clicking play scrolled `body` to
+**422 px**. The board was `static`, so it went with it: the top of the world
+slid off the screen, the bottom of the window became the band, and every panel,
+being fixed, stayed pinned to the viewport and landed on top of it.
+
+Nothing puts that scroll back, because the two things that normally would are
+the two things `overflow: hidden` had taken away.
+
+### Ruling out the renderer, which is where the time went
+
+Every measurement said the renderer was fine and it took a while to believe
+them. The canvas was full size, the drawing buffer was full size, the GL
+viewport read `[0, 0, 1600, 700]`, and there was no scissor test. Two tests
+settled it:
+
+- Painting `html, body` magenta turned the band magenta, so the canvas is
+  transparent there rather than drawn dark.
+- Setting `scene.background` to magenta changed **nothing**, so the composer
+  never writes those pixels at all — which rules out the scene and points at
+  geometry outside it.
+
+Screenshotting the canvas ELEMENT rather than the page is what broke it open:
+`rect.top` came back as **-422**, and 100% of the canvas was drawn.
+
+⚠️ **`window.scrollTo(0, 0)` does not fix this, and that is not a clue that it
+is something else.** With `html, body { height: 100% }` it is `body` that
+scrolls, not `documentElement`; `scrollTo` addresses the scrolling element,
+which is the one that did not move. Measured: `scrollY` and
+`documentElement.scrollTop` both read 0 the whole time while
+`body.scrollTop` was 422.
+
+### Three changes, smallest first
+
+- The foldable rule no longer sets `position` at all.
+- ⚠️ The mobile column, which really does need the panels back in flow, now says
+  `position: relative` rather than `static`. `static` is not a containing block,
+  so the toggle would anchor to the viewport and sit in the corner of the screen
+  instead of the corner of its panel.
+- `#map` and `#fx` are `position: fixed`. The mobile rule already did this and
+  the desktop one did not, which is exactly why only the wide layout could show
+  the fault. A board that cannot be scrolled cannot be scrolled away.
+- A capture-phase `scroll` listener pins the shell at zero, as the belt to that
+  pair of braces.
+
+### And a threat list parked across the keys legend
+
+Found while measuring the overlaps, and older than any of the above. `#threats`
+hangs from `top: 124px` and shares its edge with `#help`, which is four lines of
+hint text running **62 to 180 in German**. The threat list sat across the middle
+of the legend and hid two of its four lines. English is shorter, which is why it
+had always read as fine, and it is the second time in this project that a layout
+constant was set against the shorter of the two languages.
+
+Verified at 1365x768, 1365x678 and 1600x700: board top 0, board height equal to
+the window, `body.scrollTop` 0, nothing clipped, no panel out of `fixed`, and
+the help overlap gone. 1410 tests green.
 
 ---
 
-*Last updated: 27 August 2026*
+*Last updated: 28 August 2026*
