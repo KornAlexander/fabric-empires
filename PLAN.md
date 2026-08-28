@@ -10438,6 +10438,63 @@ Verified at 1365x768, 1365x678 and 1600x700: board top 0, board height equal to
 the window, `body.scrollTop` 0, nothing clipped, no panel out of `fixed`, and
 the help overlap gone. 1410 tests green.
 
+## 121. The second seat had a hidden clock and an English name
+
+Two faults in co-op, both found by playing it rather than by reading it, and
+both of a kind the existing tests were shaped not to see.
+
+**The seat label was never translated.** A pane read `Player 1` in a fully
+German game, with `'Player 1': 'Spieler 1'` sitting in the catalogue, unused,
+for as long as co-op has existed. The call site passed the English literal
+straight through as display text.
+
+⚠️ **The test written to catch exactly this could not.** `i18n.test.ts` has a
+check called "writes no untranslated prose straight to the DOM", added after
+an entire victory screen shipped in English. It scans for a STRING LITERAL
+assigned to `textContent`. This assigns a variable:
+
+```ts
+who.textContent = config.who;   // invisible to the scanner
+```
+
+That is the second time in this project that a check has been satisfied by the
+shape of a line rather than by its effect.
+
+It is now translated in `buildPane` rather than at the call site, which is not
+a detail: the `SeatConfig` is built once when the game starts and the pane is
+rebuilt for every question, so resolving it at the call site would have been
+right until somebody pressed the language toggle and permanently wrong
+afterwards. There is a test that switches language between two `ask` calls.
+The course name is deliberately NOT translated: it is content, and it arrives
+already written in the language of its own bank.
+
+**The clock was real, enforced, and invisible.** `ask` set a `setTimeout` at
+the time limit that resolved the seat as abandoned. Nothing drew it. The pane
+simply went blank on the player, mid-question, with no warning it was about
+to, and scored it as a miss. The single-player modal has shown a ticking
+`30s` and a draining bar since it was written; the seat pane never had either.
+
+⚠️ **The ticker now owns expiry as well as the paint.** Painting from an
+interval while a separate `setTimeout` decided the deadline is two clocks on
+one number: they drift, and the pane goes blank a beat before or after the
+countdown reads zero, which looks like the game cheating. One owner, and a
+test that a seat which never answers is still abandoned, because folding them
+together is exactly the change that could have dropped it.
+
+The countdown uses the same quarter-remaining threshold and the same red as
+`.fe-timer`, so a player who has learned what running out looks like in one
+modal does not have to learn it again in the other.
+
+**What was already right.** Co-op itself works, and was checked on the
+deployed build rather than assumed: choosing "Zwei Spieler, gemeinsam",
+starting a game, and answering with the seat keys resolved the question and
+produced a German verdict. The two keypads, the capture-phase listener that
+keeps a child's `b` from founding a city, and the second seat's exclusion from
+the mastery tracker were all already covered and all still pass.
+
+Both faults verified by putting them back: restoring `config.who` fails two
+tests, removing the ticker fails four.
+
 ---
 
 *Last updated: 28 August 2026*

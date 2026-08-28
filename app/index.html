@@ -294,6 +294,21 @@
       }
       .fe-duo-head b { color: var(--seat); font-size: 13px; }
       .fe-duo-head span { color: var(--muted); font-size: 11px; }
+      /*
+        The seat's countdown. `margin-left: auto` rather than a third flex
+        column, so the course name keeps sitting under the player's name
+        instead of being pushed into the middle of the row.
+
+        Tabular numerals and the same "low" red as `.fe-timer`, because a
+        player who has learned what running out looks like in one modal should
+        not have to learn it again in the other.
+      */
+      .fe-duo-clock {
+        margin-left: auto; flex: 0 0 auto;
+        font-style: normal; font-size: 12px; font-weight: 600;
+        font-variant-numeric: tabular-nums; color: var(--muted);
+      }
+      .fe-duo-clock.low { color: #ff8b80; }
       .fe-duo-stem { font-size: 16px; line-height: 1.45; margin-bottom: 12px; }
       .fe-duo-pane.seat-2 .fe-duo-stem { font-size: 22px; font-weight: 600; }
       .fe-duo-options { display: flex; flex-direction: column; gap: 7px; }
