@@ -1243,6 +1243,15 @@ onLangChange(() => {
 });
 
 applyStaticTranslations();
+/*
+ * ⚠️ The readiness figure is static text in the markup, and static text in the
+ * markup is English. `data-i18n` cannot carry it because the string has a
+ * placeholder, so it is painted here instead, with the zero the markup was
+ * already claiming. Without this a German player reads "0% exam" for the whole
+ * of the setup screen; `onLangChange` repaints it, so only the first render
+ * was ever wrong, which is exactly the render nobody looks at twice.
+ */
+paintReadiness(0);
 paintLangToggle();
 
 /*
@@ -3940,6 +3949,20 @@ function libraryModel() {
 }
 
 /**
+ * Write the readiness figure, and nothing else.
+ *
+ * ⚠️ Split out of `refreshReadiness` so it can be painted at startup. The
+ * markup ships `0% exam` as static text, which is English, so a German player
+ * read it in English for the whole of the setup screen and until the first
+ * HUD refresh. `refreshReadiness` itself cannot be called that early: it also
+ * decides whether the Proctor is ready and can write to the log, neither of
+ * which means anything before there is a game.
+ */
+function paintReadiness(percent: number): void {
+  el.readiness.textContent = t('{percent}% exam', { percent });
+}
+
+/**
  * Exam readiness, and the Proctor's interest in it.
  *
  * ⚠️ Readiness is weighted by the published branch percentages, so it moves
@@ -3950,7 +3973,7 @@ function refreshReadiness(): void {
   const model = libraryModel();
   const exam = worldCampaign().exam;
   const percent = Math.round(model.examRetained * 100);
-  el.readiness.textContent = t('{percent}% exam', { percent });
+  paintReadiness(percent);
 
   const ready = proctorReady(model, exam.threshold);
   el.faceProctor.hidden = !ready || finished;

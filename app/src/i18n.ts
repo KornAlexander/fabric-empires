@@ -45,6 +45,41 @@ const DE: Readonly<Record<string, string>> = Object.freeze({
   Library: 'Bibliothek',
   'New game': 'Neues Spiel',
   Skip: 'Überspringen',
+
+  /*
+   * Tooltips on the shell's own buttons.
+   *
+   * ⚠️ These sat in `index.html` as bare `title=` attributes for the life of
+   * the project, so nine of them were English in a German game and no test
+   * could see it: `applyStaticTranslations` only translates a `title` that is
+   * declared as `data-i18n-title`, and the check for untranslated prose reads
+   * the DOM rather than the markup a tooltip lives in until you hover it.
+   *
+   * The letter in brackets is the keyboard shortcut and stays as it is: it
+   * names a physical key, not a word.
+   */
+  'The Great Library: what you actually know (l)':
+    'Die Große Bibliothek: was du wirklich weißt (l)',
+  'Share of the exam, by published weight, at familiar or better':
+    'Anteil der Prüfung nach veröffentlichter Gewichtung, auf vertraut oder besser',
+  'Sit the exam: 40 questions in the published proportions':
+    'Die Prüfung ablegen: 40 Fragen in den veröffentlichten Anteilen',
+  'Found a city here (b)': 'Hier eine Stadt gründen (b)',
+  'Plunder the neighbouring village (p). R flies the camera, so this is not on r':
+    'Das Nachbardorf plündern (p). R steuert die Kamera, deshalb liegt das nicht auf r',
+  'Skip this unit (x). W A S D fly the camera, so this is not on s':
+    'Diese Einheit überspringen (x). W A S D steuern die Kamera, deshalb liegt das nicht auf s',
+  'Hold a council review (c)': 'Eine Ratssitzung abhalten (c)',
+  /*
+   * ⚠️ Two of these nine were ALREADY in the catalogue further down, waiting
+   * for a call that never came, exactly as `'Player 1'` was: the seats tooltip
+   * and the cancel-march tooltip. Repeating them here would have shadowed the
+   * originals, and one of the two pairs disagreed ("auf dem Feld" against "auf
+   * dem Brett"), so the duplicate would have silently changed a word that the
+   * neighbouring "Die Reiche auf diesem Feld" is written to match. They are
+   * deliberately NOT restated here.
+   */
+
   // City health. "TP" (Trefferpunkte) is what the unit panel already uses for
   // HP, so the two read the same way.
   '{hp}/{full} HP': '{hp}/{full} TP',
