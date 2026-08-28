@@ -28,7 +28,30 @@
       * { box-sizing: border-box; }
       html, body { margin: 0; height: 100%; overflow: hidden; background: #070a10; }
       body { font: 13px/1.5 "Segoe UI", system-ui, sans-serif; color: var(--text); }
-      #map { display: block; width: 100vw; height: 100vh; cursor: grab; }
+      /*
+        ⚠️ **`fixed`, not `static`, and that is the whole point.**
+
+        `overflow: hidden` stops a PLAYER scrolling. It does not stop the
+        BROWSER scrolling, and the browser scrolls whenever it moves focus to
+        something below the fold. The setup card is taller than a short window,
+        so clicking its play button scrolled `body` down by 422px on a 1365x768
+        screen, measured. There is no scrollbar to put it back and no gesture
+        that reaches it, so the page stays there for the rest of the session.
+
+        A `static` board scrolls with the document: the top of the world slides
+        off the screen and the bottom of the window becomes a black band, while
+        every panel, being `fixed`, stays pinned to the viewport and lands on
+        top of that band. It reads exactly like a broken renderer and is not
+        one - the canvas is full size and every pixel of it is drawn.
+
+        Pinning the board to the viewport makes the board immune to it. The
+        mobile rule further down already did this; the desktop one did not,
+        which is why only the wide layout could show the fault.
+      */
+      #map {
+        position: fixed; top: 0; left: 0;
+        display: block; width: 100vw; height: 100vh; cursor: grab;
+      }
       #map.dragging { cursor: grabbing; }
       /* Damage numbers and impact rings ride above the 3D view. Drawing them
          in 2D keeps text crisp at any distance, which projected 3D text is
@@ -457,7 +480,15 @@
       #tile { bottom: 14px; left: 50%; transform: translateX(-50%); text-align: center; min-width: 240px; }
       #help { top: 62px; right: 14px; color: var(--muted); text-align: right; font-size: 12px; }
 
-      #threats { top: 124px; right: 14px; width: 272px; max-height: 42vh; overflow-y: auto; }
+      /*
+        ⚠️ Clears `#help`, which shares this edge and is taller than it looks.
+
+        Both hang from the top right. The legend is four lines of hint text, so
+        it runs 62 to 180 measured in German, and this used to start at 124:
+        the threat list was parked across the middle of it and hid two of the
+        four lines. English is shorter, which is why it read as fine.
+      */
+      #threats { top: 194px; right: 14px; width: 272px; max-height: 42vh; overflow-y: auto; }
       #threats h2 { margin: 0 0 4px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
       #threats .foe {
         display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 8px;
@@ -659,7 +690,14 @@
 
         /* Undo every corner pin in one place. */
         #hud > .panel {
-          position: static;
+          /*
+            ⚠️ `relative`, not `static`. Both put the panel back into flow,
+            which is the point, but only `relative` is a containing block, and
+            the fold toggle is absolutely positioned inside it. Under `static`
+            the toggle anchors to the viewport instead and lands in the corner
+            of the screen rather than the corner of its panel.
+          */
+          position: relative;
           width: auto;
           min-width: 0;
           max-width: none;
@@ -782,8 +820,24 @@
 
         The heading and the toggle survive a fold, so a closed panel still says
         what it is. A collapsed panel that is only a chevron is a puzzle.
+
+        ⚠️ **No `position` here, and that is deliberate.** This rule used to say
+        `position: relative`, to give the absolutely positioned toggle
+        something to anchor to. `.panel` is already `position: fixed`, which is
+        a containing block in its own right, so the toggle never needed it -
+        and `relative` is not an addition to `fixed`, it REPLACES it.
+
+        The six foldable panels therefore left their pinned corners and fell
+        into normal document flow, one under the next. Measured on 1365x768:
+        help at 62, threats at 242, tile at 426, research at 587, log at 735,
+        with research ending at 811 and log at 802 - both past the bottom of
+        the window, and eight overlapping pairs.
+
+        That also made `body` taller than the viewport, which is what gave the
+        browser something to scroll when it moved focus to the play button:
+        `body` went to 422px and the board, being in flow, went with it. One
+        declaration, two faults that look nothing like each other.
       */
-      .panel.foldable { position: relative; }
       .panel.foldable > h2 { padding-right: 30px; }
       .panel.collapsed > *:not(h2):not(.panel-toggle) { display: none; }
       .panel.collapsed { padding-bottom: 8px; }
@@ -808,7 +862,7 @@
         }
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-Bc7modBm.js"></script>
+    <script type="module" crossorigin src="./assets/index-BACLFn_J.js"></script>
   </head>
   <body>
     <canvas id="map"></canvas>
