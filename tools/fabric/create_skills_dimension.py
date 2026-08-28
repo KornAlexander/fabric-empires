@@ -23,16 +23,17 @@ drop what it does not recognise. Re-running this script restores it exactly.
 """
 
 import json
-import pathlib
 import struct
 import subprocess
 
 import pyodbc
 
+import _config
+
 AZ = r"C:\Program Files\Microsoft SDKs\Azure\CLI2\wbin\az.cmd"
-SERVER = "ngetv7da5wve3ew7d7pu75n4cu-bm4esur7kqvu5k32hhk245rt5a.database.fabric.microsoft.com,1433"
-DB = "fabric-empires-3fd28292-2ef2-4ead-b040-535db90bc889"
-OUTLINE = pathlib.Path(r"C:\Users\alkorn\repos\fabric-empires\learn\content\dp-600\outline.json")
+SERVER = _config.sql_server()
+DB = _config.sql_database()
+OUTLINE = _config.OUTLINE
 
 DDL = """
 IF OBJECT_ID('dbo.Skills', 'U') IS NULL

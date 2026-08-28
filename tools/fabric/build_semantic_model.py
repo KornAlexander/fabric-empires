@@ -7,16 +7,15 @@ from its report bindings. uuid5 over a fixed namespace makes every tag stable
 across regenerations, so re-running this never churns the diff.
 """
 
-import pathlib
 import shutil
 import uuid
 
-NS = uuid.UUID("6f2b1c44-1f7d-4a52-9b0e-7c1d5c2f0a11")
-WS = "5249380b-543f-4e2b-ab7a-39d5ae7633e8"
-SQLDB_ITEM = "3fd28292-2ef2-4ead-b040-535db90bc889"
+import _config
+
+NS = _config.LINEAGE_NS
 EXPR = "DirectLake - fabric-empires"
 
-ROOT = pathlib.Path(r"C:\Users\alkorn\repos\fabric-empires\fabric\Fabric Empires.SemanticModel")
+ROOT = _config.MODEL_DIR
 
 
 def tag(*parts: str) -> str:
@@ -224,7 +223,7 @@ def main() -> None:
         f"expression '{EXPR}' =\n"
         f"\t\tlet\n"
         f"\t\t\tSource = AzureStorage.DataLake(\"https://onelake.dfs.fabric.microsoft.com/"
-        f"{WS}/{SQLDB_ITEM}\", [HierarchicalNavigation=true])\n"
+        f"{{{{FE_WORKSPACE_ID}}}}/{{{{FE_SQLDB_ITEM_ID}}}}\", [HierarchicalNavigation=true])\n"
         f"\t\tin\n"
         f"\t\t\tSource\n"
         f"\tlineageTag: {tag('expression')}\n\n"

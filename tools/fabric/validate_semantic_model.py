@@ -16,8 +16,10 @@ import subprocess
 import urllib.error
 import urllib.request
 
+import _config
+
 AZ = r"C:\Program Files\Microsoft SDKs\Azure\CLI2\wbin\az.cmd"
-DS = "2a16e8d0-3301-4e0b-8c8e-7a382a3567fc"
+DS = _config.model_id()
 
 tok = subprocess.run(
     [AZ, "account", "get-access-token", "--resource", "https://analysis.windows.net/powerbi/api",

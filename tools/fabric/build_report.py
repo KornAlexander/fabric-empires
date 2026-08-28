@@ -19,14 +19,20 @@ as "1" is worse than using a core bar chart in the house palette.
 import json
 import pathlib
 import shutil
+import uuid
 
-ROOT = pathlib.Path(r"C:\Users\alkorn\repos\fabric-empires\fabric\Fabric Empires.Report")
-HOCH = pathlib.Path(r"C:\Users\alkorn\OneDrive - Microsoft\Dokumente\03. Demo\Hochschul-Insights")
-TEMPLATE_REPORT = HOCH / "Hochschul-Insights Import.Report"
+import _config
 
-MODEL_ID = "2a16e8d0-3301-4e0b-8c8e-7a382a3567fc"
-WORKSPACE = "Rayfin Apps"
-MODEL_NAME = "Fabric Empires"
+ROOT = _config.REPORT_DIR
+
+# The workspace name and the model id are written as placeholders and resolved
+# by deploy_report.py, so the committed definition names no real workspace.
+MODEL_NAME = _config.MODEL_NAME
+
+# Stable and derived, exactly as in build_semantic_model.py, so a regeneration
+# never churns the diff. It is git-integration identity and nothing more: it
+# names no workspace and no tenant.
+LOGICAL_ID = str(uuid.uuid5(_config.LINEAGE_NS, "report/platform"))
 
 BG = "hochschul_bg42585168491328588.png"
 THEME = "HochschulInsights.Theme.json"
@@ -332,6 +338,9 @@ def pressure():
 
 
 def main() -> None:
+    hoch = _config.theme_source()
+    template_report = hoch / "Hochschul-Insights Import.Report"
+
     if ROOT.exists():
         shutil.rmtree(ROOT)
     (ROOT / "definition" / "pages").mkdir(parents=True)
@@ -340,9 +349,9 @@ def main() -> None:
     shared = ROOT / "StaticResources" / "SharedResources" / "BaseThemes"
     shared.mkdir(parents=True)
 
-    shutil.copy2(TEMPLATE_REPORT / "StaticResources" / "RegisteredResources" / BG, res / BG)
-    shutil.copy2(HOCH / "ReportAssets" / "HochschulInsights.Theme.json", res / THEME)
-    shutil.copy2(TEMPLATE_REPORT / "StaticResources" / "SharedResources" / "BaseThemes"
+    shutil.copy2(template_report / "StaticResources" / "RegisteredResources" / BG, res / BG)
+    shutil.copy2(hoch / "ReportAssets" / "HochschulInsights.Theme.json", res / THEME)
+    shutil.copy2(template_report / "StaticResources" / "SharedResources" / "BaseThemes"
                  / f"{BASE_THEME}.json", shared / f"{BASE_THEME}.json")
 
     def w(path: pathlib.Path, obj) -> None:
@@ -353,15 +362,16 @@ def main() -> None:
     w(ROOT / ".platform", {
         "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
         "metadata": {"type": "Report", "displayName": "Fabric Empires"},
-        "config": {"version": "2.0", "logicalId": "8d1c4a02-6f33-4c1b-9a7e-51c2b0d9f4aa"},
+        "config": {"version": "2.0", "logicalId": LOGICAL_ID},
     })
     w(ROOT / "definition.pbir", {
         "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definitionProperties/2.0.0/schema.json",
         "version": "4.0",
         "datasetReference": {"byConnection": {
-            "connectionString": f'Data Source="powerbi://api.powerbi.com/v1.0/myorg/{WORKSPACE}";'
+            "connectionString": 'Data Source="powerbi://api.powerbi.com/v1.0/myorg/'
+                                '{{FE_WORKSPACE_NAME}}";'
                                 f'initial catalog="{MODEL_NAME}";integrated security=ClaimsToken;'
-                                f'semanticmodelid={MODEL_ID}',
+                                'semanticmodelid={{FE_MODEL_ID}}',
         }},
     })
     w(ROOT / "definition" / "version.json", {

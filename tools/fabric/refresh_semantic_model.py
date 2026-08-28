@@ -12,9 +12,11 @@ import time
 import urllib.error
 import urllib.request
 
+import _config
+
 AZ = r"C:\Program Files\Microsoft SDKs\Azure\CLI2\wbin\az.cmd"
-WS = "5249380b-543f-4e2b-ab7a-39d5ae7633e8"
-DS = "2a16e8d0-3301-4e0b-8c8e-7a382a3567fc"
+WS = _config.workspace_id()
+DS = _config.model_id()
 
 tok = subprocess.run(
     [AZ, "account", "get-access-token", "--resource", "https://analysis.windows.net/powerbi/api",

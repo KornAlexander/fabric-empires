@@ -77,3 +77,9 @@ app/public/treasure-opened.mp4
 
 # Compiled entity output from ayfin up. Regenerated on every deploy.
 rayfin/.temp/
+
+# Coordinates for the workspace these scripts deploy into, and their scratch
+# output. See tools/fabric/.env.example for the shape.
+tools/fabric/.env
+tools/fabric/.out/
+__pycache__/

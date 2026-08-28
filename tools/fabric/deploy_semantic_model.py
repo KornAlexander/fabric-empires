@@ -8,17 +8,18 @@ confusing thing to leave behind.
 
 import base64
 import json
-import pathlib
 import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
 
+import _config
+
 AZ = r"C:\Program Files\Microsoft SDKs\Azure\CLI2\wbin\az.cmd"
-WS = "5249380b-543f-4e2b-ab7a-39d5ae7633e8"
-NAME = "Fabric Empires"
-ROOT = pathlib.Path(r"C:\Users\alkorn\repos\fabric-empires\fabric\Fabric Empires.SemanticModel")
+WS = _config.workspace_id()
+NAME = _config.MODEL_NAME
+ROOT = _config.MODEL_DIR
 API = "https://api.fabric.microsoft.com/v1"
 
 tok = subprocess.run(
@@ -40,12 +41,23 @@ def call(method: str, url: str, body=None):
 
 
 def parts() -> list[dict]:
+    """The definition as the API wants it, with the coordinates put back in.
+
+    ⚠️ The committed TMDL carries `{{FE_WORKSPACE_ID}}` and `{{FE_SQLDB_ITEM_ID}}`
+    rather than real ids, so the substitution happens HERE, on the way out. Text
+    parts go through `_config.resolve`; anything binary is uploaded untouched.
+    """
     out = []
     for p in sorted(ROOT.rglob("*")):
         if p.is_file():
+            raw = p.read_bytes()
+            try:
+                raw = _config.resolve(raw.decode("utf-8")).encode("utf-8")
+            except UnicodeDecodeError:
+                pass
             out.append({
                 "path": p.relative_to(ROOT).as_posix(),
-                "payload": base64.b64encode(p.read_bytes()).decode("ascii"),
+                "payload": base64.b64encode(raw).decode("ascii"),
                 "payloadType": "InlineBase64",
             })
     return out
@@ -90,4 +102,6 @@ else:
     model_id = body["id"]
 
 print(f"\nSEMANTIC MODEL ID: {model_id}")
-pathlib.Path(r"C:\Users\alkorn\repos\temp\fe_model_id.txt").write_text(model_id, encoding="utf-8")
+_config.OUT.mkdir(parents=True, exist_ok=True)
+(_config.OUT / "model_id.txt").write_text(model_id, encoding="utf-8")
+print("Put this in FE_MODEL_ID before deploying the report.")

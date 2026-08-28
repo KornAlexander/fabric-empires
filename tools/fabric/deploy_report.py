@@ -2,16 +2,17 @@
 
 import base64
 import json
-import pathlib
 import subprocess
 import time
 import urllib.error
 import urllib.request
 
+import _config
+
 AZ = r"C:\Program Files\Microsoft SDKs\Azure\CLI2\wbin\az.cmd"
-WS = "5249380b-543f-4e2b-ab7a-39d5ae7633e8"
-NAME = "Fabric Empires"
-ROOT = pathlib.Path(r"C:\Users\alkorn\repos\fabric-empires\fabric\Fabric Empires.Report")
+WS = _config.workspace_id()
+NAME = _config.REPORT_NAME
+ROOT = _config.REPORT_DIR
 API = "https://api.fabric.microsoft.com/v1"
 
 tok = subprocess.run(
@@ -33,11 +34,20 @@ def call(method, url, body=None):
 
 
 def parts():
+    """⚠️ `definition.pbir` carries `{{FE_WORKSPACE_NAME}}` and `{{FE_MODEL_ID}}`,
+    not real ones. They are substituted here, on the way to the API, so the file
+    on disk stays free of coordinates. Binary parts (the background PNG) are
+    uploaded untouched."""
     out = []
     for p in sorted(ROOT.rglob("*")):
         if p.is_file():
+            raw = p.read_bytes()
+            try:
+                raw = _config.resolve(raw.decode("utf-8")).encode("utf-8")
+            except UnicodeDecodeError:
+                pass
             out.append({"path": p.relative_to(ROOT).as_posix(),
-                        "payload": base64.b64encode(p.read_bytes()).decode("ascii"),
+                        "payload": base64.b64encode(raw).decode("ascii"),
                         "payloadType": "InlineBase64"})
     return out
 
@@ -82,4 +92,5 @@ else:
 
 print(f"\nREPORT ID: {rid}")
 print(f"URL: https://app.powerbi.com/groups/{WS}/reports/{rid}")
-pathlib.Path(r"C:\Users\alkorn\repos\temp\fe_report_id.txt").write_text(rid, encoding="utf-8")
+_config.OUT.mkdir(parents=True, exist_ok=True)
+(_config.OUT / "report_id.txt").write_text(rid, encoding="utf-8")
