@@ -18,6 +18,7 @@ services:
     dialect: mssql
   staticHosting:
     enabled: true
+    assetAccess: public
     folder: app/dist
     buildCommand: npm run build
     indexDocument: index.html
